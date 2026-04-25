@@ -385,18 +385,18 @@ function makeBlock({ entry, idx, onEdit, onRemove, onDragStart, onDragOver, onDr
     const block = document.createElement("div");
     block.draggable = !isDefault;
     block.dataset.idx = String(idx);
-    css(block, `position:relative;height:104px;background:${
+    css(block, `position:relative;height:72px;background:${
         isDefault ? "#2a3a4a" : "#2a2a2a"
     };border:1px solid ${
         isDefault ? "#3a5a8a" : "#444"
-    };border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:${
+    };border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:${
         isDefault ? "pointer" : "grab"
-    };font-size:11px;color:#ddd;user-select:none;padding:6px 4px;box-sizing:border-box;`);
+    };font-size:11px;color:#ddd;user-select:none;padding:4px 3px;box-sizing:border-box;`);
 
     const cover = document.createElement("div");
-    css(cover, `width:48px;height:48px;border-radius:50%;background:${
+    css(cover, `width:36px;height:36px;border-radius:50%;background:${
         isDefault ? "#3a5a8a" : "#444"
-    };display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#fff;`);
+    };display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#fff;`);
     if (isDefault) {
         cover.textContent = "✦";
     } else {
@@ -406,7 +406,7 @@ function makeBlock({ entry, idx, onEdit, onRemove, onDragStart, onDragOver, onDr
     block.appendChild(cover);
 
     const nameEl = document.createElement("div");
-    css(nameEl, "font-size:10px;text-align:center;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
+    css(nameEl, "font-size:9px;text-align:center;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
     nameEl.textContent = isDefault ? "Default" : ((entry.name || "(missing)").split("/").pop());
     block.appendChild(nameEl);
 
@@ -431,6 +431,77 @@ function makeBlock({ entry, idx, onEdit, onRemove, onDragStart, onDragOver, onDr
     return block;
 }
 
+function makeAddBlock({ onNew, onLoad }) {
+    const block = document.createElement("div");
+    css(block, `position:relative;height:72px;background:#2a2a2a;border:1px dashed #555;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;color:#999;user-select:none;padding:4px 3px;box-sizing:border-box;`);
+
+    const icon = document.createElement("div");
+    css(icon, "width:36px;height:36px;border-radius:50%;background:#333;border:1px dashed #555;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#888;");
+    icon.textContent = "+";
+    block.appendChild(icon);
+
+    const label = document.createElement("div");
+    css(label, "font-size:9px;text-align:center;");
+    label.textContent = "Add flake";
+    block.appendChild(label);
+
+    const menu = document.createElement("div");
+    css(menu, "position:absolute;top:100%;left:0;right:0;background:#1e1e1e;border:1px solid #444;border-radius:4px;display:none;flex-direction:column;padding:2px;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-top:2px;");
+
+    const newBtn = document.createElement("button");
+    newBtn.textContent = "+ New flake";
+    css(newBtn, "width:100%;padding:6px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;text-align:left;margin-bottom:2px;");
+    const loadBtn = document.createElement("button");
+    loadBtn.textContent = "\u2191 Load existing";
+    css(loadBtn, "width:100%;padding:6px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;text-align:left;");
+
+    menu.appendChild(newBtn);
+    menu.appendChild(loadBtn);
+    block.appendChild(menu);
+
+    let hideHandler = null;
+
+    function showMenu() {
+        menu.style.display = "flex";
+        if (!hideHandler) {
+            hideHandler = (e) => {
+                if (!block.contains(e.target)) hideMenu();
+            };
+            document.addEventListener("click", hideHandler);
+        }
+    }
+
+    function hideMenu() {
+        menu.style.display = "none";
+        if (hideHandler) {
+            document.removeEventListener("click", hideHandler);
+            hideHandler = null;
+        }
+    }
+
+    block.addEventListener("click", (e) => {
+        e.stopPropagation();
+        menu.style.display === "flex" ? hideMenu() : showMenu();
+    });
+
+    menu.addEventListener("click", (e) => e.stopPropagation());
+
+    newBtn.addEventListener("click", () => {
+        hideMenu();
+        onNew();
+    });
+
+    loadBtn.addEventListener("click", () => {
+        hideMenu();
+        onLoad();
+    });
+
+    block.addEventListener("dragover", (e) => e.preventDefault());
+    block.addEventListener("drop", (e) => e.preventDefault());
+
+    return block;
+}
+
 // ---------- Main widget ----------
 
 function setupFlakeWidget(node) {
@@ -447,19 +518,11 @@ function setupFlakeWidget(node) {
     hideEl(hidden.inputEl);
 
     const container = document.createElement("div");
-    css(container, "display:flex;flex-direction:column;gap:8px;padding:6px;font-size:12px;color:#ddd;");
+    css(container, "display:flex;flex-direction:column;gap:6px;padding:6px;font-size:12px;color:#ddd;");
 
     const grid = document.createElement("div");
-    css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(96px, 1fr));gap:6px;");
+    css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
     container.appendChild(grid);
-
-    const tools = document.createElement("div");
-    css(tools, "display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;");
-    const newBtn = makeSmallButton("+ New flake");
-    const loadBtn = makeSmallButton("↑ Load existing");
-    tools.appendChild(newBtn);
-    tools.appendChild(loadBtn);
-    container.appendChild(tools);
 
     function readEntries() {
         try {
@@ -510,6 +573,7 @@ function setupFlakeWidget(node) {
                 },
             }));
         }
+        if (grid._addBlock) grid.appendChild(grid._addBlock);
     }
 
     async function handleEdit(idx) {
@@ -561,7 +625,7 @@ function setupFlakeWidget(node) {
         render();
     }
 
-    newBtn.addEventListener("click", async () => {
+    async function handleNew() {
         const { directories } = await fetchList();
         const result = await openEditModal({
             mode: "create",
@@ -573,9 +637,9 @@ function setupFlakeWidget(node) {
         arr.push({ name: result.name, strength: 1.0, option: {} });
         writeEntries(arr);
         render();
-    });
+    }
 
-    loadBtn.addEventListener("click", async () => {
+    async function handleLoad() {
         const { flakes } = await fetchList();
         const used = new Set(readEntries().filter(e => e.name).map(e => e.name));
         const available = flakes.filter(n => !used.has(n));
@@ -585,10 +649,16 @@ function setupFlakeWidget(node) {
         arr.push({ name: result.name, strength: 1.0, option: {} });
         writeEntries(arr);
         render();
-    });
+    }
+
+    grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad });
 
     node._flakes_render = render;
-    node.addDOMWidget("flakes_ui", "div", container, { serialize: false });
+    const widget = node.addDOMWidget("flakes_ui", "div", container, { serialize: false });
+    widget.computeSize = () => {
+        const rows = Math.max(1, Math.ceil((readEntries().length + 1) / 2));
+        return [node.size[0], rows * 80 + 36];
+    };
 
     // Initialize: ensure the default-flake entry exists, then render.
     writeEntries(readEntries());
