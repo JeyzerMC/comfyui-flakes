@@ -50,3 +50,5 @@ models/
 flakes/
 *.yaml.local
 *.yml.local
+
+tmp/

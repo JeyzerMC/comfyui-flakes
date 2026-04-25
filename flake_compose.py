@@ -73,24 +73,10 @@ def _load_cn_image(image_name: str) -> torch.Tensor:
     return torch.from_numpy(arr)[None,]
 
 
-def _join_prompts(base: str, parts: list[str], sep: str) -> str:
-    chunks = [c for c in ([base] + parts) if c and c.strip()]
-    return sep.join(chunks).strip()
-
-
-def _join_negatives(parts: list[str], base: str) -> str:
-    chunks = [c for c in (parts + [base]) if c and c.strip()]
-    return ", ".join(chunks).strip().strip(",")
-
-
 def compose(
     model: Any,
     clip: Any,
     entries: list[dict[str, Any]],
-    base_positive: str,
-    base_negative: str,
-    default_width: int,
-    default_height: int,
 ) -> tuple:
     flakes = [flake_io.resolve(e) for e in entries]
 
@@ -101,8 +87,8 @@ def compose(
         lora_name = _resolve_lora_name(f.lora_path)
         model, clip = lora_loader.load_lora(model, clip, lora_name, f.strength, f.strength)
 
-    pos_text = _join_prompts(base_positive, [f.positive for f in flakes], sep=" BREAK ")
-    neg_text = _join_negatives([f.negative for f in flakes], base_negative)
+    pos_text = " BREAK ".join(f.positive.strip() for f in flakes if f.positive and f.positive.strip())
+    neg_text = ", ".join(f.negative.strip() for f in flakes if f.negative and f.negative.strip())
 
     encoder = CLIPTextEncode()
     positive = encoder.encode(clip, pos_text)[0]
@@ -124,7 +110,7 @@ def compose(
                 cn.strength, cn.start_percent, cn.end_percent,
             )
 
-    width, height = default_width, default_height
+    width, height = 1024, 1024
     for f in flakes:
         if f.resolution is not None:
             width, height = f.resolution

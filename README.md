@@ -21,19 +21,23 @@ PyYAML is the only external dependency and is already part of ComfyUI's core req
 
 **Flake Stack** (`category: flakes`) takes:
 
-| Input             | Type      | Notes                                                                       |
-| ----------------- | --------- | --------------------------------------------------------------------------- |
-| `model`           | MODEL     | Output of a checkpoint loader.                                              |
-| `clip`            | CLIP      | Same.                                                                       |
-| `flakes_json`     | STRING    | Managed by the in-node UI — you don't edit this directly.                   |
-| `base_positive`   | STRING    | Prepended to every flake's positive prompt (joined with ` BREAK `).         |
-| `base_negative`   | STRING    | Appended to every flake's negative prompt.                                  |
-| `default_width`   | INT       | Used when no flake declares a `resolution`.                                 |
-| `default_height`  | INT       | Same.                                                                       |
+| Input         | Type   | Notes                                                                |
+| ------------- | ------ | -------------------------------------------------------------------- |
+| `model`       | MODEL  | Output of a checkpoint loader.                                       |
+| `clip`        | CLIP   | Same.                                                                |
+| `flakes_json` | STRING | Managed by the in-node grid UI — you don't edit this directly.       |
 
 It returns: `model, clip, positive, negative, latent, width, height` — wire those into your sampler.
 
-The first flake in the stack that declares a `resolution` wins; otherwise `default_width × default_height` is used.
+The widget renders a **grid of flake blocks**. The first block is the **default flake**: an inline flake that lives in the workflow itself (not on disk), holding base prompts, default dimensions, and any one-off LoRA / ControlNet settings. Subsequent blocks reference saved flakes from `models/flakes/`.
+
+- **`+ New flake`** — opens the editor; saves to `models/flakes/<path>.yaml` and adds it to the stack.
+- **`↑ Load existing`** — picker listing on-disk flakes not yet in this stack.
+- **Double-click a block** — opens the editor. Edits to saved flakes write back to disk; edits to the default flake live in this workflow only.
+- **Drag** any non-default block to reorder.
+- **`✕`** removes a block from the stack (the on-disk YAML is untouched; use the modal's **Delete** to remove the file).
+
+The first flake in the stack that declares a `resolution` wins; if none does, the default is **1024 × 1024**.
 
 ## Flake files
 

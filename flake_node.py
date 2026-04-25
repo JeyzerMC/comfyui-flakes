@@ -19,23 +19,19 @@ class FlakeStack:
                     "tooltip": "JSON-encoded list of flake entries. Managed by the Flake Stack widget.",
                 }),
             },
-            "optional": {
-                "base_positive": ("STRING", {"multiline": True, "default": ""}),
-                "base_negative": ("STRING", {"multiline": True, "default": ""}),
-                "default_width": ("INT", {"default": 1024, "min": 16, "max": 16384, "step": 8}),
-                "default_height": ("INT", {"default": 1024, "min": 16, "max": 16384, "step": 8}),
-            },
         }
 
     RETURN_TYPES = ("MODEL", "CLIP", "CONDITIONING", "CONDITIONING", "LATENT", "INT", "INT")
     RETURN_NAMES = ("model", "clip", "positive", "negative", "latent", "width", "height")
     FUNCTION = "execute"
     CATEGORY = "flakes"
-    DESCRIPTION = "Applies an ordered list of flake presets (prompts + LoRA + resolution + controlnets) between a checkpoint loader and a sampler."
+    DESCRIPTION = (
+        "Applies an ordered list of flake presets between a checkpoint loader and a sampler. "
+        "Block 0 is the inline default flake (its prompt/dimensions live in the workflow); "
+        "subsequent blocks reference saved flakes from models/flakes/."
+    )
 
-    def execute(self, model, clip, flakes_json,
-                base_positive="", base_negative="",
-                default_width=1024, default_height=1024):
+    def execute(self, model, clip, flakes_json):
         try:
             entries = json.loads(flakes_json) if flakes_json else []
         except json.JSONDecodeError as exc:
@@ -46,13 +42,12 @@ class FlakeStack:
 
         normalized: list[dict] = []
         for i, entry in enumerate(entries):
-            if not isinstance(entry, dict) or not entry.get("name"):
-                logging.warning("[FlakeStack] skipping entry %d (missing 'name'): %r", i, entry)
+            if not isinstance(entry, dict):
+                logging.warning("[FlakeStack] skipping non-object entry %d: %r", i, entry)
                 continue
-            normalized.append(entry)
+            if entry.get("inline") or entry.get("name"):
+                normalized.append(entry)
+            else:
+                logging.warning("[FlakeStack] skipping entry %d (needs 'name' or 'inline')", i)
 
-        return flake_compose.compose(
-            model, clip, normalized,
-            base_positive, base_negative,
-            int(default_width), int(default_height),
-        )
+        return flake_compose.compose(model, clip, normalized)
