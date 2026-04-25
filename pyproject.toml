@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-flakes"
+description = "Stackable preset 'flakes' (prompt + LoRA + resolution + ControlNet) inserted between a checkpoint and a sampler."
+version = "0.1.0"
+license = { file = "LICENSE" }
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/JeyzerMC/comfyui-flakes"
+
+[tool.comfy]
+PublisherId = "jeyzermc"
+DisplayName = "ComfyUI Flakes"
+Icon = ""
