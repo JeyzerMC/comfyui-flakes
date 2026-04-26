@@ -1347,14 +1347,32 @@ function setupFlakeWidget(node) {
 
     function addPresetButtonToParent(parent) {
         if (!parent || parent.querySelector(".flake-preset-new-btn")) return false;
+
         const btn = document.createElement("button");
         btn.className = "flake-preset-new-btn";
-        btn.textContent = "+";
         btn.title = "Create new preset";
-        css(btn, "width:22px;height:22px;padding:0;cursor:pointer;background:#1a1a1a;color:#999;border:1px solid #555;border-radius:11px;font-size:13px;line-height:20px;text-align:center;flex-shrink:0;margin-left:4px;");
+        btn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14M5 12h14"/>
+            </svg>`;
+        // Match ComfyUI widget style: same height as widget, left border separator,
+        // rounded right corners, widget background color, centered icon
+        css(btn, `
+            display:inline-flex;align-items:center;justify-content:center;
+            width:32px;height:32px;padding:0;margin:0;
+            background:#2a2a2a;color:#aaa;
+            border:none;border-left:1px solid #444;
+            border-radius:0 6px 6px 0;
+            cursor:pointer;flex-shrink:0;
+            transition:background 0.15s ease;
+        `);
+        btn.addEventListener("mouseenter", () => { btn.style.background = "#333"; });
+        btn.addEventListener("mouseleave", () => { btn.style.background = "#2a2a2a"; });
         btn.addEventListener("click", handleNewPreset);
         btn.addEventListener("dblclick", (e) => e.stopPropagation());
         btn.addEventListener("mousedown", (e) => e.stopPropagation());
+
         parent.style.display = "flex";
         parent.style.alignItems = "center";
         parent.appendChild(btn);
@@ -1390,26 +1408,26 @@ function setupFlakeWidget(node) {
         return attachedAny;
     }
 
-    // Try immediately, then use MutationObserver until the preset DOM renders
-    if (!attachPresetButton()) {
-        const observer = new MutationObserver(() => {
-            if (attachPresetButton()) {
-                observer.disconnect();
-                // Hide legacy toolbar since inline button is working
-                toolbar.style.display = "none";
-            }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-        setTimeout(() => {
-            observer.disconnect();
-            // If nothing was attached after 3s, show legacy toolbar fallback
-            if (!document.querySelector(".flake-preset-new-btn")) {
-                toolbar.style.display = "flex";
-            }
-        }, 3000);
-    } else {
-        toolbar.style.display = "none";
+    // Attach immediately, then keep checking every 500ms so it survives Node 2.0 toggles
+    function updateToolbarVisibility() {
+        const hasBtn = !!document.querySelector(".flake-preset-new-btn");
+        toolbar.style.display = hasBtn ? "none" : "flex";
     }
+
+    attachPresetButton();
+    updateToolbarVisibility();
+
+    const attachInterval = setInterval(() => {
+        attachPresetButton();
+        updateToolbarVisibility();
+    }, 500);
+
+    // Stop polling when the node is removed from the graph
+    const origOnRemoved = node.onRemoved;
+    node.onRemoved = function () {
+        clearInterval(attachInterval);
+        return origOnRemoved?.apply(this, arguments);
+    };
 
     // ---- Widget registration ----
     node._flakes_render = render;
