@@ -67,6 +67,18 @@ function fetchInputs() {
     return INPUTS_PROMISE;
 }
 
+let CKPTS_PROMISE = null;
+function fetchCheckpoints() {
+    if (!CKPTS_PROMISE) CKPTS_PROMISE = fetch("/flakes/checkpoints").then(r => r.json()).then(d => d.checkpoints || []);
+    return CKPTS_PROMISE;
+}
+
+let VAES_PROMISE = null;
+function fetchVaes() {
+    if (!VAES_PROMISE) VAES_PROMISE = fetch("/flakes/vaes").then(r => r.json()).then(d => d.vaes || []);
+    return VAES_PROMISE;
+}
+
 // --- Cover (Phase 3) ---
 
 function getCoverUrl(name) {
@@ -132,7 +144,18 @@ function makeButton(label, primary = false) {
 function makeSmallButton(label) {
     const b = document.createElement("button");
     b.textContent = label;
-    css(b, "padding:2px 6px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:2px;font-size:11px;");
+    css(b, "padding:2px 6px;font-size:10px;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;");
+    return b;
+}
+
+function makeIconBtn(text, title, onClick) {
+    const b = document.createElement("button");
+    b.textContent = text;
+    b.title = title;
+    css(b, "width:18px;height:18px;padding:0;cursor:pointer;background:#2a2a2a;color:#aaa;border:1px solid #444;border-radius:3px;font-size:10px;line-height:16px;text-align:center;flex-shrink:0;");
+    b.addEventListener("click", onClick);
+    b.addEventListener("dblclick", (e) => e.stopPropagation());
+    b.addEventListener("mousedown", (e) => e.stopPropagation());
     return b;
 }
 
@@ -209,6 +232,11 @@ function openEditModal({ mode, name, data, dirs }) {
             `Edit ${name}`;
         panel.appendChild(title);
 
+        // ---- Name (display name for grid) ----
+        panel.appendChild(makeLabel("Display name (shown in the grid)"));
+        const displayNameInput = makeInput(data.name || "", "e.g. My Flake");
+        panel.appendChild(displayNameInput);
+
         // ---- Path (create mode) ----
         let pathInput = null;
         if (mode === "create") {
@@ -239,27 +267,25 @@ function openEditModal({ mode, name, data, dirs }) {
 
         // ---- LoRA (Phase 2) ----
         panel.appendChild(makeLabel("LoRA path (in models/loras/)"));
-        const loraBox = document.createElement("div");
-        css(loraBox, "display:flex;gap:4px;");
-        const loraPath = makeInput(data.path || "", "e.g. sd_xl_offset_example-lora_1.0.safetensors");
-        const loraListId = `lora-list-${Math.random().toString(36).slice(2)}`;
-        const loraList = document.createElement("datalist");
-        loraList.id = loraListId;
-        loraPath.setAttribute("list", loraListId);
-        loraBox.appendChild(loraPath);
-        loraBox.appendChild(loraList);
+        const loraSelect = document.createElement("select");
+        css(loraSelect, "width:100%;background:#1a1a1a;color:#ccc;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;");
+        const loraNone = document.createElement("option");
+        loraNone.value = "";
+        loraNone.textContent = "(none)";
+        loraSelect.appendChild(loraNone);
         (async () => {
             try {
                 const loras = await fetchLoras();
                 for (const l of loras) {
                     const o = document.createElement("option");
                     o.value = l;
-                    loraList.appendChild(o);
+                    o.textContent = l.split("/").pop();
+                    if (l === (data.path || "")) o.selected = true;
+                    loraSelect.appendChild(o);
                 }
             } catch { /* ignore */ }
         })();
-
-        panel.appendChild(loraBox);
+        panel.appendChild(loraSelect);
 
         panel.appendChild(makeLabel("LoRA strength"));
         const loraStrength = makeNumberInput(data.strength ?? 1.0, "1.0", 0.05);
@@ -569,7 +595,8 @@ function openEditModal({ mode, name, data, dirs }) {
         const saveBtn = makeButton("Save", true);
         saveBtn.addEventListener("click", async () => {
             const ordered = {};
-            if (loraPath.value) ordered.path = loraPath.value;
+            if (displayNameInput.value) ordered.name = displayNameInput.value.trim();
+            if (loraSelect.value) ordered.path = loraSelect.value;
             if (loraStrength.value) ordered.strength = parseFloat(loraStrength.value);
             if (posTA.value || negTA.value) {
                 ordered.prompt = { positive: posTA.value, negative: negTA.value };
@@ -671,7 +698,7 @@ function makeBlock({ entry, idx, onEdit, onRemove, onDragStart, onDragOver, onDr
     }
 
     // Name — centered vertically over the background / overlay
-    const fullName = isDefault ? "Default" : (entry.name || "(missing)");
+    const fullName = isDefault ? "Default" : (entry.display_name || entry.name || "(missing)");
     const shortName = fullName.split(/[\/\\ _\-]+/).pop() || fullName;
     const nameEl = document.createElement("div");
     nameEl.title = fullName;
@@ -713,51 +740,49 @@ function makeBlock({ entry, idx, onEdit, onRemove, onDragStart, onDragOver, onDr
 // ---- Per-instance controls (Phase 2) ----
 
 function makeInstanceControls(block, entry, idx, onChanged) {
-    if (entry.inline) return; // No per-instance controls for default block
+    if (entry.inline) return;
 
-    const controls = document.createElement("div");
-    css(controls, "position:absolute;bottom:4px;left:6px;right:6px;display:flex;gap:4px;align-items:center;z-index:2;");
-
-    // Strength control — ComfyUI-style: [-] [value] [+]
     const step = 0.05;
     const clampVal = (v) => Math.round(Math.min(2, Math.max(0, v)) / step) * step;
     const formatVal = (v) => v.toFixed(2);
 
-    const minusBtn = document.createElement("button");
-    minusBtn.textContent = "\u2212";
-    minusBtn.title = "Decrease strength";
-    css(minusBtn, "width:18px;height:18px;padding:0;cursor:pointer;background:#2a2a2a;color:#aaa;border:1px solid #444;border-radius:3px;font-size:10px;line-height:16px;text-align:center;flex-shrink:0;");
-    minusBtn.addEventListener("click", (e) => { e.stopPropagation(); entry.strength = clampVal((entry.strength ?? 1) - step); valSpan.textContent = formatVal(entry.strength); onChanged(); });
-    minusBtn.addEventListener("dblclick", (e) => e.stopPropagation());
-    minusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-    controls.appendChild(minusBtn);
-
-    const valSpan = document.createElement("span");
-    valSpan.textContent = formatVal(entry.strength != null ? entry.strength : 1);
-    css(valSpan, "flex:1;font-size:10px;text-align:center;color:#ccc;font-variant-numeric:tabular-nums;line-height:18px;");
-    controls.appendChild(valSpan);
-
-    const plusBtn = document.createElement("button");
-    plusBtn.textContent = "+";
-    plusBtn.title = "Increase strength";
-    css(plusBtn, "width:18px;height:18px;padding:0;cursor:pointer;background:#2a2a2a;color:#aaa;border:1px solid #444;border-radius:3px;font-size:10px;line-height:16px;text-align:center;flex-shrink:0;");
-    plusBtn.addEventListener("click", (e) => { e.stopPropagation(); entry.strength = clampVal((entry.strength ?? 1) + step); valSpan.textContent = formatVal(entry.strength); onChanged(); });
-    plusBtn.addEventListener("dblclick", (e) => e.stopPropagation());
-    plusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-    controls.appendChild(plusBtn);
-
-    // Options expander
-    const expandBtn = document.createElement("button");
-    expandBtn.textContent = "\u25BE";
-    expandBtn.title = "Show option groups";
-    css(expandBtn, "background:rgba(0,0,0,0.4);color:#aaa;border:1px solid #555;border-radius:2px;padding:0 3px;font-size:9px;cursor:pointer;line-height:1;");
-    expandBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        toggleOptionsPanel();
-    });
-    controls.appendChild(expandBtn);
-
+    // Controls container — stack rows vertically
+    const controls = document.createElement("div");
+    css(controls, "position:absolute;bottom:4px;left:6px;right:6px;display:flex;flex-direction:column;gap:2px;z-index:2;");
     block.appendChild(controls);
+
+    // Strength row (only if flake has a LoRA)
+    if (entry.has_lora) {
+        const strRow = document.createElement("div");
+        css(strRow, "display:flex;gap:3px;align-items:center;");
+
+        const minusBtn = makeIconBtn("\u2212", "Decrease strength",
+            (e) => { e.stopPropagation(); entry.strength = clampVal((entry.strength ?? 1) - step); valSpan.textContent = formatVal(entry.strength); onChanged(); });
+
+        const valSpan = document.createElement("span");
+        valSpan.textContent = formatVal(entry.strength != null ? entry.strength : 1);
+        css(valSpan, "flex:1;font-size:10px;text-align:center;color:#ccc;font-variant-numeric:tabular-nums;line-height:16px;");
+
+        const plusBtn = makeIconBtn("+", "Increase strength",
+            (e) => { e.stopPropagation(); entry.strength = clampVal((entry.strength ?? 1) + step); valSpan.textContent = formatVal(entry.strength); onChanged(); });
+
+        strRow.appendChild(minusBtn);
+        strRow.appendChild(valSpan);
+        strRow.appendChild(plusBtn);
+        controls.appendChild(strRow);
+    }
+
+    // Options row
+    const optRow = document.createElement("div");
+    css(optRow, "display:flex;gap:3px;align-items:center;");
+    const expandBtn = makeIconBtn("\u25BE", "Show option groups",
+        (e) => { e.stopPropagation(); toggleOptionsPanel(); });
+    const optLabel = document.createElement("span");
+    optLabel.textContent = "options";
+    css(optLabel, "font-size:8px;opacity:0.5;");
+    optRow.appendChild(expandBtn);
+    optRow.appendChild(optLabel);
+    controls.appendChild(optRow);
 
     // Options panel (hidden by default)
     const panel = document.createElement("div");
@@ -913,172 +938,8 @@ function makeAddBlock({ onNew, onLoad }) {
 
 // ---------- Main widget ----------
 
+// ---------- FlakeStack widget ----------
 function setupFlakeWidget(node) {
-    const hidden = node.widgets?.find(w => w.name === "flakes_json");
-    if (!hidden) return;
-
-    hidden.computeSize = () => [0, -4];
-    hidden.type = "hidden";
-    hidden.hidden = true;
-    hidden.computedHeight = 0;
-    const hideEl = (el) => { if (!el) return; el.hidden = true; el.style.display = "none"; };
-    hideEl(hidden.element);
-    hideEl(hidden.inputEl);
-
-    const container = document.createElement("div");
-    css(container, "display:flex;flex-direction:column;gap:2px;padding:3px 6px;font-size:12px;color:#ddd;");
-
-    const grid = document.createElement("div");
-    css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
-    container.appendChild(grid);
-
-    function readEntries() {
-        try {
-            const arr = JSON.parse(hidden.value || "[]");
-            return ensureDefault(Array.isArray(arr) ? arr : []);
-        } catch {
-            return ensureDefault([]);
-        }
-    }
-    function writeEntries(entries) { hidden.value = JSON.stringify(entries); }
-
-    let dragSrcIdx = null;
-
-    function render() {
-        const entries = readEntries();
-        grid.replaceChildren();
-        for (let i = 0; i < entries.length; i++) {
-            const blk = makeBlock({
-                entry: entries[i],
-                idx: i,
-                onEdit: handleEdit,
-                onRemove: handleRemove,
-                onDragStart: (e, idx, el) => {
-                    dragSrcIdx = idx;
-                    e.dataTransfer.effectAllowed = "move";
-                    el.style.opacity = "0.4";
-                },
-                onDragOver: (e, idx, el) => {
-                    if (dragSrcIdx === null || idx === 0 || idx === dragSrcIdx) return;
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    el.style.outline = "2px solid #2a6acf";
-                },
-                onDrop: (e, idx) => {
-                    e.preventDefault();
-                    if (dragSrcIdx === null || idx === 0 || idx === dragSrcIdx) return;
-                    const arr = readEntries();
-                    const [moved] = arr.splice(dragSrcIdx, 1);
-                    arr.splice(idx, 0, moved);
-                    writeEntries(arr);
-                    dragSrcIdx = null;
-                    render();
-                },
-                onDragEnd: (el) => {
-                    el.style.opacity = "";
-                    dragSrcIdx = null;
-                    for (const child of grid.children) child.style.outline = "";
-                },
-            });
-            // Phase 2: add per-instance controls
-            makeInstanceControls(blk, entries[i], i, () => {
-                writeEntries(entries);
-            });
-            grid.appendChild(blk);
-        }
-        if (grid._addBlock) grid.appendChild(grid._addBlock);
-    }
-
-    async function handleEdit(idx) {
-        const entries = readEntries();
-        const entry = entries[idx];
-        const isDefault = !!entry.inline;
-
-        let data;
-        if (isDefault) {
-            data = JSON.parse(JSON.stringify(entry.content || {}));
-        } else {
-            try {
-                data = await fetchFlake(entry.name);
-            } catch (err) {
-                window.alert(`Failed to load ${entry.name}: ${err.message || err}`);
-                return;
-            }
-        }
-
-        const { directories } = await fetchList();
-
-        const result = await openEditModal({
-            mode: isDefault ? "default" : "edit",
-            name: entry.name,
-            data,
-            dirs: directories,
-        });
-
-        if (!result) return;
-
-        if (result.defaultUpdated) {
-            const arr = readEntries();
-            arr[idx].content = result.data;
-            writeEntries(arr);
-            render();
-        } else if (result.deleted) {
-            const arr = readEntries().filter((_, i) => i !== idx);
-            writeEntries(ensureDefault(arr));
-            render();
-        }
-    }
-
-    function handleRemove(idx) {
-        if (idx === 0) return;
-        const arr = readEntries();
-        arr.splice(idx, 1);
-        writeEntries(arr);
-        render();
-    }
-
-    async function handleNew() {
-        const { directories } = await fetchList();
-        const result = await openEditModal({
-            mode: "create",
-            data: { prompt: { positive: "", negative: "" }, options: {} },
-            dirs: directories,
-        });
-        if (!result || !result.created) return;
-        const arr = readEntries();
-        arr.push({ name: result.name, strength: 1.0, option: {} });
-        writeEntries(arr);
-        render();
-    }
-
-    async function handleLoad() {
-        const { flakes } = await fetchList();
-        const used = new Set(readEntries().filter(e => e.name).map(e => e.name));
-        const available = flakes.filter(n => !used.has(n));
-        const result = await openPicker(available);
-        if (!result || !result.name) return;
-        const arr = readEntries();
-        arr.push({ name: result.name, strength: 1.0, option: {} });
-        writeEntries(arr);
-        render();
-    }
-
-    grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad });
-
-    node._flakes_render = render;
-    const widget = node.addDOMWidget("flakes_ui", "div", container, { serialize: false, margin: 4 });
-    widget.computeSize = () => {
-        const rows = Math.max(1, Math.ceil((readEntries().length + 1) / 2));
-        return [node.size[0], rows * 84 + 28];
-    };
-
-    writeEntries(readEntries());
-    render();
-}
-
-// ---------- Full Flake widget (Phase 4) ----------
-
-function setupFullFlakeWidget(node) {
     const presetWidget = node.widgets?.find(w => w.name === "preset");
     const flakesHidden = node.widgets?.find(w => w.name === "flakes_json");
     if (!presetWidget || !flakesHidden) return;
@@ -1102,19 +963,14 @@ function setupFullFlakeWidget(node) {
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
 
-    // Small toolbar row (above the grid)
+    // Hidden toolbar fallback for legacy canvas mode (shown only if DOM injection fails)
     const toolbar = document.createElement("div");
-    css(toolbar, "display:flex;gap:4px;align-items:center;");
+    css(toolbar, "display:none;gap:4px;align-items:center;");
     const plusBtn = document.createElement("button");
     plusBtn.textContent = "+";
     plusBtn.title = "New model preset";
     css(plusBtn, "width:22px;height:22px;padding:0;cursor:pointer;background:#1a1a1a;color:#999;border:1px solid #555;border-radius:11px;font-size:13px;line-height:20px;text-align:center;");
     toolbar.appendChild(plusBtn);
-    const manageBtn = document.createElement("button");
-    manageBtn.textContent = "\u2026";
-    manageBtn.title = "Manage model presets";
-    css(manageBtn, "width:22px;height:22px;padding:0;cursor:pointer;background:#1a1a1a;color:#999;border:1px solid #555;border-radius:11px;font-size:13px;line-height:20px;text-align:center;");
-    toolbar.appendChild(manageBtn);
     const presetLabel = document.createElement("span");
     presetLabel.textContent = "model";
     css(presetLabel, "font-size:10px;opacity:0.4;white-space:nowrap;margin-left:2px;");
@@ -1226,7 +1082,17 @@ function setupFullFlakeWidget(node) {
         });
         if (!result || !result.created) return;
         const arr = readEntries();
-        arr.push({ name: result.name, strength: 1.0, option: {} });
+        let has_lora = false;
+        let display_name = null;
+        if (result.data && result.data.lora_path) has_lora = true;
+        else if (result.name) {
+            try { const d = await fetchFlake(result.name); has_lora = !!(d && d.lora_path); } catch {}
+        }
+        if (result.data && result.data.name) display_name = result.data.name;
+        else if (result.name) {
+            try { const d = await fetchFlake(result.name); display_name = d.name || null; } catch {}
+        }
+        arr.push({ name: result.name, strength: 1.0, option: {}, has_lora, display_name });
         writeEntries(arr);
         render();
     }
@@ -1238,138 +1104,18 @@ function setupFullFlakeWidget(node) {
         const result = await openPicker(available);
         if (!result || !result.name) return;
         const arr = readEntries();
-        arr.push({ name: result.name, strength: 1.0, option: {} });
+        let has_lora = false;
+        let display_name = null;
+        try { const d = await fetchFlake(result.name); has_lora = !!(d && d.lora_path); display_name = d.name || null; } catch {}
+        arr.push({ name: result.name, strength: 1.0, option: {}, has_lora, display_name });
         writeEntries(arr);
         render();
     }
 
     grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad });
 
-    // Refresh the native COMBO widget options when presets change
-    async function refreshPresetOptions() {
-        try {
-            const r = await fetch("/flakes/presets");
-            const d = await r.json();
-            const names = d.presets || [];
-            if (presetWidget && presetWidget.options) {
-                presetWidget.options.values = names.length ? names : ["(no presets yet)"];
-            }
-        } catch { /* ignore */ }
-    }
+    // Initial load of preset options
     refreshPresetOptions();
-
-    // ---- Manage Presets modal ----
-    function openPresetManager() {
-        return new Promise((resolve) => {
-            const { panel, close, handlers } = openOverlay();
-            handlers.onClose = (v) => resolve(v ?? null);
-            css(panel, panel.style.cssText + "min-width:520px;");
-
-            const title = document.createElement("h3");
-            css(title, "margin:0;font-size:14px;");
-            title.textContent = "Manage Model Presets";
-            panel.appendChild(title);
-
-            // List of presets
-            const listBox = document.createElement("div");
-            css(listBox, "display:flex;flex-direction:column;gap:4px;max-height:40vh;overflow:auto;");
-            panel.appendChild(listBox);
-
-            const footer = document.createElement("div");
-            css(footer, "display:flex;gap:8px;margin-top:8px;");
-
-            const newBtn = makeButton("+ New Preset", true);
-            const closeBtn = makeButton("Close");
-            closeBtn.addEventListener("click", () => close(null));
-            footer.appendChild(newBtn);
-            footer.appendChild(closeBtn);
-            panel.appendChild(footer);
-
-            async function refreshList() {
-                listBox.replaceChildren();
-                try {
-                    const r = await fetch("/flakes/presets");
-                    const d = await r.json();
-                    const presets = d.presets || [];
-
-                    if (presets.length === 0) {
-                        const empty = document.createElement("div");
-                        css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;");
-                        empty.textContent = "No presets yet.";
-                        listBox.appendChild(empty);
-                    }
-
-                    for (const pn of presets) {
-                        const row = document.createElement("div");
-                        css(row, "display:flex;gap:4px;align-items:center;padding:4px 0;border-bottom:1px solid #333;");
-
-                        const nameSpan = document.createElement("span");
-                        nameSpan.textContent = pn;
-                        css(nameSpan, "flex:1;font-size:12px;");
-                        row.appendChild(nameSpan);
-
-                        const editBtn = makeSmallButton("Edit");
-                        editBtn.addEventListener("click", async () => {
-                            try {
-                                const r = await fetch(`/flakes/preset?name=${encodeURIComponent(pn)}`);
-                                const d = await r.json();
-                                const result = await openPresetEditModal({ mode: "edit", name: pn, data: d.data || {} });
-                                if (result) refreshList();
-                            } catch (err) {
-                                window.alert(`Failed to load preset: ${err.message}`);
-                            }
-                        });
-                        row.appendChild(editBtn);
-
-                        const delBtn = makeSmallButton("Del");
-                        css(delBtn, delBtn.style.cssText + "color:#faa;");
-                        delBtn.addEventListener("click", async () => {
-                            if (!window.confirm(`Delete preset '${pn}'?`)) return;
-                            try {
-                                await fetch(`/flakes/presets/delete?name=${encodeURIComponent(pn)}`, { method: "DELETE" });
-                                refreshPresetOptions();
-                                refreshList();
-                            } catch (err) {
-                                window.alert(`Delete failed: ${err.message}`);
-                            }
-                        });
-                        row.appendChild(delBtn);
-
-                        listBox.appendChild(row);
-                    }
-                } catch (err) {
-                    const errDiv = document.createElement("div");
-                    css(errDiv, "color:#f88;padding:8px;");
-                    errDiv.textContent = `Failed to load presets: ${err.message}`;
-                    listBox.appendChild(errDiv);
-                }
-            }
-            refreshList();
-
-            newBtn.addEventListener("click", async () => {
-                const result = await openPresetEditModal({
-                    mode: "create",
-                    data: {
-                        checkpoint: "",
-                        clip_skip: -2,
-                        vae: "",
-                        steps: 20,
-                        cfg: 7.0,
-                        sampler: "euler",
-                        scheduler: "karras",
-                        width: 1024,
-                        height: 1024,
-                        prompt: { positive: "", negative: "" },
-                        embeddings: [],
-                    },
-                });
-                if (result) {
-                    refreshList();
-                    refreshPresetOptions();
-                }
-            });
-        });
-    }
 
     function openPresetEditModal({ mode, name, data }) {
         return new Promise((resolve) => {
@@ -1390,8 +1136,25 @@ function setupFullFlakeWidget(node) {
 
             // Checkpoint
             panel.appendChild(makeLabel("Checkpoint (from models/checkpoints/)"));
-            const ckptInput = makeInput(data.checkpoint || "", "sd_xl_base_1.0.safetensors");
-            panel.appendChild(ckptInput);
+            const ckptSelect = document.createElement("select");
+            css(ckptSelect, "width:100%;background:#1a1a1a;color:#ccc;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;");
+            const ckptNone = document.createElement("option");
+            ckptNone.value = "";
+            ckptNone.textContent = "— select checkpoint —";
+            ckptSelect.appendChild(ckptNone);
+            (async () => {
+                try {
+                    const ckpts = await fetchCheckpoints();
+                    for (const c of ckpts) {
+                        const o = document.createElement("option");
+                        o.value = c;
+                        o.textContent = c.split("/").pop();
+                        if (c === (data.checkpoint || "")) o.selected = true;
+                        ckptSelect.appendChild(o);
+                    }
+                } catch { /* ignore */ }
+            })();
+            panel.appendChild(ckptSelect);
 
             // Clip skip
             panel.appendChild(makeLabel("Clip Skip"));
@@ -1503,7 +1266,7 @@ function setupFullFlakeWidget(node) {
             const saveBtn = makeButton("Save", true);
             saveBtn.addEventListener("click", async () => {
                 const ordered = {
-                    checkpoint: ckptInput.value,
+                    checkpoint: ckptSelect.value,
                     clip_skip: parseInt(csInput.value),
                     vae: vaeInput.value || null,
                     steps: parseInt(stepsInput.value),
@@ -1541,12 +1304,12 @@ function setupFullFlakeWidget(node) {
             footer.appendChild(saveBtn);
             panel.appendChild(footer);
 
-            setTimeout(() => { (pathInput || ckptInput).focus(); }, 0);
+            setTimeout(() => { (pathInput || ckptSelect).focus(); }, 0);
         });
     }
 
-    plusBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
+    async function handleNewPreset(e) {
+        if (e) e.stopPropagation();
         const result = await openPresetEditModal({
             mode: "create",
             data: {
@@ -1564,16 +1327,93 @@ function setupFullFlakeWidget(node) {
             },
         });
         if (result) refreshPresetOptions();
-    });
+    }
+    plusBtn.addEventListener("click", handleNewPreset);
 
-    manageBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        await openPresetManager();
-    });
+    async function refreshPresetOptions() {
+        try {
+            const r = await fetch("/flakes/presets");
+            const d = await r.json();
+            const names = d.presets || [];
+            const newValues = names.length ? ["Select a preset...", ...names] : ["No model preset is selected"];
+            // Update ALL FlakeStack preset widgets globally
+            for (const n of app.graph.nodes) {
+                if (n.type !== "FlakeStack") continue;
+                const pw = n.widgets?.find(w => w.name === "preset");
+                if (pw && pw.options) pw.options.values = newValues;
+            }
+        } catch { /* ignore */ }
+    }
+
+    function addPresetButtonToParent(parent) {
+        if (!parent || parent.querySelector(".flake-preset-new-btn")) return false;
+        const btn = document.createElement("button");
+        btn.className = "flake-preset-new-btn";
+        btn.textContent = "+";
+        btn.title = "Create new preset";
+        css(btn, "width:22px;height:22px;padding:0;cursor:pointer;background:#1a1a1a;color:#999;border:1px solid #555;border-radius:11px;font-size:13px;line-height:20px;text-align:center;flex-shrink:0;margin-left:4px;");
+        btn.addEventListener("click", handleNewPreset);
+        btn.addEventListener("dblclick", (e) => e.stopPropagation());
+        btn.addEventListener("mousedown", (e) => e.stopPropagation());
+        parent.style.display = "flex";
+        parent.style.alignItems = "center";
+        parent.appendChild(btn);
+        return true;
+    }
+
+    function attachPresetButton() {
+        let attachedAny = false;
+
+        // Strategy 1: widget.element / inputEl (legacy canvas DOM)
+        let presetEl = presetWidget.element || presetWidget.inputEl;
+        if (presetEl?.parentElement) {
+            if (addPresetButtonToParent(presetEl.parentElement)) attachedAny = true;
+        }
+
+        // Strategy 2: Node 2.0 PrimeVue Select — search by aria-label
+        const byAria = document.querySelectorAll('[aria-label="preset"]');
+        for (const el of byAria) {
+            const parent = el.parentElement;
+            if (parent && addPresetButtonToParent(parent)) attachedAny = true;
+        }
+
+        // Strategy 3: Legacy/native <select> elements
+        const allSelects = document.querySelectorAll("select");
+        for (const sel of allSelects) {
+            const firstOpt = sel.options[0];
+            if (!firstOpt) continue;
+            const text = firstOpt.text || firstOpt.label || firstOpt.value || "";
+            if (!text.includes("Select a preset") && !text.includes("No model preset")) continue;
+            if (sel.parentElement && addPresetButtonToParent(sel.parentElement)) attachedAny = true;
+        }
+
+        return attachedAny;
+    }
+
+    // Try immediately, then use MutationObserver until the preset DOM renders
+    if (!attachPresetButton()) {
+        const observer = new MutationObserver(() => {
+            if (attachPresetButton()) {
+                observer.disconnect();
+                // Hide legacy toolbar since inline button is working
+                toolbar.style.display = "none";
+            }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        setTimeout(() => {
+            observer.disconnect();
+            // If nothing was attached after 3s, show legacy toolbar fallback
+            if (!document.querySelector(".flake-preset-new-btn")) {
+                toolbar.style.display = "flex";
+            }
+        }, 3000);
+    } else {
+        toolbar.style.display = "none";
+    }
 
     // ---- Widget registration ----
     node._flakes_render = render;
-    const flakeWidget = node.addDOMWidget("fullflakes_ui", "div", container, { serialize: false, margin: 4 });
+    const flakeWidget = node.addDOMWidget("flakes_ui", "div", container, { serialize: false, margin: 4 });
     flakeWidget.computeSize = () => {
         const rows = Math.max(1, Math.ceil((readEntries().length + 1) / 2));
         return [node.size[0], rows * 84 + 31];
@@ -1592,22 +1432,6 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
                 setupFlakeWidget(this);
-                return r;
-            };
-
-            const origOnConfigure = nodeType.prototype.onConfigure;
-            nodeType.prototype.onConfigure = function () {
-                const r = origOnConfigure?.apply(this, arguments);
-                this._flakes_render?.();
-                return r;
-            };
-        }
-
-        if (nodeData.name === "FullFlakes") {
-            const origOnNodeCreated = nodeType.prototype.onNodeCreated;
-            nodeType.prototype.onNodeCreated = function () {
-                const r = origOnNodeCreated?.apply(this, arguments);
-                setupFullFlakeWidget(this);
                 return r;
             };
 

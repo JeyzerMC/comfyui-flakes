@@ -29,7 +29,7 @@ def _resolve_lora_name(stem_or_name: str) -> str:
     raise FileNotFoundError(f"LoRA '{stem_or_name}' not found in models/loras/")
 
 
-class FullFlakes:
+class FlakeStack:
     @classmethod
     def INPUT_TYPES(cls):
         try:
@@ -37,10 +37,10 @@ class FullFlakes:
         except Exception:
             preset_names = []
         if not preset_names:
-            preset_names = ["(no presets yet)"]
+            preset_names = ["No model preset is selected"]
         return {
             "required": {
-                "preset": (preset_names,),
+                "preset": (["Select a preset..."] + preset_names,),
                 "flakes_json": ("STRING", {
                     "multiline": True,
                     "default": "[]",
@@ -58,9 +58,8 @@ class FullFlakes:
     FUNCTION = "execute"
     CATEGORY = "flakes"
     DESCRIPTION = (
-        "Self-contained flake-stack node. Select a model preset to load the "
-        "checkpoint automatically. The preset sets the checkpoint, clip-skip, "
-        "VAE, steps, CFG, sampler, scheduler, prompts, and embeddings. "
+        "Self-contained flake-stack node. Select a model preset from the "
+        "dropdown to load checkpoint + settings automatically. "
         "Flakes are composed on top of the preset prompts. "
         "Outputs are bundled — use FlakesModel / FlakesCond / FlakesSampler "
         "to unpack them for wiring into downstream nodes."
@@ -69,8 +68,8 @@ class FullFlakes:
     def execute(self, preset: str, flakes_json: str):
         # --- Load preset --------------------------------------------------------
         preset_name = preset.strip() if preset else ""
-        if not preset_name or preset_name == "(no presets yet)":
-            raise ValueError("No preset selected in FullFlakes — pick one from the dropdown.")
+        if not preset_name or preset_name in ("Select a preset...", "No model preset is selected"):
+            raise ValueError("No model preset is selected — pick one from the dropdown.")
 
         preset_data = flake_io.load_preset(preset_name)
 
@@ -113,12 +112,12 @@ class FullFlakes:
         normalized: list[dict] = []
         for i, entry in enumerate(entries):
             if not isinstance(entry, dict):
-                logging.warning("[FullFlakes] skipping non-object entry %d: %r", i, entry)
+                logging.warning("[FlakeStack] skipping non-object entry %d: %r", i, entry)
                 continue
             if entry.get("inline") or entry.get("name"):
                 normalized.append(entry)
             else:
-                logging.warning("[FullFlakes] skipping entry %d (needs 'name' or 'inline')", i)
+                logging.warning("[FlakeStack] skipping entry %d (needs 'name' or 'inline')", i)
 
         # --- Resolve flakes -----------------------------------------------------
         flakes = [flake_io.resolve(e) for e in normalized]
@@ -136,9 +135,9 @@ class FullFlakes:
         neg_parts: list[str] = []
 
         if preset_data.positive.strip():
-            pos_parts.append(preset.positive.strip())
+            pos_parts.append(preset_data.positive.strip())
         if preset_data.negative.strip():
-            neg_parts.append(preset.negative.strip())
+            neg_parts.append(preset_data.negative.strip())
 
         for f in flakes:
             if f.positive and f.positive.strip():
@@ -184,7 +183,7 @@ class FullFlakes:
         latent = EmptyLatentImage().generate(width, height, 1)[0]
 
         logging.info(
-            "[FullFlakes] preset=%s checkpoint=%s %sx%s steps=%s cfg=%s flakes=%d",
+            "[FlakeStack] preset=%s checkpoint=%s %sx%s steps=%s cfg=%s flakes=%d",
             preset_name, preset_data.checkpoint, width, height,
             preset_data.steps, preset_data.cfg, len(flakes),
         )

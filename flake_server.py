@@ -148,6 +148,26 @@ async def _list_controlnets(_request: web.Request) -> web.Response:
     return web.json_response({"controlnets": _shorten_filenames(cns)})
 
 
+@routes.get("/flakes/checkpoints")
+async def _list_checkpoints(_request: web.Request) -> web.Response:
+    try:
+        ckpts = folder_paths.get_filename_list("checkpoints")
+    except Exception as exc:
+        logging.exception("[flakes] failed to list checkpoints")
+        return _server_error(str(exc))
+    return web.json_response({"checkpoints": _shorten_filenames(ckpts)})
+
+
+@routes.get("/flakes/vaes")
+async def _list_vaes(_request: web.Request) -> web.Response:
+    try:
+        vaes = folder_paths.get_filename_list("vae")
+    except Exception as exc:
+        logging.exception("[flakes] failed to list VAEs")
+        return _server_error(str(exc))
+    return web.json_response({"vaes": _shorten_filenames(vaes)})
+
+
 @routes.get("/flakes/inputs")
 async def _list_inputs(_request: web.Request) -> web.Response:
     try:
