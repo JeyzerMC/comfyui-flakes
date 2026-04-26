@@ -48,14 +48,10 @@ class FullFlakes:
         }
 
     RETURN_TYPES = (
-        "MODEL", "CLIP", "VAE",
-        "CONDITIONING", "CONDITIONING", "LATENT",
-        "INT", "INT", "INT", "FLOAT",
+        "FLAKES_MODEL", "FLAKES_COND", "FLAKES_SAMPLER",
     )
     RETURN_NAMES = (
-        "model", "clip", "vae",
-        "positive", "negative", "latent",
-        "width", "height", "steps", "cfg",
+        "model", "conditioning", "sampler",
     )
     FUNCTION = "execute"
     CATEGORY = "flakes"
@@ -63,7 +59,9 @@ class FullFlakes:
         "Self-contained flake-stack node. Select a model preset to load the "
         "checkpoint automatically. The preset sets the checkpoint, clip-skip, "
         "VAE, steps, CFG, sampler, scheduler, prompts, and embeddings. "
-        "Flakes are composed on top of the preset prompts."
+        "Flakes are composed on top of the preset prompts. "
+        "Outputs are bundled — use FlakesModel / FlakesCond / FlakesSampler "
+        "to unpack them for wiring into downstream nodes."
     )
 
     def execute(self, preset_json: str, flakes_json: str):
@@ -194,9 +192,10 @@ class FullFlakes:
             preset.steps, preset.cfg, len(flakes),
         )
 
+        model_bundle = (model, clip, vae)
+        cond_bundle = (positive, negative, latent, width, height)
+        sampler_bundle = (preset.steps, preset.cfg, preset.sampler, preset.scheduler)
+
         return (
-            model, clip, vae,
-            positive, negative, latent,
-            width, height,
-            preset.steps, preset.cfg,
+            model_bundle, cond_bundle, sampler_bundle,
         )

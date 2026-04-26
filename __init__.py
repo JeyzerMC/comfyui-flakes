@@ -27,15 +27,22 @@ else:
 
 from .flake_node import FlakeStack  # noqa: E402
 from .full_flake_node import FullFlakes  # noqa: E402
+from .flake_unpack_nodes import FlakesModel, FlakesCond, FlakesSampler  # noqa: E402
 from . import flake_server  # noqa: E402,F401 — registers aiohttp routes on import
 
 NODE_CLASS_MAPPINGS = {
     "FlakeStack": FlakeStack,
     "FullFlakes": FullFlakes,
+    "FlakesModel": FlakesModel,
+    "FlakesCond": FlakesCond,
+    "FlakesSampler": FlakesSampler,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "FlakeStack": "Flake Stack",
     "FullFlakes": "Full Flakes",
+    "FlakesModel": "Flakes Model",
+    "FlakesCond": "Flakes Cond",
+    "FlakesSampler": "Flakes Sampler",
 }
 WEB_DIRECTORY = "./web"
 

@@ -1103,22 +1103,25 @@ function setupFullFlakeWidget(node) {
     css(presetRow, "display:flex;gap:6px;align-items:center;");
 
     const presetLabel = document.createElement("span");
-    presetLabel.textContent = "Model Preset:";
-    css(presetLabel, "font-size:12px;opacity:0.8;white-space:nowrap;");
+    presetLabel.textContent = "model";
+    css(presetLabel, "font-size:12px;opacity:0.6;white-space:nowrap;");
 
     const presetSelect = document.createElement("select");
-    css(presetSelect, "flex:1;background:#2a2a2a;color:#ddd;border:1px solid #444;padding:4px 6px;border-radius:3px;font-size:12px;cursor:pointer;");
+    css(presetSelect, "flex:1;background:#1a1a1a;color:#ccc;border:1px solid #555;padding:2px 4px;border-radius:3px;font-size:11px;cursor:pointer;");
 
     const noneOpt = document.createElement("option");
     noneOpt.value = "";
     noneOpt.textContent = "— select a preset —";
     presetSelect.appendChild(noneOpt);
 
-    const manageBtn = makeSmallButton("Manage Presets");
+    const addPresetBtn = document.createElement("button");
+    addPresetBtn.textContent = "+";
+    addPresetBtn.title = "New model preset";
+    css(addPresetBtn, "width:24px;height:24px;padding:0;cursor:pointer;background:#1a1a1a;color:#999;border:1px solid #555;border-radius:12px;font-size:14px;line-height:22px;text-align:center;");
 
     presetRow.appendChild(presetLabel);
     presetRow.appendChild(presetSelect);
-    presetRow.appendChild(manageBtn);
+    presetRow.appendChild(addPresetBtn);
     container.appendChild(presetRow);
 
     // ---- Flakes grid ----
@@ -1573,20 +1576,34 @@ function setupFullFlakeWidget(node) {
         });
     }
 
-    manageBtn.addEventListener("click", async () => {
-        await openPresetManager();
-        loadPresetList();
+    addPresetBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const result = await openPresetEditModal({
+            mode: "create",
+            data: {
+                checkpoint: "",
+                clip_skip: -2,
+                vae: "",
+                steps: 20,
+                cfg: 7.0,
+                sampler: "euler",
+                scheduler: "karras",
+                width: 1024,
+                height: 1024,
+                prompt: { positive: "", negative: "" },
+                embeddings: [],
+            },
+        });
+        if (result) loadPresetList();
     });
 
     // ---- Widget registration ----
     node._flakes_render = render;
-    const widget = node.addDOMWidget("fullflakes_ui", "div", container, { serialize: false });
-    widget.computeSize = () => {
+    const flakeWidget = node.addDOMWidget("fullflakes_ui", "div", container, { serialize: false });
+    flakeWidget.computeSize = () => {
         const rows = Math.max(1, Math.ceil((readEntries().length + 1) / 2));
         return [node.size[0], rows * 80 + 80];
     };
-
-    loadPresetList();
     writeEntries(readEntries());
     render();
 }
