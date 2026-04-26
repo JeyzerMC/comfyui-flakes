@@ -32,17 +32,19 @@ def _resolve_lora_name(stem_or_name: str) -> str:
 class FullFlakes:
     @classmethod
     def INPUT_TYPES(cls):
+        try:
+            preset_names = flake_io.list_presets()
+        except Exception:
+            preset_names = []
+        if not preset_names:
+            preset_names = ["(no presets yet)"]
         return {
             "required": {
-                "preset_json": ("STRING", {
-                    "multiline": False,
-                    "default": "{}",
-                    "tooltip": "JSON-encoded preset selection + config. Managed by the Full Flakes widget.",
-                }),
+                "preset": (preset_names,),
                 "flakes_json": ("STRING", {
                     "multiline": True,
                     "default": "[]",
-                    "tooltip": "JSON-encoded list of flake entries. Managed by the Flake Stack widget.",
+                    "tooltip": "JSON-encoded list of flake entries. Managed by the Full Flakes widget.",
                 }),
             },
         }
@@ -64,24 +66,19 @@ class FullFlakes:
         "to unpack them for wiring into downstream nodes."
     )
 
-    def execute(self, preset_json: str, flakes_json: str):
+    def execute(self, preset: str, flakes_json: str):
         # --- Load preset --------------------------------------------------------
-        try:
-            preset_raw = json.loads(preset_json) if preset_json else {}
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"preset_json is not valid JSON: {exc}") from exc
-
-        preset_name = (preset_raw.get("name") or "").strip()
-        if not preset_name:
+        preset_name = preset.strip() if preset else ""
+        if not preset_name or preset_name == "(no presets yet)":
             raise ValueError("No preset selected in FullFlakes — pick one from the dropdown.")
 
-        preset = flake_io.load_preset(preset_name)
+        preset_data = flake_io.load_preset(preset_name)
 
         # --- Load checkpoint ----------------------------------------------------
-        ckpt_path = folder_paths.get_full_path("checkpoints", preset.checkpoint)
+        ckpt_path = folder_paths.get_full_path("checkpoints", preset_data.checkpoint)
         if not ckpt_path or not os.path.isfile(ckpt_path):
             raise FileNotFoundError(
-                f"Checkpoint '{preset.checkpoint}' not found in models/checkpoints/"
+                f"Checkpoint '{preset_data.checkpoint}' not found in models/checkpoints/"
             )
 
         embedding_dir = folder_paths.get_folder_paths("embeddings")
@@ -93,13 +90,13 @@ class FullFlakes:
         )
 
         # --- Clip skip ----------------------------------------------------------
-        if preset.clip_skip:
+        if preset_data.clip_skip:
             clip = clip.clone()
-            clip.clip_layer(preset.clip_skip)
+            clip.clip_layer(preset_data.clip_skip)
 
         # --- Optional VAE override ----------------------------------------------
-        if preset.vae:
-            vae_path = folder_paths.get_full_path("vae", preset.vae)
+        if preset_data.vae:
+            vae_path = folder_paths.get_full_path("vae", preset_data.vae)
             if vae_path and os.path.isfile(vae_path):
                 vae_sd = comfy.utils.load_torch_file(vae_path)
                 vae = comfy.sd.VAE(sd=vae_sd)
@@ -138,9 +135,9 @@ class FullFlakes:
         pos_parts: list[str] = []
         neg_parts: list[str] = []
 
-        if preset.positive.strip():
+        if preset_data.positive.strip():
             pos_parts.append(preset.positive.strip())
-        if preset.negative.strip():
+        if preset_data.negative.strip():
             neg_parts.append(preset.negative.strip())
 
         for f in flakes:
@@ -177,7 +174,7 @@ class FullFlakes:
                 )
 
         # --- Resolution ---------------------------------------------------------
-        width, height = preset.width, preset.height
+        width, height = preset_data.width, preset_data.height
         for f in flakes:
             if f.resolution is not None:
                 width, height = f.resolution
@@ -188,13 +185,13 @@ class FullFlakes:
 
         logging.info(
             "[FullFlakes] preset=%s checkpoint=%s %sx%s steps=%s cfg=%s flakes=%d",
-            preset_name, preset.checkpoint, width, height,
-            preset.steps, preset.cfg, len(flakes),
+            preset_name, preset_data.checkpoint, width, height,
+            preset_data.steps, preset_data.cfg, len(flakes),
         )
 
         model_bundle = (model, clip, vae)
         cond_bundle = (positive, negative, latent, width, height)
-        sampler_bundle = (preset.steps, preset.cfg, preset.sampler, preset.scheduler)
+        sampler_bundle = (preset_data.steps, preset_data.cfg, preset_data.sampler, preset_data.scheduler)
 
         return (
             model_bundle, cond_bundle, sampler_bundle,

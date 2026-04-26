@@ -651,56 +651,58 @@ function openPicker(available) {
 
 function makeBlock({ entry, idx, onEdit, onRemove, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const isDefault = !!entry.inline;
+    const hasCover = !isDefault && entry.name;
     const block = document.createElement("div");
-    block.draggable = !isDefault;
     block.dataset.idx = String(idx);
-    css(block, `position:relative;height:72px;background:${
+
+    css(block, `position:relative;height:80px;background:${
         isDefault ? "#2a3a4a" : "#2a2a2a"
     };border:1px solid ${
         isDefault ? "#3a5a8a" : "#444"
-    };border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:${
-        isDefault ? "pointer" : "grab"
-    };font-size:11px;color:#ddd;user-select:none;padding:4px 3px;box-sizing:border-box;`);
+    };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;overflow:hidden;box-sizing:border-box;${
+        hasCover ? `background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;` : ""
+    }`);
 
-    // ---- Cover thumbnail (Phase 3) ----
-    const cover = document.createElement("div");
-    if (!isDefault && entry.name) {
-        css(cover, `width:36px;height:36px;border-radius:50%;background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;background-color:#444;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#fff;`);
-    } else {
-        css(cover, `width:36px;height:36px;border-radius:50%;background:${
-            isDefault ? "#3a5a8a" : "#444"
-        };display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#fff;`);
+    // Dark overlay for cover readability
+    if (hasCover) {
+        const overlay = document.createElement("div");
+        css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;");
+        block.appendChild(overlay);
     }
-    if (isDefault) {
-        cover.textContent = "\u2726";
-    } else if (!entry.name) {
-        cover.textContent = "?";
-    } else {
-        const span = document.createElement("span");
-        span.textContent = (entry.name || "?").split("/").pop().charAt(0).toUpperCase();
-        cover.appendChild(span);
-    }
-    block.appendChild(cover);
 
+    // Name — centered vertically over the background / overlay
+    const fullName = isDefault ? "Default" : (entry.name || "(missing)");
+    const shortName = fullName.split(/[\/\\ _\-]+/).pop() || fullName;
     const nameEl = document.createElement("div");
-    css(nameEl, "font-size:9px;text-align:center;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
-    nameEl.textContent = isDefault ? "Default" : ((entry.name || "(missing)").split("/").pop());
+    nameEl.title = fullName;
+    css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:1;");
+    nameEl.textContent = shortName;
     block.appendChild(nameEl);
 
+    // Drag handle
+    if (!isDefault) {
+        const grip = document.createElement("button");
+        grip.textContent = "\u2630";
+        grip.title = "Drag to reorder";
+        grip.draggable = true;
+        css(grip, "position:absolute;top:2px;left:2px;width:16px;height:16px;line-height:12px;text-align:center;font-size:8px;background:rgba(0,0,0,0.5);color:#888;border:1px solid #555;border-radius:2px;cursor:grab;padding:0;z-index:2;");
+        grip.addEventListener("dragstart", (e) => { onDragStart(e, idx, block); });
+        grip.addEventListener("dragend", () => { onDragEnd(block); });
+        grip.addEventListener("click", (e) => e.stopPropagation());
+        block.appendChild(grip);
+    }
+
+    // Remove button
     if (!isDefault) {
         const rm = document.createElement("button");
         rm.textContent = "\u2715";
         rm.title = "Remove from stack";
-        css(rm, "position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:#3a2a2a;color:#ddd;border:1px solid #555;border-radius:2px;cursor:pointer;padding:0;");
+        css(rm, "position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(0,0,0,0.5);color:#ddd;border:1px solid #555;border-radius:2px;cursor:pointer;padding:0;z-index:2;");
         rm.addEventListener("click", (e) => { e.stopPropagation(); onRemove(idx); });
         block.appendChild(rm);
     }
 
     block.addEventListener("dblclick", () => onEdit(idx));
-    if (block.draggable) {
-        block.addEventListener("dragstart", (e) => onDragStart(e, idx, block));
-        block.addEventListener("dragend", () => onDragEnd(block));
-    }
     block.addEventListener("dragover", (e) => onDragOver(e, idx, block));
     block.addEventListener("dragleave", () => { block.style.outline = ""; });
     block.addEventListener("drop", (e) => onDrop(e, idx, block));
@@ -714,25 +716,35 @@ function makeInstanceControls(block, entry, idx, onChanged) {
     if (entry.inline) return; // No per-instance controls for default block
 
     const controls = document.createElement("div");
-    css(controls, "position:absolute;bottom:2px;left:2px;right:2px;display:flex;gap:2px;align-items:center;font-size:9px;");
+    css(controls, "position:absolute;bottom:4px;left:6px;right:6px;display:flex;gap:4px;align-items:center;z-index:2;");
 
-    // Strength
-    const strInput = document.createElement("input");
-    strInput.type = "number";
-    strInput.value = entry.strength != null ? entry.strength : 1.0;
-    strInput.step = "0.05";
-    strInput.min = "0";
-    strInput.max = "2";
-    strInput.title = "LoRA strength";
-    css(strInput, "width:38px;background:rgba(0,0,0,0.4);color:#ddd;border:1px solid #555;border-radius:2px;padding:0 2px;font-size:9px;text-align:center;");
-    strInput.addEventListener("change", () => {
-        entry.strength = parseFloat(strInput.value) || 1.0;
-        onChanged();
-    });
-    strInput.addEventListener("click", (e) => e.stopPropagation());
-    strInput.addEventListener("dblclick", (e) => e.stopPropagation());
-    strInput.addEventListener("mousedown", (e) => e.stopPropagation());
-    controls.appendChild(strInput);
+    // Strength control — ComfyUI-style: [-] [value] [+]
+    const step = 0.05;
+    const clampVal = (v) => Math.round(Math.min(2, Math.max(0, v)) / step) * step;
+    const formatVal = (v) => v.toFixed(2);
+
+    const minusBtn = document.createElement("button");
+    minusBtn.textContent = "\u2212";
+    minusBtn.title = "Decrease strength";
+    css(minusBtn, "width:18px;height:18px;padding:0;cursor:pointer;background:#2a2a2a;color:#aaa;border:1px solid #444;border-radius:3px;font-size:10px;line-height:16px;text-align:center;flex-shrink:0;");
+    minusBtn.addEventListener("click", (e) => { e.stopPropagation(); entry.strength = clampVal((entry.strength ?? 1) - step); valSpan.textContent = formatVal(entry.strength); onChanged(); });
+    minusBtn.addEventListener("dblclick", (e) => e.stopPropagation());
+    minusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+    controls.appendChild(minusBtn);
+
+    const valSpan = document.createElement("span");
+    valSpan.textContent = formatVal(entry.strength != null ? entry.strength : 1);
+    css(valSpan, "flex:1;font-size:10px;text-align:center;color:#ccc;font-variant-numeric:tabular-nums;line-height:18px;");
+    controls.appendChild(valSpan);
+
+    const plusBtn = document.createElement("button");
+    plusBtn.textContent = "+";
+    plusBtn.title = "Increase strength";
+    css(plusBtn, "width:18px;height:18px;padding:0;cursor:pointer;background:#2a2a2a;color:#aaa;border:1px solid #444;border-radius:3px;font-size:10px;line-height:16px;text-align:center;flex-shrink:0;");
+    plusBtn.addEventListener("click", (e) => { e.stopPropagation(); entry.strength = clampVal((entry.strength ?? 1) + step); valSpan.textContent = formatVal(entry.strength); onChanged(); });
+    plusBtn.addEventListener("dblclick", (e) => e.stopPropagation());
+    plusBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+    controls.appendChild(plusBtn);
 
     // Options expander
     const expandBtn = document.createElement("button");
@@ -830,10 +842,10 @@ function makeInstanceControls(block, entry, idx, onChanged) {
 
 function makeAddBlock({ onNew, onLoad }) {
     const block = document.createElement("div");
-    css(block, `position:relative;height:72px;background:#2a2a2a;border:1px dashed #555;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;color:#999;user-select:none;padding:4px 3px;box-sizing:border-box;`);
+    css(block, `position:relative;height:80px;background:#2a2a2a;border:1px dashed #555;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;color:#999;user-select:none;box-sizing:border-box;`);
 
     const icon = document.createElement("div");
-    css(icon, "width:36px;height:36px;border-radius:50%;background:#333;border:1px dashed #555;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#888;");
+    css(icon, "font-size:20px;font-weight:300;color:#666;line-height:1;");
     icon.textContent = "+";
     block.appendChild(icon);
 
@@ -914,7 +926,7 @@ function setupFlakeWidget(node) {
     hideEl(hidden.inputEl);
 
     const container = document.createElement("div");
-    css(container, "display:flex;flex-direction:column;gap:6px;padding:6px;font-size:12px;color:#ddd;");
+    css(container, "display:flex;flex-direction:column;gap:2px;padding:3px 6px;font-size:12px;color:#ddd;");
 
     const grid = document.createElement("div");
     css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
@@ -1054,10 +1066,10 @@ function setupFlakeWidget(node) {
     grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad });
 
     node._flakes_render = render;
-    const widget = node.addDOMWidget("flakes_ui", "div", container, { serialize: false });
+    const widget = node.addDOMWidget("flakes_ui", "div", container, { serialize: false, margin: 4 });
     widget.computeSize = () => {
         const rows = Math.max(1, Math.ceil((readEntries().length + 1) / 2));
-        return [node.size[0], rows * 80 + 36];
+        return [node.size[0], rows * 84 + 28];
     };
 
     writeEntries(readEntries());
@@ -1067,25 +1079,16 @@ function setupFlakeWidget(node) {
 // ---------- Full Flake widget (Phase 4) ----------
 
 function setupFullFlakeWidget(node) {
-    const presetHidden = node.widgets?.find(w => w.name === "preset_json");
+    const presetWidget = node.widgets?.find(w => w.name === "preset");
     const flakesHidden = node.widgets?.find(w => w.name === "flakes_json");
-    if (!presetHidden || !flakesHidden) return;
+    if (!presetWidget || !flakesHidden) return;
 
-    // Hide both STRING widgets
-    for (const w of [presetHidden, flakesHidden]) {
-        w.computeSize = () => [0, -4];
-        w.type = "hidden";
-        w.hidden = true;
-        w.computedHeight = 0;
-        const hideEl = (el) => { if (!el) return; el.hidden = true; el.style.display = "none"; };
-        hideEl(w.element);
-        hideEl(w.inputEl);
-    }
-
-    function readPreset() {
-        try { return JSON.parse(presetHidden.value || "{}"); } catch { return {}; }
-    }
-    function writePreset(p) { presetHidden.value = JSON.stringify(p); }
+    // Hide flakes_json STRING widget — it's only a data channel, no visible UI
+    flakesHidden.computeSize = () => [0, -4];
+    flakesHidden.type = "hidden";
+    flakesHidden.hidden = true;
+    if (flakesHidden.element) { flakesHidden.element.remove(); flakesHidden.element = null; }
+    if (flakesHidden.inputEl) { flakesHidden.inputEl.remove(); flakesHidden.inputEl = null; }
 
     function readEntries() {
         try {
@@ -1095,36 +1098,30 @@ function setupFullFlakeWidget(node) {
     }
     function writeEntries(entries) { flakesHidden.value = JSON.stringify(entries); }
 
+    // ---- Custom DOM widget: "+" / "..." row + flakes grid ----
     const container = document.createElement("div");
-    css(container, "display:flex;flex-direction:column;gap:6px;padding:6px;font-size:12px;color:#ddd;");
+    css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
 
-    // ---- Preset selector ----
-    const presetRow = document.createElement("div");
-    css(presetRow, "display:flex;gap:6px;align-items:center;");
-
+    // Small toolbar row (above the grid)
+    const toolbar = document.createElement("div");
+    css(toolbar, "display:flex;gap:4px;align-items:center;");
+    const plusBtn = document.createElement("button");
+    plusBtn.textContent = "+";
+    plusBtn.title = "New model preset";
+    css(plusBtn, "width:22px;height:22px;padding:0;cursor:pointer;background:#1a1a1a;color:#999;border:1px solid #555;border-radius:11px;font-size:13px;line-height:20px;text-align:center;");
+    toolbar.appendChild(plusBtn);
+    const manageBtn = document.createElement("button");
+    manageBtn.textContent = "\u2026";
+    manageBtn.title = "Manage model presets";
+    css(manageBtn, "width:22px;height:22px;padding:0;cursor:pointer;background:#1a1a1a;color:#999;border:1px solid #555;border-radius:11px;font-size:13px;line-height:20px;text-align:center;");
+    toolbar.appendChild(manageBtn);
     const presetLabel = document.createElement("span");
     presetLabel.textContent = "model";
-    css(presetLabel, "font-size:12px;opacity:0.6;white-space:nowrap;");
+    css(presetLabel, "font-size:10px;opacity:0.4;white-space:nowrap;margin-left:2px;");
+    toolbar.appendChild(presetLabel);
+    container.appendChild(toolbar);
 
-    const presetSelect = document.createElement("select");
-    css(presetSelect, "flex:1;background:#1a1a1a;color:#ccc;border:1px solid #555;padding:2px 4px;border-radius:3px;font-size:11px;cursor:pointer;");
-
-    const noneOpt = document.createElement("option");
-    noneOpt.value = "";
-    noneOpt.textContent = "— select a preset —";
-    presetSelect.appendChild(noneOpt);
-
-    const addPresetBtn = document.createElement("button");
-    addPresetBtn.textContent = "+";
-    addPresetBtn.title = "New model preset";
-    css(addPresetBtn, "width:24px;height:24px;padding:0;cursor:pointer;background:#1a1a1a;color:#999;border:1px solid #555;border-radius:12px;font-size:14px;line-height:22px;text-align:center;");
-
-    presetRow.appendChild(presetLabel);
-    presetRow.appendChild(presetSelect);
-    presetRow.appendChild(addPresetBtn);
-    container.appendChild(presetRow);
-
-    // ---- Flakes grid ----
+    // Flakes grid
     const grid = document.createElement("div");
     css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
     container.appendChild(grid);
@@ -1248,44 +1245,18 @@ function setupFullFlakeWidget(node) {
 
     grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad });
 
-    // ---- Preset select loading ----
-    async function loadPresetList() {
+    // Refresh the native COMBO widget options when presets change
+    async function refreshPresetOptions() {
         try {
             const r = await fetch("/flakes/presets");
             const d = await r.json();
-            const presets = d.presets || [];
-            const current = readPreset();
-            const currentName = current.name || "";
-
-            presetSelect.replaceChildren();
-            const noOpt = document.createElement("option");
-            noOpt.value = "";
-            noOpt.textContent = "— select a preset —";
-            presetSelect.appendChild(noOpt);
-
-            for (const p of presets) {
-                const opt = document.createElement("option");
-                opt.value = p;
-                opt.textContent = p;
-                if (p === currentName) opt.selected = true;
-                presetSelect.appendChild(opt);
-            }
-
-            if (currentName && !presets.includes(currentName)) {
-                const opt = document.createElement("option");
-                opt.value = currentName;
-                opt.textContent = currentName + " (missing)";
-                opt.selected = true;
-                presetSelect.appendChild(opt);
+            const names = d.presets || [];
+            if (presetWidget && presetWidget.options) {
+                presetWidget.options.values = names.length ? names : ["(no presets yet)"];
             }
         } catch { /* ignore */ }
     }
-
-    presetSelect.addEventListener("change", () => {
-        const p = readPreset();
-        p.name = presetSelect.value;
-        writePreset(p);
-    });
+    refreshPresetOptions();
 
     // ---- Manage Presets modal ----
     function openPresetManager() {
@@ -1356,7 +1327,7 @@ function setupFullFlakeWidget(node) {
                             if (!window.confirm(`Delete preset '${pn}'?`)) return;
                             try {
                                 await fetch(`/flakes/presets/delete?name=${encodeURIComponent(pn)}`, { method: "DELETE" });
-                                loadPresetList();
+                                refreshPresetOptions();
                                 refreshList();
                             } catch (err) {
                                 window.alert(`Delete failed: ${err.message}`);
@@ -1394,11 +1365,9 @@ function setupFullFlakeWidget(node) {
                 });
                 if (result) {
                     refreshList();
-                    loadPresetList();
+                    refreshPresetOptions();
                 }
             });
-
-            close(null);
         });
     }
 
@@ -1576,7 +1545,7 @@ function setupFullFlakeWidget(node) {
         });
     }
 
-    addPresetBtn.addEventListener("click", async (e) => {
+    plusBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const result = await openPresetEditModal({
             mode: "create",
@@ -1594,15 +1563,20 @@ function setupFullFlakeWidget(node) {
                 embeddings: [],
             },
         });
-        if (result) loadPresetList();
+        if (result) refreshPresetOptions();
+    });
+
+    manageBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await openPresetManager();
     });
 
     // ---- Widget registration ----
     node._flakes_render = render;
-    const flakeWidget = node.addDOMWidget("fullflakes_ui", "div", container, { serialize: false });
+    const flakeWidget = node.addDOMWidget("fullflakes_ui", "div", container, { serialize: false, margin: 4 });
     flakeWidget.computeSize = () => {
         const rows = Math.max(1, Math.ceil((readEntries().length + 1) / 2));
-        return [node.size[0], rows * 80 + 80];
+        return [node.size[0], rows * 84 + 31];
     };
     writeEntries(readEntries());
     render();
