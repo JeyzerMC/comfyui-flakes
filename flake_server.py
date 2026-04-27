@@ -185,6 +185,16 @@ async def _list_inputs(_request: web.Request) -> web.Response:
         return _server_error(str(exc))
 
 
+@routes.get("/flakes/embeddings")
+async def _list_embeddings(_request: web.Request) -> web.Response:
+    try:
+        embeddings = folder_paths.get_filename_list("embeddings")
+    except Exception as exc:
+        logging.exception("[flakes] failed to list embeddings")
+        return _server_error(str(exc))
+    return web.json_response({"embeddings": _shorten_filenames(embeddings)})
+
+
 # ---------------------------------------------------------------------------
 # Cover image (Phase 3)
 # ---------------------------------------------------------------------------

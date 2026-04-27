@@ -194,13 +194,197 @@ function makeNumberInput(value = 0, placeholder = "", step = 0.1) {
     return el;
 }
 
+// ----- ComfyUI-native style helpers (for modal) -----
+
+function makeComfyLabel(text) {
+    const l = document.createElement("div");
+    l.textContent = text;
+    css(l, "font-size:13px;color:#aaa;margin:10px 0 4px;font-weight:400;");
+    return l;
+}
+
+function makeComfyInput(value = "", placeholder = "") {
+    const el = document.createElement("input");
+    el.type = "text";
+    el.value = value;
+    el.placeholder = placeholder;
+    css(el, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;outline:none;");
+    el.addEventListener("focus", () => { el.style.borderColor = "#555"; });
+    el.addEventListener("blur", () => { el.style.borderColor = "#333"; });
+    return el;
+}
+
+function makeComfyDropdown(options = [], selected = "") {
+    const wrap = document.createElement("div");
+    css(wrap, "position:relative;width:100%;");
+    const el = document.createElement("select");
+    for (const opt of options) {
+        const o = document.createElement("option");
+        o.value = opt.value;
+        o.textContent = opt.label;
+        if (opt.value === selected) o.selected = true;
+        el.appendChild(o);
+    }
+    css(el, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;appearance:none;cursor:pointer;outline:none;");
+    el.addEventListener("focus", () => { el.style.borderColor = "#555"; });
+    el.addEventListener("blur", () => { el.style.borderColor = "#333"; });
+
+    // Chevron icon
+    const chevron = document.createElement("div");
+    chevron.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>`;
+    css(chevron, "position:absolute;right:8px;top:50%;transform:translateY(-50%);pointer-events:none;");
+
+    wrap.appendChild(el);
+    wrap.appendChild(chevron);
+    return { element: el, container: wrap };
+}
+
+let EMBEDDINGS_PROMISE = null;
+function fetchEmbeddings() {
+    if (!EMBEDDINGS_PROMISE) EMBEDDINGS_PROMISE = fetch("/flakes/embeddings").then(r => r.json()).then(d => d.embeddings || []);
+    return EMBEDDINGS_PROMISE;
+}
+
+function makeSearchableDropdown(items = [], value = "", placeholder = "") {
+    const wrap = document.createElement("div");
+    css(wrap, "position:relative;width:100%;");
+
+    const el = document.createElement("input");
+    el.type = "text";
+    el.value = value;
+    el.placeholder = placeholder;
+    const listId = `sd-${Math.random().toString(36).slice(2,9)}`;
+    el.setAttribute("list", listId);
+    css(el, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;outline:none;");
+    el.addEventListener("focus", () => { el.style.borderColor = "#555"; });
+    el.addEventListener("blur", () => { el.style.borderColor = "#333"; });
+
+    const datalist = document.createElement("datalist");
+    datalist.id = listId;
+    for (const item of items) {
+        const o = document.createElement("option");
+        o.value = item;
+        datalist.appendChild(o);
+    }
+
+    wrap.appendChild(el);
+    wrap.appendChild(datalist);
+    return { element: el, datalist, container: wrap };
+}
+
+function makeComfyNumberInput(value, placeholder, step = 1) {
+    const el = document.createElement("input");
+    el.type = "number";
+    el.value = String(value);
+    el.placeholder = placeholder;
+    el.step = String(step);
+    css(el, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;outline:none;");
+    el.addEventListener("focus", () => { el.style.borderColor = "#555"; });
+    el.addEventListener("blur", () => { el.style.borderColor = "#333"; });
+    return el;
+}
+
+function makeComfySlider(value, min, max, step) {
+    const row = document.createElement("div");
+    css(row, "display:flex;align-items:center;gap:0;background:#1a1a1a;border:1px solid #333;border-radius:6px;overflow:hidden;");
+
+    let current = parseFloat(value) || 0;
+    const clamp = (v) => Math.min(max, Math.max(min, Math.round(v / step) * step));
+    const format = (v) => Number.isInteger(step) ? String(v) : v.toFixed(step < 0.1 ? 2 : 1);
+    current = clamp(current);
+
+    const minusBtn = document.createElement("button");
+    minusBtn.textContent = "\u2212";
+    css(minusBtn, "width:28px;height:32px;padding:0;background:transparent;color:#888;border:none;border-right:1px solid #333;cursor:pointer;font-size:14px;line-height:1;flex-shrink:0;transition:background 0.1s;");
+    minusBtn.addEventListener("mouseenter", () => minusBtn.style.background = "#252525");
+    minusBtn.addEventListener("mouseleave", () => minusBtn.style.background = "transparent");
+
+    const valSpan = document.createElement("span");
+    valSpan.textContent = format(current);
+    css(valSpan, "flex:1;text-align:center;font-size:13px;color:#ddd;font-variant-numeric:tabular-nums;user-select:none;cursor:ew-resize;height:32px;display:flex;align-items:center;justify-content:center;");
+
+    const plusBtn = document.createElement("button");
+    plusBtn.textContent = "+";
+    css(plusBtn, "width:28px;height:32px;padding:0;background:transparent;color:#888;border:none;border-left:1px solid #333;cursor:pointer;font-size:14px;line-height:1;flex-shrink:0;transition:background 0.1s;");
+    plusBtn.addEventListener("mouseenter", () => plusBtn.style.background = "#252525");
+    plusBtn.addEventListener("mouseleave", () => plusBtn.style.background = "transparent");
+
+    function update(v) {
+        current = clamp(v);
+        valSpan.textContent = format(current);
+    }
+
+    minusBtn.addEventListener("click", () => update(current - step));
+    plusBtn.addEventListener("click", () => update(current + step));
+
+    // Click to edit
+    valSpan.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const input = document.createElement("input");
+        input.type = "number";
+        input.value = String(current);
+        input.step = String(step);
+        css(input, "flex:1;text-align:center;font-size:13px;color:#ddd;background:transparent;border:none;outline:none;height:32px;");
+        valSpan.replaceWith(input);
+        input.focus();
+        input.select();
+        function commit() {
+            const v = parseFloat(input.value);
+            if (!isNaN(v)) update(v);
+            input.replaceWith(valSpan);
+            valSpan.textContent = format(current);
+        }
+        input.addEventListener("blur", commit);
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") { input.replaceWith(valSpan); valSpan.textContent = format(current); } });
+    });
+
+    // Drag to slide
+    let dragging = false;
+    let startX = 0;
+    let startVal = 0;
+    const pxPerStep = 4;
+
+    valSpan.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragging = true;
+        startX = e.clientX;
+        startVal = current;
+        valSpan.style.cursor = "grabbing";
+    });
+
+    window.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        const deltaPx = e.clientX - startX;
+        const deltaSteps = Math.round(deltaPx / pxPerStep);
+        const newVal = clamp(startVal + deltaSteps * step);
+        if (newVal !== current) {
+            current = newVal;
+            valSpan.textContent = format(current);
+        }
+    });
+
+    window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        valSpan.style.cursor = "ew-resize";
+    });
+
+    row.appendChild(minusBtn);
+    row.appendChild(valSpan);
+    row.appendChild(plusBtn);
+
+    row.getValue = () => current;
+    return row;
+}
+
 // ---------- Modal infrastructure ----------
 
 function openOverlay() {
     const overlay = document.createElement("div");
-    css(overlay, "position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;");
+    css(overlay, "position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif;");
     const panel = document.createElement("div");
-    css(panel, "background:#1e1e1e;color:#ddd;border:1px solid #444;border-radius:6px;padding:16px;min-width:480px;max-width:720px;max-height:85vh;overflow:auto;display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 24px rgba(0,0,0,0.5);");
+    css(panel, "background:#1e1e1e;color:#ddd;border:1px solid #2a2a2a;border-radius:12px;padding:20px;min-width:480px;max-width:720px;max-height:85vh;overflow:auto;display:flex;flex-direction:column;gap:4px;box-shadow:0 8px 32px rgba(0,0,0,0.5);");
     overlay.appendChild(panel);
 
     const handlers = { onClose: null };
@@ -225,7 +409,7 @@ function openEditModal({ mode, name, data, dirs }) {
         handlers.onClose = (v) => resolve(v ?? null);
 
         const title = document.createElement("h3");
-        css(title, "margin:0 0 4px;font-size:14px;");
+        css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
         title.textContent =
             mode === "default" ? "Edit default flake" :
             mode === "create" ? "New flake" :
@@ -233,15 +417,15 @@ function openEditModal({ mode, name, data, dirs }) {
         panel.appendChild(title);
 
         // ---- Name (display name for grid) ----
-        panel.appendChild(makeLabel("Display name (shown in the grid)"));
-        const displayNameInput = makeInput(data.name || "", "e.g. My Flake");
+        panel.appendChild(makeComfyLabel("Display name"));
+        const displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
         panel.appendChild(displayNameInput);
 
         // ---- Path (create mode) ----
         let pathInput = null;
         if (mode === "create") {
-            panel.appendChild(makeLabel("Path (e.g. characters/musashi)"));
-            pathInput = makeInput("", "characters/musashi");
+            panel.appendChild(makeComfyLabel("Path"));
+            pathInput = makeComfyInput("", "characters/musashi");
             const listId = `flake-dirs-${Math.random().toString(36).slice(2)}`;
             const dlist = document.createElement("datalist");
             dlist.id = listId;
@@ -257,62 +441,51 @@ function openEditModal({ mode, name, data, dirs }) {
 
         // ---- Prompts ----
         const prompt = data.prompt || {};
-        panel.appendChild(makeLabel("Positive prompt"));
+        panel.appendChild(makeComfyLabel("Positive prompt"));
         const posTA = makeTextarea(prompt.positive || "", "joined with ' BREAK ' between flakes", 4);
+        css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+        posTA.addEventListener("focus", () => posTA.style.borderColor = "#555");
+        posTA.addEventListener("blur", () => posTA.style.borderColor = "#333");
         panel.appendChild(posTA);
 
-        panel.appendChild(makeLabel("Negative prompt"));
+        panel.appendChild(makeComfyLabel("Negative prompt"));
         const negTA = makeTextarea(prompt.negative || "", "joined with ', ' between flakes", 3);
+        css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+        negTA.addEventListener("focus", () => negTA.style.borderColor = "#555");
+        negTA.addEventListener("blur", () => negTA.style.borderColor = "#333");
         panel.appendChild(negTA);
 
-        // ---- LoRA (Phase 2) ----
-        panel.appendChild(makeLabel("LoRA path (in models/loras/)"));
-        const loraSelect = document.createElement("select");
-        css(loraSelect, "width:100%;background:#1a1a1a;color:#ccc;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;");
-        const loraNone = document.createElement("option");
-        loraNone.value = "";
-        loraNone.textContent = "(none)";
-        loraSelect.appendChild(loraNone);
+        // ---- LoRA ----
+        panel.appendChild(makeComfyLabel("LoRA"));
+        const loraWrap = makeSearchableDropdown([], data.path || "", "Select LoRA...");
+        panel.appendChild(loraWrap.container);
         (async () => {
             try {
                 const loras = await fetchLoras();
-                for (const l of loras) {
-                    const o = document.createElement("option");
-                    o.value = l;
-                    o.textContent = l.split("/").pop();
-                    if (l === (data.path || "")) o.selected = true;
-                    loraSelect.appendChild(o);
-                }
+                for (const l of loras) loraWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: l }));
             } catch { /* ignore */ }
         })();
-        panel.appendChild(loraSelect);
 
-        panel.appendChild(makeLabel("LoRA strength"));
-        const loraStrength = makeNumberInput(data.strength ?? 1.0, "1.0", 0.05);
-        loraStrength.min = "0";
-        loraStrength.max = "2";
-        panel.appendChild(loraStrength);
+        panel.appendChild(makeComfyLabel("LoRA strength"));
+        const loraSlider = makeComfySlider(data.strength ?? 1.0, 0, 2, 0.05);
+        panel.appendChild(loraSlider);
 
-        // ---- Resolution (Phase 2) ----
-        panel.appendChild(makeLabel("Resolution (width × height, optional)"));
+        // ---- Resolution ----
+        panel.appendChild(makeComfyLabel("Resolution"));
         const resBox = document.createElement("div");
         css(resBox, "display:flex;gap:8px;align-items:center;");
-        const resWidth = makeNumberInput(data.resolution?.[0] || "", "width", 64);
-        resWidth.min = "64";
-        resWidth.step = "64";
+        const resWidth = makeComfyNumberInput(data.resolution?.[0] || "", "width", 64);
         const resLabel = document.createElement("span");
-        resLabel.textContent = "×";
-        css(resLabel, "color:#888;");
-        const resHeight = makeNumberInput(data.resolution?.[1] || "", "height", 64);
-        resHeight.min = "64";
-        resHeight.step = "64";
+        resLabel.textContent = "\u00d7";
+        css(resLabel, "color:#888;font-size:13px;");
+        const resHeight = makeComfyNumberInput(data.resolution?.[1] || "", "height", 64);
         resBox.appendChild(resWidth);
         resBox.appendChild(resLabel);
         resBox.appendChild(resHeight);
         panel.appendChild(resBox);
 
-        // ---- ControlNets (Phase 2) ----
-        panel.appendChild(makeLabel("ControlNets"));
+        // ---- ControlNets ----
+        panel.appendChild(makeComfyLabel("ControlNets"));
         const cnsBox = document.createElement("div");
         css(cnsBox, "display:flex;flex-direction:column;gap:6px;");
         panel.appendChild(cnsBox);
@@ -330,22 +503,23 @@ function openEditModal({ mode, name, data, dirs }) {
             for (let i = 0; i < arr.length; i++) {
                 const cn = arr[i];
                 const card = document.createElement("div");
-                css(card, "background:rgba(255,255,255,0.04);padding:8px;border-radius:4px;display:flex;flex-direction:column;gap:4px;");
+                css(card, "background:#1a1a1a;padding:10px;border-radius:6px;display:flex;flex-direction:column;gap:6px;border:1px solid #2a2a2a;");
 
                 const topRow = document.createElement("div");
-                css(topRow, "display:flex;gap:4px;align-items:center;");
+                css(topRow, "display:flex;gap:6px;align-items:center;");
 
-                const typeInput = makeInput(cn.type || "", "type (e.g. openpose)");
-                typeInput.style.width = "120px";
+                const typeInput = makeComfyInput(cn.type || "", "type (e.g. openpose)");
+                typeInput.style.flex = "1";
                 typeInput.addEventListener("change", () => { arr[i].type = typeInput.value; });
                 topRow.appendChild(typeInput);
 
-                const modelInput = makeInput(cn.model || cn.model_name || "", "model file");
+                const modelInput = makeComfyInput(cn.model || cn.model_name || "", "model file");
                 const cnModelListId = `cnm-${Math.random().toString(36).slice(2)}`;
                 const cnModelList = document.createElement("datalist");
                 cnModelList.id = cnModelListId;
                 modelInput.setAttribute("list", cnModelListId);
                 modelInput.addEventListener("change", () => { arr[i].model = modelInput.value; });
+                modelInput.style.flex = "2";
                 topRow.appendChild(modelInput);
                 topRow.appendChild(cnModelList);
                 (async () => {
@@ -366,13 +540,14 @@ function openEditModal({ mode, name, data, dirs }) {
                 card.appendChild(topRow);
 
                 const midRow = document.createElement("div");
-                css(midRow, "display:flex;gap:4px;align-items:center;");
-                const imgInput = makeInput(cn.image || cn.image_name || "", "input image");
+                css(midRow, "display:flex;gap:6px;align-items:center;");
+                const imgInput = makeComfyInput(cn.image || cn.image_name || "", "input image");
                 const imgListId = `img-list-${Math.random().toString(36).slice(2)}`;
                 const imgList = document.createElement("datalist");
                 imgList.id = imgListId;
                 imgInput.setAttribute("list", imgListId);
                 imgInput.addEventListener("change", () => { arr[i].image = imgInput.value; });
+                imgInput.style.flex = "1";
                 midRow.appendChild(imgInput);
                 midRow.appendChild(imgList);
                 (async () => {
@@ -386,27 +561,13 @@ function openEditModal({ mode, name, data, dirs }) {
                 card.appendChild(midRow);
 
                 const botRow = document.createElement("div");
-                css(botRow, "display:flex;gap:4px;align-items:center;");
-                const strInput = makeNumberInput(cn.strength ?? 1.0, "strength", 0.05);
-                strInput.style.width = "80px";
-                strInput.min = "0";
-                strInput.max = "2";
-                strInput.addEventListener("change", () => { arr[i].strength = parseFloat(strInput.value) || 1; });
-                botRow.appendChild(strInput);
-
-                const startInput = makeNumberInput(cn.start_percent ?? 0, "start%", 0.05);
-                startInput.style.width = "70px";
-                startInput.min = "0";
-                startInput.max = "1";
-                startInput.addEventListener("change", () => { arr[i].start_percent = parseFloat(startInput.value) || 0; });
-                botRow.appendChild(startInput);
-
-                const endInput = makeNumberInput(cn.end_percent ?? 1, "end%", 0.05);
-                endInput.style.width = "70px";
-                endInput.min = "0";
-                endInput.max = "1";
-                endInput.addEventListener("change", () => { arr[i].end_percent = parseFloat(endInput.value) || 1; });
-                botRow.appendChild(endInput);
+                css(botRow, "display:flex;gap:6px;align-items:center;");
+                const strSlider = makeComfySlider(cn.strength ?? 1.0, 0, 2, 0.05);
+                botRow.appendChild(strSlider);
+                const startSlider = makeComfySlider(cn.start_percent ?? 0, 0, 1, 0.05);
+                botRow.appendChild(startSlider);
+                const endSlider = makeComfySlider(cn.end_percent ?? 1, 0, 1, 0.05);
+                botRow.appendChild(endSlider);
 
                 card.appendChild(botRow);
                 cnsBox.appendChild(card);
@@ -421,14 +582,14 @@ function openEditModal({ mode, name, data, dirs }) {
         }
         renderControlNets();
 
-        // ---- Cover image (Phase 3) ----
+        // ---- Cover image ----
         if (mode === "edit" || mode === "create") {
-            panel.appendChild(makeLabel("Cover image"));
+            panel.appendChild(makeComfyLabel("Cover image"));
             const coverRow = document.createElement("div");
             css(coverRow, "display:flex;gap:8px;align-items:center;");
 
             const coverPreview = document.createElement("img");
-            css(coverPreview, "width:64px;height:64px;border-radius:4px;object-fit:cover;background:#2a2a2a;border:1px solid #444;");
+            css(coverPreview, "width:64px;height:64px;border-radius:6px;object-fit:cover;background:#1a1a1a;border:1px solid #333;");
             if (mode === "edit" && name) {
                 coverPreview.src = getCoverUrl(name);
             }
@@ -437,7 +598,7 @@ function openEditModal({ mode, name, data, dirs }) {
             const coverInput = document.createElement("input");
             coverInput.type = "file";
             coverInput.accept = ".png,.jpg,.jpeg,.webp,.gif";
-            css(coverInput, "font-size:11px;color:#ddd;");
+            css(coverInput, "font-size:12px;color:#ddd;");
             coverInput.addEventListener("change", () => {
                 const file = coverInput.files?.[0];
                 if (file) {
@@ -455,18 +616,17 @@ function openEditModal({ mode, name, data, dirs }) {
 
             const origClose = close;
             close = async (value) => {
-                // If user saved successfully and chose a cover file, upload it
                 if (value && (value.created || value.saved) && _coverFile) {
                     try {
                         await uploadCover(value.name, _coverFile);
-                    } catch { /* ignore — main save already happened */ }
+                    } catch { /* ignore */ }
                 }
                 origClose(value);
             };
         }
 
         // ---- Option groups ----
-        panel.appendChild(makeLabel("Option groups"));
+        panel.appendChild(makeComfyLabel("Option groups"));
         const optsBox = document.createElement("div");
         css(optsBox, "display:flex;flex-direction:column;gap:8px;");
         panel.appendChild(optsBox);
@@ -478,11 +638,12 @@ function openEditModal({ mode, name, data, dirs }) {
 
             for (const groupName of Object.keys(optionsState)) {
                 const groupCard = document.createElement("div");
-                css(groupCard, "background:rgba(255,255,255,0.04);padding:8px;border-radius:4px;display:flex;flex-direction:column;gap:6px;");
+                css(groupCard, "background:#1a1a1a;padding:10px;border-radius:6px;display:flex;flex-direction:column;gap:6px;border:1px solid #2a2a2a;");
 
                 const headerRow = document.createElement("div");
                 css(headerRow, "display:flex;gap:6px;align-items:center;");
-                const groupNameInput = makeInput(groupName, "group name");
+                const groupNameInput = makeComfyInput(groupName, "group name");
+                groupNameInput.style.flex = "1";
                 const removeGroupBtn = makeSmallButton("✕ group");
                 groupNameInput.addEventListener("change", () => {
                     const newName = groupNameInput.value.trim();
@@ -502,11 +663,12 @@ function openEditModal({ mode, name, data, dirs }) {
 
                 for (const choiceName of Object.keys(optionsState[groupName] || {})) {
                     const choiceCard = document.createElement("div");
-                    css(choiceCard, "background:rgba(255,255,255,0.04);padding:6px;border-radius:3px;display:flex;flex-direction:column;gap:4px;");
+                    css(choiceCard, "background:#252525;padding:8px;border-radius:4px;display:flex;flex-direction:column;gap:4px;");
 
                     const cRow = document.createElement("div");
                     css(cRow, "display:flex;gap:4px;align-items:center;");
-                    const cNameInput = makeInput(choiceName, "choice name");
+                    const cNameInput = makeComfyInput(choiceName, "choice name");
+                    cNameInput.style.flex = "1";
                     const removeChoiceBtn = makeSmallButton("✕");
                     cNameInput.addEventListener("change", () => {
                         const newCName = cNameInput.value.trim();
@@ -525,7 +687,8 @@ function openEditModal({ mode, name, data, dirs }) {
                     choiceCard.appendChild(cRow);
 
                     const choice = optionsState[groupName][choiceName] || {};
-                    const cPos = makeTextarea(choice.positive || "", "extra positive (joined with ', ')", 2);
+                    const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
+                    css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                     cPos.addEventListener("change", () => {
                         optionsState[groupName][choiceName] = optionsState[groupName][choiceName] || {};
                         optionsState[groupName][choiceName].positive = cPos.value;
@@ -533,6 +696,7 @@ function openEditModal({ mode, name, data, dirs }) {
                     choiceCard.appendChild(cPos);
 
                     const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
+                    css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                     cNeg.addEventListener("change", () => {
                         optionsState[groupName][choiceName] = optionsState[groupName][choiceName] || {};
                         optionsState[groupName][choiceName].negative = cNeg.value;
@@ -571,7 +735,7 @@ function openEditModal({ mode, name, data, dirs }) {
 
         // ---- Footer ----
         const footer = document.createElement("div");
-        css(footer, "display:flex;gap:8px;justify-content:flex-end;margin-top:12px;");
+        css(footer, "display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid #333;");
 
         if (mode === "edit") {
             const deleteBtn = makeButton("Delete");
@@ -596,8 +760,8 @@ function openEditModal({ mode, name, data, dirs }) {
         saveBtn.addEventListener("click", async () => {
             const ordered = {};
             if (displayNameInput.value) ordered.name = displayNameInput.value.trim();
-            if (loraSelect.value) ordered.path = loraSelect.value;
-            if (loraStrength.value) ordered.strength = parseFloat(loraStrength.value);
+            if (loraWrap.element.value) ordered.path = loraWrap.element.value;
+            ordered.strength = loraSlider.getValue();
             if (posTA.value || negTA.value) {
                 ordered.prompt = { positive: posTA.value, negative: negTA.value };
             }
@@ -963,18 +1127,14 @@ function setupFlakeWidget(node) {
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
 
-    // Hidden toolbar fallback for legacy canvas mode (shown only if DOM injection fails)
+    // Legacy canvas fallback: full-width button like "choose file to upload"
     const toolbar = document.createElement("div");
-    css(toolbar, "display:none;gap:4px;align-items:center;");
-    const plusBtn = document.createElement("button");
-    plusBtn.textContent = "+";
-    plusBtn.title = "New model preset";
-    css(plusBtn, "width:22px;height:22px;padding:0;cursor:pointer;background:#1a1a1a;color:#999;border:1px solid #555;border-radius:11px;font-size:13px;line-height:20px;text-align:center;");
-    toolbar.appendChild(plusBtn);
-    const presetLabel = document.createElement("span");
-    presetLabel.textContent = "model";
-    css(presetLabel, "font-size:10px;opacity:0.4;white-space:nowrap;margin-left:2px;");
-    toolbar.appendChild(presetLabel);
+    css(toolbar, "display:none;margin:4px 0;");
+    const legacyBtn = document.createElement("button");
+    legacyBtn.textContent = "new model preset";
+    css(legacyBtn, "width:100%;padding:4px 0;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;font-size:12px;text-align:center;");
+    legacyBtn.addEventListener("click", handleNewPreset);
+    toolbar.appendChild(legacyBtn);
     container.appendChild(toolbar);
 
     // Flakes grid
@@ -1122,127 +1282,143 @@ function setupFlakeWidget(node) {
             const { panel, close, handlers } = openOverlay();
             handlers.onClose = (v) => resolve(v ?? null);
 
+            // Title
             const title = document.createElement("h3");
-            css(title, "margin:0 0 4px;font-size:14px;");
+            css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
             title.textContent = mode === "create" ? "New Model Preset" : `Edit ${name}`;
             panel.appendChild(title);
 
             let pathInput = null;
             if (mode === "create") {
-                panel.appendChild(makeLabel("Preset name (e.g. sdxl-juggernaut)"));
-                pathInput = makeInput("", "my-preset");
+                panel.appendChild(makeComfyLabel("Preset name"));
+                pathInput = makeComfyInput("", "e.g. sdxl-juggernaut");
                 panel.appendChild(pathInput);
             }
 
-            // Checkpoint
-            panel.appendChild(makeLabel("Checkpoint (from models/checkpoints/)"));
-            const ckptSelect = document.createElement("select");
-            css(ckptSelect, "width:100%;background:#1a1a1a;color:#ccc;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;");
-            const ckptNone = document.createElement("option");
-            ckptNone.value = "";
-            ckptNone.textContent = "— select checkpoint —";
-            ckptSelect.appendChild(ckptNone);
+            // Checkpoint (searchable dropdown)
+            panel.appendChild(makeComfyLabel("Checkpoint"));
+            const ckptWrap = makeSearchableDropdown([], data.checkpoint || "", "Select checkpoint...");
+            panel.appendChild(ckptWrap.container);
             (async () => {
                 try {
                     const ckpts = await fetchCheckpoints();
-                    for (const c of ckpts) {
-                        const o = document.createElement("option");
-                        o.value = c;
-                        o.textContent = c.split("/").pop();
-                        if (c === (data.checkpoint || "")) o.selected = true;
-                        ckptSelect.appendChild(o);
-                    }
+                    for (const c of ckpts) ckptWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: c }));
                 } catch { /* ignore */ }
             })();
-            panel.appendChild(ckptSelect);
 
-            // Clip skip
-            panel.appendChild(makeLabel("Clip Skip"));
-            const csInput = makeNumberInput(data.clip_skip ?? -2, "-2", 1);
-            csInput.min = "-24";
-            csInput.max = "-1";
-            panel.appendChild(csInput);
+            // Clip Skip + VAE on one line
+            const csVaeRow = document.createElement("div");
+            css(csVaeRow, "display:flex;gap:8px;align-items:flex-start;");
+            const csWrap = document.createElement("div");
+            css(csWrap, "flex:1;min-width:0;");
+            csWrap.appendChild(makeComfyLabel("Clip Skip"));
+            const csSlider = makeComfySlider(data.clip_skip ?? -2, -24, -1, 1);
+            csWrap.appendChild(csSlider);
+            csVaeRow.appendChild(csWrap);
+            const vaeWrapCol = document.createElement("div");
+            css(vaeWrapCol, "flex:2;min-width:0;");
+            vaeWrapCol.appendChild(makeComfyLabel("VAE (optional)"));
+            const vaeWrap = makeSearchableDropdown([], data.vae || "", "Select VAE...");
+            vaeWrapCol.appendChild(vaeWrap.container);
+            (async () => {
+                try {
+                    const vaes = await fetchVaes();
+                    for (const v of vaes) vaeWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: v }));
+                } catch { /* ignore */ }
+            })();
+            csVaeRow.appendChild(vaeWrapCol);
+            panel.appendChild(csVaeRow);
 
-            // VAE
-            panel.appendChild(makeLabel("VAE (optional, from models/vae/)"));
-            const vaeInput = makeInput(data.vae || "", "sdxl_vae.safetensors");
-            panel.appendChild(vaeInput);
+            // Steps + CFG on one line
+            const stepsCfgRow = document.createElement("div");
+            css(stepsCfgRow, "display:flex;gap:8px;align-items:flex-start;");
+            const stepsWrap = document.createElement("div");
+            css(stepsWrap, "flex:1;min-width:0;");
+            stepsWrap.appendChild(makeComfyLabel("Steps"));
+            const stepsSlider = makeComfySlider(data.steps ?? 20, 1, 150, 1);
+            stepsWrap.appendChild(stepsSlider);
+            stepsCfgRow.appendChild(stepsWrap);
+            const cfgWrap = document.createElement("div");
+            css(cfgWrap, "flex:1;min-width:0;");
+            cfgWrap.appendChild(makeComfyLabel("CFG"));
+            const cfgSlider = makeComfySlider(data.cfg ?? 7.0, 1, 30, 0.5);
+            cfgWrap.appendChild(cfgSlider);
+            stepsCfgRow.appendChild(cfgWrap);
+            panel.appendChild(stepsCfgRow);
 
-            // Steps
-            panel.appendChild(makeLabel("Steps"));
-            const stepsInput = makeNumberInput(data.steps ?? 20, "20", 1);
-            stepsInput.min = "1";
-            stepsInput.max = "150";
-            panel.appendChild(stepsInput);
+            // Sampler + Scheduler on one line
+            const sampSchedRow = document.createElement("div");
+            css(sampSchedRow, "display:flex;gap:8px;align-items:flex-start;");
+            const sampWrap = document.createElement("div");
+            css(sampWrap, "flex:1;min-width:0;");
+            sampWrap.appendChild(makeComfyLabel("Sampler"));
+            const samplerOpts = ["euler", "euler_ancestral", "heun", "heunpp2", "dpm_2", "dpm_2_ancestral", "lms", "dpm_fast", "dpm_adaptive", "dpmpp_2s_ancestral", "dpmpp_sde", "dpmpp_sde_gpu", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_2m_sde_gpu", "dpmpp_3m_sde", "dpmpp_3m_sde_gpu", "ddpm", "lcm", "ipndm", "ipndm_v", "deis", "res_multistep", "res_multistep_cfg", "res_multistep_turbo", "uni_pc", "uni_pc_bh2"].map(s => ({ value: s, label: s }));
+            const samplerDD = makeComfyDropdown(samplerOpts, data.sampler || "euler");
+            sampWrap.appendChild(samplerDD.container);
+            sampSchedRow.appendChild(sampWrap);
+            const schedWrap = document.createElement("div");
+            css(schedWrap, "flex:1;min-width:0;");
+            schedWrap.appendChild(makeComfyLabel("Scheduler"));
+            const schedOpts = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform"].map(s => ({ value: s, label: s }));
+            const schedDD = makeComfyDropdown(schedOpts, data.scheduler || "karras");
+            schedWrap.appendChild(schedDD.container);
+            sampSchedRow.appendChild(schedWrap);
+            panel.appendChild(sampSchedRow);
 
-            // CFG
-            panel.appendChild(makeLabel("CFG"));
-            const cfgInput = makeNumberInput(data.cfg ?? 7.0, "7.0", 0.5);
-            cfgInput.min = "1";
-            cfgInput.max = "30";
-            panel.appendChild(cfgInput);
-
-            // Sampler / Scheduler
-            {
-                panel.appendChild(makeLabel("Sampler / Scheduler"));
-
-                const ssRow = document.createElement("div");
-                css(ssRow, "display:flex;gap:8px;");
-
-                const samplerInput = document.createElement("select");
-                css(samplerInput, "flex:1;background:#2a2a2a;color:#ddd;border:1px solid #444;padding:4px 6px;border-radius:3px;font-size:12px;");
-                const samplers = ["euler", "euler_ancestral", "heun", "heunpp2", "dpm_2", "dpm_2_ancestral", "lms", "dpm_fast", "dpm_adaptive", "dpmpp_2s_ancestral", "dpmpp_sde", "dpmpp_sde_gpu", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_2m_sde_gpu", "dpmpp_3m_sde", "dpmpp_3m_sde_gpu", "ddpm", "lcm", "ipndm", "ipndm_v", "deis", "res_multistep", "res_multistep_cfg", "res_multistep_turbo", "uni_pc", "uni_pc_bh2"];
-                for (const s of samplers) {
-                    const o = document.createElement("option"); o.value = s; o.textContent = s;
-                    if (s === (data.sampler || "euler")) o.selected = true;
-                    samplerInput.appendChild(o);
-                }
-                ssRow.appendChild(samplerInput);
-
-                const schedInput = document.createElement("select");
-                css(schedInput, "flex:1;background:#2a2a2a;color:#ddd;border:1px solid #444;padding:4px 6px;border-radius:3px;font-size:12px;");
-                const schedulers = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform"];
-                for (const s of schedulers) {
-                    const o = document.createElement("option"); o.value = s; o.textContent = s;
-                    if (s === (data.scheduler || "karras")) o.selected = true;
-                    schedInput.appendChild(o);
-                }
-                ssRow.appendChild(schedInput);
-
-                panel.appendChild(ssRow);
-            }
-
-            // Resolution
-            panel.appendChild(makeLabel("Resolution"));
+            // Resolution (plain number inputs, no sliders)
+            panel.appendChild(makeComfyLabel("Resolution"));
             const resRow = document.createElement("div");
             css(resRow, "display:flex;gap:8px;align-items:center;");
-            const wInput = makeNumberInput(data.width ?? 1024, "1024", 64);
-            wInput.min = "64";
-            wInput.step = "64";
+            const wInput = makeComfyNumberInput(data.width ?? 1024, "1024", 64);
             const rLabel = document.createElement("span");
             rLabel.textContent = "\u00d7";
-            css(rLabel, "color:#888;");
-            const hInput = makeNumberInput(data.height ?? 1024, "1024", 64);
-            hInput.min = "64";
-            hInput.step = "64";
+            css(rLabel, "color:#888;font-size:13px;");
+            const hInput = makeComfyNumberInput(data.height ?? 1024, "1024", 64);
             resRow.appendChild(wInput);
             resRow.appendChild(rLabel);
             resRow.appendChild(hInput);
             panel.appendChild(resRow);
 
+            // Embeddings
+            panel.appendChild(makeComfyLabel("Positive embeddings"));
+            const posEmbWrap = makeSearchableDropdown([], (data.embeddings?.positive || []).join(", "), "embedding1, embedding2...");
+            panel.appendChild(posEmbWrap.container);
+            (async () => {
+                try {
+                    const embs = await fetchEmbeddings();
+                    for (const e of embs) posEmbWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: e }));
+                } catch { /* ignore */ }
+            })();
+
+            panel.appendChild(makeComfyLabel("Negative embeddings"));
+            const negEmbWrap = makeSearchableDropdown([], (data.embeddings?.negative || []).join(", "), "embedding1, embedding2...");
+            panel.appendChild(negEmbWrap.container);
+            (async () => {
+                try {
+                    const embs = await fetchEmbeddings();
+                    for (const e of embs) negEmbWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: e }));
+                } catch { /* ignore */ }
+            })();
+
             // Prompts
             const prompt = data.prompt || {};
-            panel.appendChild(makeLabel("Positive prompt (base prompt before flakes)"));
+            panel.appendChild(makeComfyLabel("Positive prompt"));
             const posTA = makeTextarea(prompt.positive || "", "masterpiece, best quality", 3);
+            css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+            posTA.addEventListener("focus", () => posTA.style.borderColor = "#555");
+            posTA.addEventListener("blur", () => posTA.style.borderColor = "#333");
             panel.appendChild(posTA);
 
-            panel.appendChild(makeLabel("Negative prompt (base negative before flakes)"));
+            panel.appendChild(makeComfyLabel("Negative prompt"));
             const negTA = makeTextarea(prompt.negative || "", "worst quality, low quality", 3);
+            css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+            negTA.addEventListener("focus", () => negTA.style.borderColor = "#555");
+            negTA.addEventListener("blur", () => negTA.style.borderColor = "#333");
             panel.appendChild(negTA);
 
             // Footer
             const footer = document.createElement("div");
-            css(footer, "display:flex;gap:8px;justify-content:flex-end;margin-top:12px;");
+            css(footer, "display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid #333;");
 
             if (mode === "edit") {
                 const delBtn = makeButton("Delete");
@@ -1266,17 +1442,20 @@ function setupFlakeWidget(node) {
             const saveBtn = makeButton("Save", true);
             saveBtn.addEventListener("click", async () => {
                 const ordered = {
-                    checkpoint: ckptSelect.value,
-                    clip_skip: parseInt(csInput.value),
-                    vae: vaeInput.value || null,
-                    steps: parseInt(stepsInput.value),
-                    cfg: parseFloat(cfgInput.value),
-                    sampler: samplerInput.value,
-                    scheduler: schedInput.value,
-                    width: parseInt(wInput.value),
-                    height: parseInt(hInput.value),
+                    checkpoint: ckptWrap.element.value,
+                    clip_skip: csSlider.getValue(),
+                    vae: vaeWrap.element.value || null,
+                    steps: stepsSlider.getValue(),
+                    cfg: cfgSlider.getValue(),
+                    sampler: samplerDD.element.value,
+                    scheduler: schedDD.element.value,
+                    width: parseInt(wInput.value) || 1024,
+                    height: parseInt(hInput.value) || 1024,
                     prompt: { positive: posTA.value, negative: negTA.value },
-                    embeddings: [],
+                    embeddings: {
+                        positive: posEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),
+                        negative: negEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),
+                    },
                 };
 
                 try {
@@ -1304,7 +1483,7 @@ function setupFlakeWidget(node) {
             footer.appendChild(saveBtn);
             panel.appendChild(footer);
 
-            setTimeout(() => { (pathInput || ckptSelect).focus(); }, 0);
+            setTimeout(() => { (pathInput || ckptWrap.element).focus(); }, 0);
         });
     }
 
@@ -1328,7 +1507,7 @@ function setupFlakeWidget(node) {
         });
         if (result) refreshPresetOptions();
     }
-    plusBtn.addEventListener("click", handleNewPreset);
+    legacyBtn.addEventListener("click", handleNewPreset);
 
     async function refreshPresetOptions() {
         try {
@@ -1361,14 +1540,14 @@ function setupFlakeWidget(node) {
         css(btn, `
             display:inline-flex;align-items:center;justify-content:center;
             width:32px;height:32px;padding:0;margin:0;
-            background:#2a2a2a;color:#aaa;
+            background:#1f1f1f;color:#aaa;
             border:none;border-left:1px solid #444;
             border-radius:0 6px 6px 0;
             cursor:pointer;flex-shrink:0;
             transition:background 0.15s ease;
         `);
-        btn.addEventListener("mouseenter", () => { btn.style.background = "#333"; });
-        btn.addEventListener("mouseleave", () => { btn.style.background = "#2a2a2a"; });
+        btn.addEventListener("mouseenter", () => { btn.style.background = "#2a2a2a"; });
+        btn.addEventListener("mouseleave", () => { btn.style.background = "#1f1f1f"; });
         btn.addEventListener("click", handleNewPreset);
         btn.addEventListener("dblclick", (e) => e.stopPropagation());
         btn.addEventListener("mousedown", (e) => e.stopPropagation());
