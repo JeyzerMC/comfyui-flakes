@@ -17,7 +17,7 @@ _NAME_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_\- ]+$")
 # ---------------------------------------------------------------------------
 
 @dataclass
-class FlakePreset:
+class ModelPreset:
     name: str
     checkpoint: str = ""
     clip_skip: int = -2
@@ -74,14 +74,14 @@ def _primary_root() -> str:
 
 
 def _presets_roots() -> list[str]:
-    roots, _ = folder_paths.folder_names_and_paths.get("flake_presets", ([], set()))
+    roots, _ = folder_paths.folder_names_and_paths.get("model_presets", ([], set()))
     return list(roots)
 
 
 def _primary_presets_root() -> str:
     roots = _presets_roots()
     if not roots:
-        raise RuntimeError("no flake_presets roots configured")
+        raise RuntimeError("no model_presets roots configured")
     return roots[0]
 
 
@@ -334,7 +334,7 @@ def _resolve_preset_file(name: str) -> str:
             if os.path.isfile(candidate):
                 _ensure_inside(candidate, root)
                 return candidate
-    raise FileNotFoundError(f"Preset '{name}' not found under any registered flake_presets/ directory")
+    raise FileNotFoundError(f"Preset '{name}' not found under any registered model_presets/ directory")
 
 
 def list_presets() -> list[str]:
@@ -381,10 +381,10 @@ def delete_preset(name: str) -> None:
     os.remove(path)
 
 
-def load_preset(name: str) -> FlakePreset:
+def load_preset(name: str) -> ModelPreset:
     raw = read_preset_raw(name)
     prompt = raw.get("prompt") or {}
-    return FlakePreset(
+    return ModelPreset(
         name=name,
         checkpoint=str(raw.get("checkpoint", "")),
         clip_skip=int(raw.get("clip_skip", -2)),
