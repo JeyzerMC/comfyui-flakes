@@ -2046,6 +2046,412 @@ function setupFlakeModelPresetWidget(node) {
     node._preset_render = () => {};
 }
 
+// ---------- FlakeCombo widget ----------
+
+function makeComboBlock({ entry, idx, isActive, onActivate, onRemove }) {
+    const hasCover = !!entry.name;
+    const block = document.createElement("div");
+    block.dataset.idx = String(idx);
+
+    css(block, `position:relative;height:80px;background:${
+        isActive ? "#2a4a3a" : "#2a2a2a"
+    };border:2px solid ${
+        isActive ? "#3a8a5a" : "#444"
+    };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;${
+        hasCover ? `background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;` : ""
+    }`);
+
+    if (hasCover) {
+        const overlay = document.createElement("div");
+        css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;");
+        block.appendChild(overlay);
+    }
+
+    const fullName = entry.display_name || entry.name || "(missing)";
+    const shortName = fullName.split(/[\/\\ _\-]+/).pop() || fullName;
+    const nameEl = document.createElement("div");
+    nameEl.title = fullName;
+    css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:1;");
+    nameEl.textContent = shortName;
+    block.appendChild(nameEl);
+
+    if (isActive) {
+        const check = document.createElement("div");
+        check.textContent = "\u2713";
+        css(check, "position:absolute;top:2px;left:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(58,138,90,0.8);color:#fff;border-radius:2px;z-index:2;");
+        block.appendChild(check);
+    }
+
+    const rm = document.createElement("button");
+    rm.textContent = "\u2715";
+    rm.title = "Remove from combo";
+    css(rm, "position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(0,0,0,0.5);color:#ddd;border:1px solid #555;border-radius:2px;cursor:pointer;padding:0;z-index:2;");
+    rm.addEventListener("click", (e) => { e.stopPropagation(); onRemove(idx); });
+    block.appendChild(rm);
+
+    block.addEventListener("click", () => onActivate(idx));
+
+    return block;
+}
+
+function setupFlakeComboWidget(node) {
+    const flakesHidden = node.widgets?.find(w => w.name === "flakes_json");
+    if (!flakesHidden) return;
+
+    flakesHidden.computeSize = () => [0, -4];
+    flakesHidden.type = "hidden";
+    flakesHidden.hidden = true;
+    if (flakesHidden.element) { flakesHidden.element.remove(); flakesHidden.element = null; }
+    if (flakesHidden.inputEl) { flakesHidden.inputEl.remove(); flakesHidden.inputEl = null; }
+
+    if (!node.properties) node.properties = {};
+    if (!node.properties._combo_flakes) node.properties._combo_flakes = [];
+    if (node.properties._combo_active_index == null) node.properties._combo_active_index = 0;
+
+    function readAllFlakes() {
+        return node.properties._combo_flakes || [];
+    }
+    function writeAllFlakes(flakes) {
+        node.properties._combo_flakes = flakes;
+        updateActiveFlake();
+    }
+    function updateActiveFlake() {
+        const flakes = readAllFlakes();
+        const idx = node.properties._combo_active_index || 0;
+        const active = flakes[idx] || null;
+        flakesHidden.value = JSON.stringify(active ? [active] : []);
+    }
+
+    const container = document.createElement("div");
+    css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
+
+    const grid = document.createElement("div");
+    css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
+    container.appendChild(grid);
+
+    function render() {
+        const flakes = readAllFlakes();
+        const activeIdx = node.properties._combo_active_index || 0;
+        grid.replaceChildren();
+
+        for (let i = 0; i < flakes.length; i++) {
+            const blk = makeComboBlock({
+                entry: flakes[i],
+                idx: i,
+                isActive: i === activeIdx,
+                onActivate: (idx) => {
+                    node.properties._combo_active_index = idx;
+                    updateActiveFlake();
+                    render();
+                },
+                onRemove: (idx) => {
+                    const arr = readAllFlakes();
+                    arr.splice(idx, 1);
+                    if (node.properties._combo_active_index >= arr.length) {
+                        node.properties._combo_active_index = Math.max(0, arr.length - 1);
+                    }
+                    writeAllFlakes(arr);
+                    render();
+                },
+            });
+            grid.appendChild(blk);
+        }
+
+        if (grid._addBlock) grid.appendChild(grid._addBlock);
+    }
+
+    async function handleNew() {
+        const { directories } = await fetchList();
+        const result = await openEditModal({
+            mode: "create",
+            data: { prompt: { positive: "", negative: "" }, options: {} },
+            dirs: directories,
+        });
+        if (!result || !result.created) return;
+        const arr = readAllFlakes();
+        let has_lora = false;
+        let display_name = null;
+        if (result.data && result.data.lora_path) has_lora = true;
+        else if (result.name) {
+            try { const d = await fetchFlake(result.name); has_lora = !!(d && d.lora_path); } catch {}
+        }
+        if (result.data && result.data.name) display_name = result.data.name;
+        else if (result.name) {
+            try { const d = await fetchFlake(result.name); display_name = d.name || null; } catch {}
+        }
+        arr.push({ name: result.name, strength: 1.0, option: {}, has_lora, display_name });
+        writeAllFlakes(arr);
+        render();
+    }
+
+    async function handleLoad() {
+        const { flakes } = await fetchList();
+        const used = new Set(readAllFlakes().filter(e => e.name).map(e => e.name));
+        const available = flakes.filter(n => !used.has(n));
+        const result = await openPicker(available);
+        if (!result || !result.name) return;
+        const arr = readAllFlakes();
+        let has_lora = false;
+        let display_name = null;
+        try { const d = await fetchFlake(result.name); has_lora = !!(d && d.lora_path); display_name = d.name || null; } catch {}
+        arr.push({ name: result.name, strength: 1.0, option: {}, has_lora, display_name });
+        writeAllFlakes(arr);
+        render();
+    }
+
+    grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad });
+
+    node._combo_render = render;
+    const comboWidget = node.addDOMWidget("combo_ui", "div", container, { serialize: false, margin: 4 });
+    comboWidget.computeSize = () => {
+        const rows = Math.max(1, Math.ceil((readAllFlakes().length + 1) / 2));
+        return [node.size[0], rows * 84 + 31];
+    };
+    updateActiveFlake();
+    render();
+}
+
+// ---------- FlakeModelCombo widget ----------
+
+function makeModelComboBlock({ preset, idx, isActive, onActivate, onRemove }) {
+    const block = document.createElement("div");
+    block.dataset.idx = String(idx);
+
+    css(block, `position:relative;height:80px;background:${
+        isActive ? "#2a4a3a" : "#2a2a2a"
+    };border:2px solid ${
+        isActive ? "#3a8a5a" : "#444"
+    };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;`);
+
+    const nameEl = document.createElement("div");
+    nameEl.title = preset;
+    css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:1;");
+    nameEl.textContent = preset;
+    block.appendChild(nameEl);
+
+    if (isActive) {
+        const check = document.createElement("div");
+        check.textContent = "\u2713";
+        css(check, "position:absolute;top:2px;left:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(58,138,90,0.8);color:#fff;border-radius:2px;z-index:2;");
+        block.appendChild(check);
+    }
+
+    const rm = document.createElement("button");
+    rm.textContent = "\u2715";
+    rm.title = "Remove from combo";
+    css(rm, "position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(0,0,0,0.5);color:#ddd;border:1px solid #555;border-radius:2px;cursor:pointer;padding:0;z-index:2;");
+    rm.addEventListener("click", (e) => { e.stopPropagation(); onRemove(idx); });
+    block.appendChild(rm);
+
+    block.addEventListener("click", () => onActivate(idx));
+
+    return block;
+}
+
+function setupFlakeModelComboWidget(node) {
+    const presetWidget = node.widgets?.find(w => w.name === "preset");
+    if (!presetWidget) return;
+
+    if (!node.properties) node.properties = {};
+    if (!node.properties._combo_presets) node.properties._combo_presets = [];
+    if (node.properties._combo_active_index == null) node.properties._combo_active_index = 0;
+
+    function readPresets() {
+        return node.properties._combo_presets || [];
+    }
+    function writePresets(presets) {
+        node.properties._combo_presets = presets;
+        updateActivePreset();
+    }
+    function updateActivePreset() {
+        const presets = readPresets();
+        const idx = node.properties._combo_active_index || 0;
+        const active = presets[idx] || "Select a preset...";
+        presetWidget.value = active;
+    }
+
+    const container = document.createElement("div");
+    css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
+
+    const grid = document.createElement("div");
+    css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
+    container.appendChild(grid);
+
+    function render() {
+        const presets = readPresets();
+        const activeIdx = node.properties._combo_active_index || 0;
+        grid.replaceChildren();
+
+        for (let i = 0; i < presets.length; i++) {
+            const blk = makeModelComboBlock({
+                preset: presets[i],
+                idx: i,
+                isActive: i === activeIdx,
+                onActivate: (idx) => {
+                    node.properties._combo_active_index = idx;
+                    updateActivePreset();
+                    render();
+                },
+                onRemove: (idx) => {
+                    const arr = readPresets();
+                    arr.splice(idx, 1);
+                    if (node.properties._combo_active_index >= arr.length) {
+                        node.properties._combo_active_index = Math.max(0, arr.length - 1);
+                    }
+                    writePresets(arr);
+                    render();
+                },
+            });
+            grid.appendChild(blk);
+        }
+
+        const addBtn = document.createElement("div");
+        css(addBtn, "position:relative;height:80px;background:#2a2a2a;border:1px dashed #555;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;color:#999;user-select:none;box-sizing:border-box;");
+        const icon = document.createElement("div");
+        css(icon, "font-size:20px;font-weight:300;color:#666;line-height:1;");
+        icon.textContent = "+";
+        addBtn.appendChild(icon);
+        const label = document.createElement("div");
+        css(label, "font-size:9px;text-align:center;");
+        label.textContent = "Add preset";
+        addBtn.appendChild(label);
+        addBtn.addEventListener("click", () => {
+            const current = presetWidget.value;
+            if (!current || current === "Select a preset..." || current === "No model preset is selected") {
+                window.alert("Select a preset from the dropdown first");
+                return;
+            }
+            const arr = readPresets();
+            if (arr.includes(current)) {
+                window.alert("Preset already in combo");
+                return;
+            }
+            arr.push(current);
+            writePresets(arr);
+            render();
+        });
+        grid.appendChild(addBtn);
+    }
+
+    node._model_combo_render = render;
+    const comboWidget = node.addDOMWidget("model_combo_ui", "div", container, { serialize: false, margin: 4 });
+    comboWidget.computeSize = () => {
+        const rows = Math.max(1, Math.ceil((readPresets().length + 1) / 2));
+        return [node.size[0], rows * 84 + 31];
+    };
+    updateActivePreset();
+    render();
+}
+
+// ---------- Frontend Queueing for Combinations ----------
+
+function getComboFlakes(node) {
+    return node.properties?._combo_flakes || [];
+}
+
+function getComboPresets(node) {
+    return node.properties?._combo_presets || [];
+}
+
+function cartesianProduct(arrays) {
+    if (arrays.length === 0) return [[]];
+    const result = [];
+    const head = arrays[0];
+    const tail = cartesianProduct(arrays.slice(1));
+    for (const h of head) {
+        for (const t of tail) {
+            result.push([h, ...t]);
+        }
+    }
+    return result;
+}
+
+const _originalQueuePrompt = app.queuePrompt;
+app.queuePrompt = async function(number, batchCount = 1) {
+    const comboNodes = app.graph.nodes.filter(n => n.type === "FlakeCombo");
+    const modelComboNodes = app.graph.nodes.filter(n => n.type === "FlakeModelCombo");
+
+    if (comboNodes.length === 0 && modelComboNodes.length === 0) {
+        return _originalQueuePrompt.call(this, number, batchCount);
+    }
+
+    const optionsArrays = [];
+
+    for (const node of comboNodes) {
+        const flakes = getComboFlakes(node);
+        if (flakes.length === 0) {
+            window.alert("FlakeCombo node has no flakes selected.");
+            return;
+        }
+        optionsArrays.push(flakes.map((flake, i) => ({
+            node,
+            type: "combo",
+            value: flake,
+            index: i,
+        })));
+    }
+
+    for (const node of modelComboNodes) {
+        const presets = getComboPresets(node);
+        if (presets.length === 0) {
+            window.alert("FlakeModelCombo node has no presets selected.");
+            return;
+        }
+        optionsArrays.push(presets.map((preset, i) => ({
+            node,
+            type: "model_combo",
+            value: preset,
+            index: i,
+        })));
+    }
+
+    const combinations = cartesianProduct(optionsArrays);
+    if (combinations.length === 0) {
+        return _originalQueuePrompt.call(this, number, batchCount);
+    }
+
+    if (!window.confirm(`This will queue ${combinations.length} prompt(s). Continue?`)) {
+        return;
+    }
+
+    // Save original widget values (once per unique node)
+    const nodeOriginals = new Map();
+    for (const item of combinations[0]) {
+        if (!nodeOriginals.has(item.node.id)) {
+            if (item.type === "combo") {
+                const w = item.node.widgets?.find(w => w.name === "flakes_json");
+                nodeOriginals.set(item.node.id, { node: item.node, widget: w, value: w?.value });
+            } else {
+                const w = item.node.widgets?.find(w => w.name === "preset");
+                nodeOriginals.set(item.node.id, { node: item.node, widget: w, value: w?.value });
+            }
+        }
+    }
+
+    try {
+        for (const combination of combinations) {
+            for (const item of combination) {
+                if (item.type === "combo") {
+                    const w = item.node.widgets?.find(w => w.name === "flakes_json");
+                    if (w) w.value = JSON.stringify([item.value]);
+                } else {
+                    const w = item.node.widgets?.find(w => w.name === "preset");
+                    if (w) w.value = item.value;
+                }
+            }
+            await _originalQueuePrompt.call(this, number, 1);
+        }
+    } finally {
+        for (const orig of nodeOriginals.values()) {
+            if (orig.widget) orig.widget.value = orig.value;
+        }
+        for (const n of app.graph.nodes) {
+            if (n.type === "FlakeCombo") n._combo_render?.();
+            if (n.type === "FlakeModelCombo") n._model_combo_render?.();
+        }
+    }
+};
+
 // ---------- Extension registration ----------
 
 app.registerExtension({
@@ -2078,6 +2484,36 @@ app.registerExtension({
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
                 this._preset_render?.();
+                return r;
+            };
+        }
+        if (nodeData.name === "FlakeCombo") {
+            const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                const r = origOnNodeCreated?.apply(this, arguments);
+                setupFlakeComboWidget(this);
+                return r;
+            };
+
+            const origOnConfigure = nodeType.prototype.onConfigure;
+            nodeType.prototype.onConfigure = function () {
+                const r = origOnConfigure?.apply(this, arguments);
+                this._combo_render?.();
+                return r;
+            };
+        }
+        if (nodeData.name === "FlakeModelCombo") {
+            const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                const r = origOnNodeCreated?.apply(this, arguments);
+                setupFlakeModelComboWidget(this);
+                return r;
+            };
+
+            const origOnConfigure = nodeType.prototype.onConfigure;
+            nodeType.prototype.onConfigure = function () {
+                const r = origOnConfigure?.apply(this, arguments);
+                this._model_combo_render?.();
                 return r;
             };
         }

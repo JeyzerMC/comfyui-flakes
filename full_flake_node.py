@@ -246,92 +246,26 @@ class FlakeStack:
         )
 
 
-class FlakeCombo:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "model_bundle": ("FLAKES_MODEL",),
-                "generation_data": ("FLAKES_COND",),
-                "sampling_preset": ("FLAKES_SAMPLER",),
-                "flakes_json": ("STRING", {
-                    "multiline": True,
-                    "default": "[]",
-                    "tooltip": "JSON-encoded list of mutually exclusive flake entries.",
-                }),
-            },
-        }
+class FlakeCombo(FlakeStack):
+    """Mutually-exclusive flake stack.
 
-    RETURN_TYPES = (
-        "FLAKES_MODEL", "FLAKES_COND", "FLAKES_SAMPLER",
-    )
-    RETURN_NAMES = (
-        "model_bundle", "generation_data", "sampling_preset",
-    )
-    FUNCTION = "execute"
-    CATEGORY = "flakes"
-    DESCRIPTION = (
-        "Mutually-exclusive flake stack. Each flake is applied in isolation, "
-        "generating a separate output bundle per flake. (Sequential execution TBD.)"
-    )
-
-    def execute(self, model_bundle, generation_data, sampling_preset, flakes_json: str):
-        # TODO: implement combinatorial / sequential generation.
-        # For now, behave like FlakeStack so the node is usable while the
-        # iteration strategy is being clarified.
-        return FlakeStack().execute(model_bundle, generation_data, sampling_preset, flakes_json)
+    The backend behavior is identical to FlakeStack — it receives a
+    ``flakes_json`` list and applies whatever entries are inside.
+    The frontend widget ensures that ``flakes_json`` contains exactly
+    one active flake at a time, and the JavaScript extension hooks
+    ``app.queuePrompt`` to queue every combination across all
+    FlakeCombo / FlakeModelCombo nodes in the graph.
+    """
+    pass
 
 
-class FlakeModelCombo:
-    @classmethod
-    def INPUT_TYPES(cls):
-        try:
-            preset_names = flake_io.list_presets()
-        except Exception:
-            preset_names = []
-        if not preset_names:
-            preset_names = ["No model preset is selected"]
-        return {
-            "required": {
-                "presets_json": ("STRING", {
-                    "multiline": True,
-                    "default": "[]",
-                    "tooltip": "JSON-encoded list of preset names.",
-                }),
-            },
-            "optional": {
-                "model_bundle": ("FLAKES_MODEL",),
-                "generation_data": ("FLAKES_COND",),
-                "sampling_preset": ("FLAKES_SAMPLER",),
-            },
-        }
+class FlakeModelCombo(FlakeModelPreset):
+    """Multiple model preset selector.
 
-    RETURN_TYPES = (
-        "FLAKES_MODEL", "FLAKES_COND", "FLAKES_SAMPLER",
-    )
-    RETURN_NAMES = (
-        "model_bundle", "generation_data", "sampling_preset",
-    )
-    FUNCTION = "execute"
-    CATEGORY = "flakes"
-    DESCRIPTION = (
-        "Load multiple model presets and generate the same flake setup for each. "
-        "(Sequential execution TBD.)"
-    )
-
-    def execute(self, presets_json: str, model_bundle=None, generation_data=None, sampling_preset=None):
-        # TODO: implement multi-preset iteration.
-        # For now, load the first preset and pass through any upstream bundles.
-        try:
-            names = json.loads(presets_json) if presets_json else []
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"presets_json is not valid JSON: {exc}") from exc
-
-        if not isinstance(names, list) or not names:
-            raise ValueError("presets_json must be a non-empty JSON list of preset names")
-
-        first_name = names[0].strip() if isinstance(names[0], str) else ""
-        if not first_name:
-            raise ValueError("first preset name is empty")
-
-        return _load_preset_bundle(first_name)
+    The backend behavior is identical to FlakeModelPreset — it loads
+    a single preset from the ``preset`` dropdown.  The frontend widget
+    manages a list of selected presets in ``node.properties`` and the
+    JavaScript extension cycles the ``preset`` widget value for each
+    combination when queueing.
+    """
+    pass
