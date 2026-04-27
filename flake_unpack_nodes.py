@@ -8,7 +8,7 @@ class FlakesModel:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "bundle": ("FLAKES_MODEL",),
+                "model_bundle": ("FLAKES_MODEL",),
             },
         }
 
@@ -18,19 +18,19 @@ class FlakesModel:
     CATEGORY = "flakes"
     DESCRIPTION = "Unpack a Full Flakes model bundle into individual outputs."
 
-    def execute(self, bundle):
-        model, clip, vae = bundle
+    def execute(self, model_bundle):
+        model, clip, vae = model_bundle
         return (model, clip, vae)
 
 
 class FlakesCond:
-    """Unpacks a FLAKES_COND bundle into positive / negative / latent / resolution."""
+    """Unpacks a FLAKES_COND (generation_data) bundle into positive / negative / latent / resolution."""
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "bundle": ("FLAKES_COND",),
+                "generation_data": ("FLAKES_COND",),
             },
         }
 
@@ -40,8 +40,9 @@ class FlakesCond:
     CATEGORY = "flakes"
     DESCRIPTION = "Unpack a Full Flakes conditioning bundle into individual outputs."
 
-    def execute(self, bundle):
-        positive, negative, latent, width, height = bundle
+    def execute(self, generation_data):
+        # generation_data may contain extra prompt-text fields after the 5th element.
+        positive, negative, latent, width, height = generation_data[:5]
         return (positive, negative, latent, width, height)
 
 
@@ -52,7 +53,7 @@ class FlakesSampler:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "bundle": ("FLAKES_SAMPLER",),
+                "sampling_preset": ("FLAKES_SAMPLER",),
             },
         }
 
@@ -62,6 +63,6 @@ class FlakesSampler:
     CATEGORY = "flakes"
     DESCRIPTION = "Unpack a Full Flakes sampler bundle into individual outputs."
 
-    def execute(self, bundle):
-        steps, cfg, sampler_name, scheduler = bundle
+    def execute(self, sampling_preset):
+        steps, cfg, sampler_name, scheduler = sampling_preset
         return (steps, cfg, sampler_name, scheduler)

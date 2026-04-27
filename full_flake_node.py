@@ -30,7 +30,56 @@ def _resolve_lora_name(stem_or_name: str) -> str:
     raise FileNotFoundError(f"LoRA '{stem_or_name}' not found in models/loras/")
 
 
-class FlakeStack:
+def _load_preset_bundle(preset_name: str):
+    """Load a model preset and return (model_bundle, generation_data, sampling_preset)."""
+    preset_data = flake_io.load_preset(preset_name)
+
+    # --- Load checkpoint ----------------------------------------------------
+    ckpt_path = folder_paths.get_full_path("checkpoints", preset_data.checkpoint)
+    if not ckpt_path or not os.path.isfile(ckpt_path):
+        raise FileNotFoundError(
+            f"Checkpoint '{preset_data.checkpoint}' not found in models/checkpoints/"
+        )
+
+    embedding_dir = folder_paths.get_folder_paths("embeddings")
+    model, clip, vae, _ = comfy.sd.load_checkpoint_guess_config(
+        ckpt_path,
+        output_vae=True,
+        output_clip=True,
+        embedding_directory=embedding_dir,
+    )
+
+    # --- Clip skip ----------------------------------------------------------
+    if preset_data.clip_skip:
+        clip = clip.clone()
+        clip.clip_layer(preset_data.clip_skip)
+
+    # --- Optional VAE override ----------------------------------------------
+    if preset_data.vae:
+        vae_path = folder_paths.get_full_path("vae", preset_data.vae)
+        if vae_path and os.path.isfile(vae_path):
+            vae_sd = comfy.utils.load_torch_file(vae_path)
+            vae = comfy.sd.VAE(sd=vae_sd)
+
+    # --- Encode prompts -----------------------------------------------------
+    encoder = CLIPTextEncode()
+    pos_text = preset_data.positive.strip()
+    neg_text = preset_data.negative.strip()
+    positive = encoder.encode(clip, pos_text)[0] if pos_text else encoder.encode(clip, "")[0]
+    negative = encoder.encode(clip, neg_text)[0] if neg_text else encoder.encode(clip, "")[0]
+
+    # --- Latent -------------------------------------------------------------
+    width, height = preset_data.width, preset_data.height
+    latent = EmptyLatentImage().generate(width, height, 1)[0]
+
+    model_bundle = (model, clip, vae)
+    generation_data = (positive, negative, latent, width, height, pos_text, neg_text)
+    sampling_preset = (preset_data.steps, preset_data.cfg, preset_data.sampler, preset_data.scheduler)
+
+    return model_bundle, generation_data, sampling_preset
+
+
+class FlakeModelPreset:
     @classmethod
     def INPUT_TYPES(cls):
         try:
@@ -42,6 +91,38 @@ class FlakeStack:
         return {
             "required": {
                 "preset": (["Select a preset..."] + preset_names,),
+            },
+        }
+
+    RETURN_TYPES = (
+        "FLAKES_MODEL", "FLAKES_COND", "FLAKES_SAMPLER",
+    )
+    RETURN_NAMES = (
+        "model_bundle", "generation_data", "sampling_preset",
+    )
+    FUNCTION = "execute"
+    CATEGORY = "flakes"
+    DESCRIPTION = (
+        "Load a model preset (checkpoint, VAE, prompts, resolution, sampler settings). "
+        "Outputs are bundled for wiring into FlakeStack / FlakeCombo nodes."
+    )
+
+    def execute(self, preset: str):
+        preset_name = preset.strip() if preset else ""
+        if not preset_name or preset_name in ("Select a preset...", "No model preset is selected"):
+            raise ValueError("No model preset is selected — pick one from the dropdown.")
+
+        return _load_preset_bundle(preset_name)
+
+
+class FlakeStack:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model_bundle": ("FLAKES_MODEL",),
+                "generation_data": ("FLAKES_COND",),
+                "sampling_preset": ("FLAKES_SAMPLER",),
                 "flakes_json": ("STRING", {
                     "multiline": True,
                     "default": "[]",
@@ -54,52 +135,20 @@ class FlakeStack:
         "FLAKES_MODEL", "FLAKES_COND", "FLAKES_SAMPLER",
     )
     RETURN_NAMES = (
-        "model", "conditioning", "sampler",
+        "model_bundle", "generation_data", "sampling_preset",
     )
     FUNCTION = "execute"
     CATEGORY = "flakes"
     DESCRIPTION = (
-        "Self-contained flake-stack node. Select a model preset from the "
-        "dropdown to load checkpoint + settings automatically. "
-        "Flakes are composed on top of the preset prompts. "
-        "Outputs are bundled — use FlakesModel / FlakesCond / FlakesSampler "
-        "to unpack them for wiring into downstream nodes."
+        "Compose flakes on top of an incoming model/generation/sampler bundle. "
+        "Applies LoRAs, merges prompts, resolution overrides and ControlNets. "
+        "Outputs updated bundles for chaining into downstream nodes."
     )
 
-    def execute(self, preset: str, flakes_json: str):
-        # --- Load preset --------------------------------------------------------
-        preset_name = preset.strip() if preset else ""
-        if not preset_name or preset_name in ("Select a preset...", "No model preset is selected"):
-            raise ValueError("No model preset is selected — pick one from the dropdown.")
-
-        preset_data = flake_io.load_preset(preset_name)
-
-        # --- Load checkpoint ----------------------------------------------------
-        ckpt_path = folder_paths.get_full_path("checkpoints", preset_data.checkpoint)
-        if not ckpt_path or not os.path.isfile(ckpt_path):
-            raise FileNotFoundError(
-                f"Checkpoint '{preset_data.checkpoint}' not found in models/checkpoints/"
-            )
-
-        embedding_dir = folder_paths.get_folder_paths("embeddings")
-        model, clip, vae, _ = comfy.sd.load_checkpoint_guess_config(
-            ckpt_path,
-            output_vae=True,
-            output_clip=True,
-            embedding_directory=embedding_dir,
-        )
-
-        # --- Clip skip ----------------------------------------------------------
-        if preset_data.clip_skip:
-            clip = clip.clone()
-            clip.clip_layer(preset_data.clip_skip)
-
-        # --- Optional VAE override ----------------------------------------------
-        if preset_data.vae:
-            vae_path = folder_paths.get_full_path("vae", preset_data.vae)
-            if vae_path and os.path.isfile(vae_path):
-                vae_sd = comfy.utils.load_torch_file(vae_path)
-                vae = comfy.sd.VAE(sd=vae_sd)
+    def execute(self, model_bundle, generation_data, sampling_preset, flakes_json: str):
+        model, clip, vae = model_bundle
+        positive_cond, negative_cond, latent, width, height, pos_text, neg_text = generation_data
+        steps, cfg, sampler, scheduler = sampling_preset
 
         # --- Parse flakes_json --------------------------------------------------
         try:
@@ -131,14 +180,14 @@ class FlakeStack:
             lora_name = _resolve_lora_name(f.lora_path)
             model, clip = lora_loader.load_lora(model, clip, lora_name, f.strength, f.strength)
 
-        # --- Build prompt text (preset → flakes → default) ---------------------
+        # --- Build prompt text (existing → flakes) ------------------------------
         pos_parts: list[str] = []
         neg_parts: list[str] = []
 
-        if preset_data.positive.strip():
-            pos_parts.append(preset_data.positive.strip())
-        if preset_data.negative.strip():
-            neg_parts.append(preset_data.negative.strip())
+        if pos_text and pos_text.strip():
+            pos_parts.append(pos_text.strip())
+        if neg_text and neg_text.strip():
+            neg_parts.append(neg_text.strip())
 
         for f in flakes:
             if f.positive and f.positive.strip():
@@ -146,13 +195,13 @@ class FlakeStack:
             if f.negative and f.negative.strip():
                 neg_parts.append(f.negative.strip())
 
-        pos_text = " BREAK ".join(pos_parts) if pos_parts else ""
-        neg_text = ", ".join(neg_parts) if neg_parts else ""
+        new_pos_text = " BREAK ".join(pos_parts) if pos_parts else ""
+        new_neg_text = ", ".join(neg_parts) if neg_parts else ""
 
-        # --- Encode prompts -----------------------------------------------------
+        # --- Re-encode prompts --------------------------------------------------
         encoder = CLIPTextEncode()
-        positive = encoder.encode(clip, pos_text)[0] if pos_text else encoder.encode(clip, "")[0]
-        negative = encoder.encode(clip, neg_text)[0] if neg_text else encoder.encode(clip, "")[0]
+        positive_cond = encoder.encode(clip, new_pos_text)[0] if new_pos_text else encoder.encode(clip, "")[0]
+        negative_cond = encoder.encode(clip, new_neg_text)[0] if new_neg_text else encoder.encode(clip, "")[0]
 
         # --- Apply ControlNets (from flakes) ------------------------------------
         from .flake_compose import _load_cn_image
@@ -168,31 +217,121 @@ class FlakeStack:
                     cn_model_cache[cn.model_name] = cn_loader.load_controlnet(cn.model_name)[0]
                 cn_model = cn_model_cache[cn.model_name]
                 image = _load_cn_image(cn.image_name)
-                positive, negative = cn_apply.apply_controlnet(
-                    positive, negative, cn_model, image,
+                positive_cond, negative_cond = cn_apply.apply_controlnet(
+                    positive_cond, negative_cond, cn_model, image,
                     cn.strength, cn.start_percent, cn.end_percent,
                 )
 
         # --- Resolution ---------------------------------------------------------
-        width, height = preset_data.width, preset_data.height
+        new_width, new_height = width, height
         for f in flakes:
             if f.resolution is not None:
-                width, height = f.resolution
+                new_width, new_height = f.resolution
                 break
 
-        # --- Latent -------------------------------------------------------------
-        latent = EmptyLatentImage().generate(width, height, 1)[0]
+        if (new_width, new_height) != (width, height):
+            latent = EmptyLatentImage().generate(new_width, new_height, 1)[0]
 
         logging.info(
-            "[FlakeStack] preset=%s checkpoint=%s %sx%s steps=%s cfg=%s flakes=%d",
-            preset_name, preset_data.checkpoint, width, height,
-            preset_data.steps, preset_data.cfg, len(flakes),
+            "[FlakeStack] %dx%s steps=%s cfg=%s flakes=%d",
+            new_width, new_height, steps, cfg, len(flakes),
         )
 
-        model_bundle = (model, clip, vae)
-        cond_bundle = (positive, negative, latent, width, height)
-        sampler_bundle = (preset_data.steps, preset_data.cfg, preset_data.sampler, preset_data.scheduler)
+        out_model_bundle = (model, clip, vae)
+        out_generation_data = (positive_cond, negative_cond, latent, new_width, new_height, new_pos_text, new_neg_text)
+        out_sampling_preset = (steps, cfg, sampler, scheduler)
 
         return (
-            model_bundle, cond_bundle, sampler_bundle,
+            out_model_bundle, out_generation_data, out_sampling_preset,
         )
+
+
+class FlakeCombo:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model_bundle": ("FLAKES_MODEL",),
+                "generation_data": ("FLAKES_COND",),
+                "sampling_preset": ("FLAKES_SAMPLER",),
+                "flakes_json": ("STRING", {
+                    "multiline": True,
+                    "default": "[]",
+                    "tooltip": "JSON-encoded list of mutually exclusive flake entries.",
+                }),
+            },
+        }
+
+    RETURN_TYPES = (
+        "FLAKES_MODEL", "FLAKES_COND", "FLAKES_SAMPLER",
+    )
+    RETURN_NAMES = (
+        "model_bundle", "generation_data", "sampling_preset",
+    )
+    FUNCTION = "execute"
+    CATEGORY = "flakes"
+    DESCRIPTION = (
+        "Mutually-exclusive flake stack. Each flake is applied in isolation, "
+        "generating a separate output bundle per flake. (Sequential execution TBD.)"
+    )
+
+    def execute(self, model_bundle, generation_data, sampling_preset, flakes_json: str):
+        # TODO: implement combinatorial / sequential generation.
+        # For now, behave like FlakeStack so the node is usable while the
+        # iteration strategy is being clarified.
+        return FlakeStack().execute(model_bundle, generation_data, sampling_preset, flakes_json)
+
+
+class FlakeModelCombo:
+    @classmethod
+    def INPUT_TYPES(cls):
+        try:
+            preset_names = flake_io.list_presets()
+        except Exception:
+            preset_names = []
+        if not preset_names:
+            preset_names = ["No model preset is selected"]
+        return {
+            "required": {
+                "presets_json": ("STRING", {
+                    "multiline": True,
+                    "default": "[]",
+                    "tooltip": "JSON-encoded list of preset names.",
+                }),
+            },
+            "optional": {
+                "model_bundle": ("FLAKES_MODEL",),
+                "generation_data": ("FLAKES_COND",),
+                "sampling_preset": ("FLAKES_SAMPLER",),
+            },
+        }
+
+    RETURN_TYPES = (
+        "FLAKES_MODEL", "FLAKES_COND", "FLAKES_SAMPLER",
+    )
+    RETURN_NAMES = (
+        "model_bundle", "generation_data", "sampling_preset",
+    )
+    FUNCTION = "execute"
+    CATEGORY = "flakes"
+    DESCRIPTION = (
+        "Load multiple model presets and generate the same flake setup for each. "
+        "(Sequential execution TBD.)"
+    )
+
+    def execute(self, presets_json: str, model_bundle=None, generation_data=None, sampling_preset=None):
+        # TODO: implement multi-preset iteration.
+        # For now, load the first preset and pass through any upstream bundles.
+        try:
+            names = json.loads(presets_json) if presets_json else []
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"presets_json is not valid JSON: {exc}") from exc
+
+        if not isinstance(names, list) or not names:
+            raise ValueError("presets_json must be a non-empty JSON list of preset names")
+
+        first_name = names[0].strip() if isinstance(names[0], str) else ""
+        if not first_name:
+            raise ValueError("first preset name is empty")
+
+        return _load_preset_bundle(first_name)

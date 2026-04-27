@@ -13,18 +13,24 @@ if "flakes" in folder_paths.folder_names_and_paths:
 else:
     folder_paths.folder_names_and_paths["flakes"] = ([FLAKES_DIR], {".yaml", ".yml"})
 
-from .full_flake_node import FlakeStack  # noqa: E402
+from .full_flake_node import FlakeModelPreset, FlakeStack, FlakeCombo, FlakeModelCombo  # noqa: E402
 from .flake_unpack_nodes import FlakesModel, FlakesCond, FlakesSampler  # noqa: E402
 from . import flake_server  # noqa: E402,F401 — registers aiohttp routes on import
 
 NODE_CLASS_MAPPINGS = {
+    "FlakeModelPreset": FlakeModelPreset,
     "FlakeStack": FlakeStack,
+    "FlakeCombo": FlakeCombo,
+    "FlakeModelCombo": FlakeModelCombo,
     "FlakesModel": FlakesModel,
     "FlakesCond": FlakesCond,
     "FlakesSampler": FlakesSampler,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
+    "FlakeModelPreset": "Flake Model Preset",
     "FlakeStack": "Flake Stack",
+    "FlakeCombo": "Flake Combo",
+    "FlakeModelCombo": "Flake Model Combo",
     "FlakesModel": "Flakes Model",
     "FlakesCond": "Flakes Cond",
     "FlakesSampler": "Flakes Sampler",
