@@ -946,7 +946,7 @@ function openPicker(available) {
 
 // ---------- Block ----------
 
-function makeBlock({ entry, idx, onEdit, onRemove, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const isDefault = !!entry.inline;
     const hasCover = !isDefault && entry.name;
     const block = document.createElement("div");
@@ -967,7 +967,7 @@ function makeBlock({ entry, idx, onEdit, onRemove, onDragStart, onDragOver, onDr
         block.appendChild(overlay);
     }
 
-    // Name — centered vertically over the background / overlay
+    // Name
     const fullName = isDefault ? "Default" : (entry.display_name || entry.name || "(missing)");
     const shortName = fullName.split(/[\/\\ _\-]+/).pop() || fullName;
     const nameEl = document.createElement("div");
@@ -976,18 +976,24 @@ function makeBlock({ entry, idx, onEdit, onRemove, onDragStart, onDragOver, onDr
     nameEl.textContent = shortName;
     block.appendChild(nameEl);
 
-    // Drag handle
+    // Drag handle (left edge vertical line)
     if (!isDefault) {
-        const grip = document.createElement("button");
-        grip.textContent = "\u2630";
-        grip.title = "Drag to reorder / Options";
-        grip.className = "flake-grip";
-        grip.draggable = true;
-        css(grip, "position:absolute;top:2px;left:2px;width:16px;height:16px;line-height:12px;text-align:center;font-size:8px;background:rgba(0,0,0,0.5);color:#888;border:1px solid #555;border-radius:2px;cursor:grab;padding:0;z-index:2;");
-        grip.addEventListener("dragstart", (e) => { onDragStart(e, idx, block); });
-        grip.addEventListener("dragend", () => { onDragEnd(block); });
-        grip.addEventListener("click", (e) => e.stopPropagation());
-        block.appendChild(grip);
+        const dragHandle = document.createElement("div");
+        css(dragHandle, "position:absolute;left:0;top:20%;bottom:20%;width:3px;background:#555;border-radius:2px;cursor:grab;z-index:2;");
+        dragHandle.draggable = true;
+        dragHandle.addEventListener("dragstart", (e) => { onDragStart(e, idx, block); });
+        dragHandle.addEventListener("dragend", () => { onDragEnd(block); });
+        block.appendChild(dragHandle);
+    }
+
+    // Override button
+    if (!isDefault && entry._pendingData) {
+        const ov = document.createElement("button");
+        ov.textContent = "\uD83D\uDCBE";
+        ov.title = "Save changes to disk";
+        css(ov, "position:absolute;top:2px;right:20px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(0,0,0,0.5);color:#ddd;border:1px solid #555;border-radius:2px;cursor:pointer;padding:0;z-index:2;");
+        ov.addEventListener("click", (e) => { e.stopPropagation(); onOverride(idx); });
+        block.appendChild(ov);
     }
 
     // Remove button
@@ -1000,6 +1006,91 @@ function makeBlock({ entry, idx, onEdit, onRemove, onDragStart, onDragOver, onDr
         block.appendChild(rm);
     }
 
+    // LoRA strength slider (bottom center, semi-transparent)
+    if (!isDefault && entry.has_lora) {
+        const step = 0.05;
+        const clampVal = (v) => Math.round(Math.min(2, Math.max(0, v)) / step) * step;
+        const formatVal = (v) => v.toFixed(2);
+        let current = clampVal(entry.strength != null ? entry.strength : 1);
+
+        const sliderBox = document.createElement("div");
+        css(sliderBox, "position:absolute;bottom:4px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.5);border-radius:3px;padding:2px 6px;z-index:2;cursor:ew-resize;");
+
+        const valSpan = document.createElement("span");
+        valSpan.textContent = formatVal(current);
+        css(valSpan, "font-size:10px;color:#ccc;font-variant-numeric:tabular-nums;user-select:none;");
+        sliderBox.appendChild(valSpan);
+
+        function update(v) {
+            current = clampVal(v);
+            valSpan.textContent = formatVal(current);
+            entry.strength = current;
+        }
+
+        // Click to edit
+        valSpan.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const input = document.createElement("input");
+            input.type = "number";
+            input.value = String(current);
+            input.step = String(step);
+            css(input, "font-size:10px;color:#ccc;background:transparent;border:none;outline:none;width:40px;text-align:center;");
+            valSpan.replaceWith(input);
+            input.focus();
+            input.select();
+            function commit() {
+                const v = parseFloat(input.value);
+                if (!isNaN(v)) update(v);
+                input.replaceWith(valSpan);
+                valSpan.textContent = formatVal(current);
+            }
+            input.addEventListener("blur", commit);
+            input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") { input.replaceWith(valSpan); valSpan.textContent = formatVal(current); } });
+        });
+
+        // Drag to slide
+        let dragging = false;
+        let startX = 0;
+        let startVal = 0;
+        const pxPerStep = 4;
+
+        sliderBox.addEventListener("mousedown", (e) => {
+            if (e.target === valSpan) return;
+            e.preventDefault();
+            e.stopPropagation();
+            dragging = true;
+            startX = e.clientX;
+            startVal = current;
+        });
+
+        valSpan.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dragging = true;
+            startX = e.clientX;
+            startVal = current;
+        });
+
+        window.addEventListener("mousemove", (e) => {
+            if (!dragging) return;
+            const deltaPx = e.clientX - startX;
+            const deltaSteps = Math.round(deltaPx / pxPerStep);
+            const newVal = clampVal(startVal + deltaSteps * step);
+            if (newVal !== current) {
+                current = newVal;
+                valSpan.textContent = formatVal(current);
+                entry.strength = current;
+            }
+        });
+
+        window.addEventListener("mouseup", () => {
+            if (!dragging) return;
+            dragging = false;
+        });
+
+        block.appendChild(sliderBox);
+    }
+
     block.addEventListener("dblclick", () => onEdit(idx));
     block.addEventListener("dragover", (e) => onDragOver(e, idx, block));
     block.addEventListener("dragleave", () => { block.style.outline = ""; });
@@ -1008,40 +1099,10 @@ function makeBlock({ entry, idx, onEdit, onRemove, onDragStart, onDragOver, onDr
     return block;
 }
 
-// ---- Per-instance controls (Phase 2) ----
+// ---- Per-instance controls ----
 
 function makeInstanceControls(block, entry, idx, onChanged) {
     if (entry.inline) return;
-
-    const step = 0.05;
-    const clampVal = (v) => Math.round(Math.min(2, Math.max(0, v)) / step) * step;
-    const formatVal = (v) => v.toFixed(2);
-
-    // Controls container — stack rows vertically
-    const controls = document.createElement("div");
-    css(controls, "position:absolute;bottom:4px;left:6px;right:6px;display:flex;flex-direction:column;gap:2px;z-index:2;");
-    block.appendChild(controls);
-
-    // Strength row (only if flake has a LoRA)
-    if (entry.has_lora) {
-        const strRow = document.createElement("div");
-        css(strRow, "display:flex;gap:3px;align-items:center;");
-
-        const minusBtn = makeIconBtn("\u2212", "Decrease strength",
-            (e) => { e.stopPropagation(); entry.strength = clampVal((entry.strength ?? 1) - step); valSpan.textContent = formatVal(entry.strength); onChanged(); });
-
-        const valSpan = document.createElement("span");
-        valSpan.textContent = formatVal(entry.strength != null ? entry.strength : 1);
-        css(valSpan, "flex:1;font-size:10px;text-align:center;color:#ccc;font-variant-numeric:tabular-nums;line-height:16px;");
-
-        const plusBtn = makeIconBtn("+", "Increase strength",
-            (e) => { e.stopPropagation(); entry.strength = clampVal((entry.strength ?? 1) + step); valSpan.textContent = formatVal(entry.strength); onChanged(); });
-
-        strRow.appendChild(minusBtn);
-        strRow.appendChild(valSpan);
-        strRow.appendChild(plusBtn);
-        controls.appendChild(strRow);
-    }
 
     // Options panel (hidden by default)
     const panel = document.createElement("div");
@@ -1049,14 +1110,6 @@ function makeInstanceControls(block, entry, idx, onChanged) {
     panel.addEventListener("click", (e) => e.stopPropagation());
     panel.addEventListener("dblclick", (e) => e.stopPropagation());
     block.appendChild(panel);
-
-    const grip = block.querySelector(".flake-grip");
-    if (grip) {
-        grip.addEventListener("click", (e) => {
-            e.stopPropagation();
-            toggleOptionsPanel();
-        });
-    }
 
     let optionsLoaded = false;
 
@@ -1130,6 +1183,12 @@ function makeInstanceControls(block, entry, idx, onChanged) {
             }
         }
     }
+
+    // Right-click or long-press to open options panel
+    block.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        toggleOptionsPanel();
+    });
 }
 
 function makeAddBlock({ onNew, onLoad }) {
@@ -1207,11 +1266,10 @@ function makeAddBlock({ onNew, onLoad }) {
 
 // ---------- FlakeStack widget ----------
 function setupFlakeWidget(node) {
-    const presetWidget = node.widgets?.find(w => w.name === "preset");
     const flakesHidden = node.widgets?.find(w => w.name === "flakes_json");
-    if (!presetWidget || !flakesHidden) return;
+    if (!flakesHidden) return;
 
-    // Hide flakes_json STRING widget — it's only a data channel, no visible UI
+    // Hide flakes_json STRING widget
     flakesHidden.computeSize = () => [0, -4];
     flakesHidden.type = "hidden";
     flakesHidden.hidden = true;
@@ -1226,19 +1284,9 @@ function setupFlakeWidget(node) {
     }
     function writeEntries(entries) { flakesHidden.value = JSON.stringify(entries); }
 
-    // ---- Custom DOM widget: "+" / "..." row + flakes grid ----
+    // Custom DOM widget
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
-
-    // Legacy canvas fallback: full-width button like "choose file to upload"
-    const toolbar = document.createElement("div");
-    css(toolbar, "display:none;margin:4px 0;");
-    const legacyBtn = document.createElement("button");
-    legacyBtn.textContent = "create / edit model preset";
-    css(legacyBtn, "width:100%;padding:4px 0;cursor:pointer;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;font-size:12px;text-align:center;");
-    legacyBtn.addEventListener("click", handlePresetButton);
-    toolbar.appendChild(legacyBtn);
-    container.appendChild(toolbar);
 
     // Flakes grid
     const grid = document.createElement("div");
@@ -1250,12 +1298,16 @@ function setupFlakeWidget(node) {
     function render() {
         const entries = readEntries();
         grid.replaceChildren();
+        for (const indicator of grid.querySelectorAll(".flake-drop-indicator")) {
+            indicator.remove();
+        }
         for (let i = 0; i < entries.length; i++) {
             const blk = makeBlock({
                 entry: entries[i],
                 idx: i,
                 onEdit: handleEdit,
                 onRemove: handleRemove,
+                onOverride: handleOverride,
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
                     e.dataTransfer.effectAllowed = "move";
@@ -1265,7 +1317,15 @@ function setupFlakeWidget(node) {
                     if (dragSrcIdx === null || idx === 0 || idx === dragSrcIdx) return;
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "move";
-                    el.style.outline = "2px solid #2a6acf";
+                    let indicator = grid.querySelector(".flake-drop-indicator");
+                    if (!indicator) {
+                        indicator = document.createElement("div");
+                        indicator.className = "flake-drop-indicator";
+                        css(indicator, "width:2px;background:#2a6acf;border-radius:1px;align-self:stretch;justify-self:center;");
+                    }
+                    if (grid.children[idx] !== indicator) {
+                        grid.insertBefore(indicator, grid.children[idx]);
+                    }
                 },
                 onDrop: (e, idx) => {
                     e.preventDefault();
@@ -1280,7 +1340,9 @@ function setupFlakeWidget(node) {
                 onDragEnd: (el) => {
                     el.style.opacity = "";
                     dragSrcIdx = null;
-                    for (const child of grid.children) child.style.outline = "";
+                    for (const indicator of grid.querySelectorAll(".flake-drop-indicator")) {
+                        indicator.remove();
+                    }
                 },
             });
             makeInstanceControls(blk, entries[i], i, () => writeEntries(entries));
@@ -1299,7 +1361,7 @@ function setupFlakeWidget(node) {
             data = JSON.parse(JSON.stringify(entry.content || {}));
         } else {
             try {
-                data = await fetchFlake(entry.name);
+                data = entry._pendingData ? JSON.parse(JSON.stringify(entry._pendingData)) : await fetchFlake(entry.name);
             } catch (err) {
                 window.alert(`Failed to load ${entry.name}: ${err.message || err}`);
                 return;
@@ -1325,6 +1387,11 @@ function setupFlakeWidget(node) {
             const arr = readEntries().filter((_, i) => i !== idx);
             writeEntries(ensureDefault(arr));
             render();
+        } else if (result.saved) {
+            const arr = readEntries();
+            arr[idx]._pendingData = result.data;
+            writeEntries(arr);
+            render();
         }
     }
 
@@ -1334,6 +1401,24 @@ function setupFlakeWidget(node) {
         arr.splice(idx, 1);
         writeEntries(arr);
         render();
+    }
+
+    async function handleOverride(idx) {
+        const entries = readEntries();
+        const entry = entries[idx];
+        if (!entry.name || !entry._pendingData) {
+            window.alert("No pending changes to save.");
+            return;
+        }
+        try {
+            await saveFlakeApi(entry.name, entry._pendingData);
+            const arr = readEntries();
+            delete arr[idx]._pendingData;
+            writeEntries(arr);
+            render();
+        } catch (err) {
+            window.alert(`Save failed: ${err.message || err}`);
+        }
     }
 
     async function handleNew() {
@@ -1377,349 +1462,6 @@ function setupFlakeWidget(node) {
 
     grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad });
 
-    // Initial load of preset options
-    refreshPresetOptions();
-
-    function openPresetEditModal({ mode, name, data }) {
-        return new Promise((resolve) => {
-        let { content, footer, close, handlers } = openOverlay();
-        handlers.onClose = (v) => resolve(v ?? null);
-
-            // Title
-            const title = document.createElement("h3");
-            css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
-            title.textContent = mode === "create" ? "New Model Preset" : `Edit ${name}`;
-            content.appendChild(title);
-
-            let pathInput = null;
-            if (mode === "create") {
-                content.appendChild(makeComfyLabel("Preset name"));
-                pathInput = makeComfyInput("", "e.g. sdxl-juggernaut");
-                content.appendChild(pathInput);
-            }
-
-            // Checkpoint (searchable dropdown)
-            content.appendChild(makeComfyLabel("Checkpoint"));
-            const ckptWrap = makeSearchableDropdown([], data.checkpoint || "", "Select checkpoint...");
-            content.appendChild(ckptWrap.container);
-            (async () => {
-                try {
-                    const ckpts = await fetchCheckpoints();
-                    for (const c of ckpts) ckptWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: c }));
-                } catch { /* ignore */ }
-            })();
-
-            // Clip Skip + Steps + CFG on one line
-            const sliderRow = document.createElement("div");
-            css(sliderRow, "display:flex;gap:8px;align-items:flex-start;");
-            const csWrap = document.createElement("div");
-            css(csWrap, "flex:1;min-width:0;");
-            csWrap.appendChild(makeComfyLabel("Clip Skip"));
-            const csSlider = makeComfyValueSlider(data.clip_skip ?? -2, -24, -1, 1);
-            csWrap.appendChild(csSlider);
-            sliderRow.appendChild(csWrap);
-            const stepsWrap = document.createElement("div");
-            css(stepsWrap, "flex:1;min-width:0;");
-            stepsWrap.appendChild(makeComfyLabel("Steps"));
-            const stepsSlider = makeComfyValueSlider(data.steps ?? 20, 1, 150, 1);
-            stepsWrap.appendChild(stepsSlider);
-            sliderRow.appendChild(stepsWrap);
-            const cfgWrap = document.createElement("div");
-            css(cfgWrap, "flex:1;min-width:0;");
-            cfgWrap.appendChild(makeComfyLabel("CFG"));
-            const cfgSlider = makeComfyValueSlider(data.cfg ?? 7.0, 1, 30, 0.5);
-            cfgWrap.appendChild(cfgSlider);
-            sliderRow.appendChild(cfgWrap);
-            content.appendChild(sliderRow);
-
-            // VAE (optional)
-            content.appendChild(makeComfyLabel("VAE (optional)"));
-            const vaeWrap = makeSearchableDropdown([], data.vae || "", "Select VAE...");
-            content.appendChild(vaeWrap.container);
-            (async () => {
-                try {
-                    const vaes = await fetchVaes();
-                    for (const v of vaes) vaeWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: v }));
-                } catch { /* ignore */ }
-            })();
-
-            // Sampler + Scheduler on one line
-            const sampSchedRow = document.createElement("div");
-            css(sampSchedRow, "display:flex;gap:8px;align-items:flex-start;");
-            const sampWrap = document.createElement("div");
-            css(sampWrap, "flex:1;min-width:0;");
-            sampWrap.appendChild(makeComfyLabel("Sampler"));
-            const samplerOpts = ["euler", "euler_ancestral", "heun", "heunpp2", "dpm_2", "dpm_2_ancestral", "lms", "dpm_fast", "dpm_adaptive", "dpmpp_2s_ancestral", "dpmpp_sde", "dpmpp_sde_gpu", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_2m_sde_gpu", "dpmpp_3m_sde", "dpmpp_3m_sde_gpu", "ddpm", "lcm", "ipndm", "ipndm_v", "deis", "res_multistep", "res_multistep_cfg", "res_multistep_turbo", "uni_pc", "uni_pc_bh2"].map(s => ({ value: s, label: s }));
-            const samplerDD = makeComfyDropdown(samplerOpts, data.sampler || "euler");
-            sampWrap.appendChild(samplerDD.container);
-            sampSchedRow.appendChild(sampWrap);
-            const schedWrap = document.createElement("div");
-            css(schedWrap, "flex:1;min-width:0;");
-            schedWrap.appendChild(makeComfyLabel("Scheduler"));
-            const schedOpts = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform"].map(s => ({ value: s, label: s }));
-            const schedDD = makeComfyDropdown(schedOpts, data.scheduler || "karras");
-            schedWrap.appendChild(schedDD.container);
-            sampSchedRow.appendChild(schedWrap);
-            content.appendChild(sampSchedRow);
-
-            // Resolution (plain number inputs, no sliders)
-            content.appendChild(makeComfyLabel("Resolution"));
-            const resRow = document.createElement("div");
-            css(resRow, "display:flex;gap:8px;align-items:center;");
-            const wInput = makeComfyNumberInput(data.width ?? 1024, "1024", 64);
-            const rLabel = document.createElement("span");
-            rLabel.textContent = "\u00d7";
-            css(rLabel, "color:#888;font-size:13px;");
-            const hInput = makeComfyNumberInput(data.height ?? 1024, "1024", 64);
-            resRow.appendChild(wInput);
-            resRow.appendChild(rLabel);
-            resRow.appendChild(hInput);
-            content.appendChild(resRow);
-
-            // Embeddings
-            content.appendChild(makeComfyLabel("Positive embeddings"));
-            const posEmbWrap = makeSearchableDropdown([], (data.embeddings?.positive || []).join(", "), "embedding1, embedding2...");
-            content.appendChild(posEmbWrap.container);
-            (async () => {
-                try {
-                    const embs = await fetchEmbeddings();
-                    for (const e of embs) posEmbWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: e }));
-                } catch { /* ignore */ }
-            })();
-
-            content.appendChild(makeComfyLabel("Negative embeddings"));
-            const negEmbWrap = makeSearchableDropdown([], (data.embeddings?.negative || []).join(", "), "embedding1, embedding2...");
-            content.appendChild(negEmbWrap.container);
-            (async () => {
-                try {
-                    const embs = await fetchEmbeddings();
-                    for (const e of embs) negEmbWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: e }));
-                } catch { /* ignore */ }
-            })();
-
-            // Prompts
-            const prompt = data.prompt || {};
-            content.appendChild(makeComfyLabel("Positive prompt"));
-            const posTA = makeTextarea(prompt.positive || "", "masterpiece, best quality", 3);
-            css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
-            posTA.addEventListener("focus", () => posTA.style.borderColor = "#555");
-            posTA.addEventListener("blur", () => posTA.style.borderColor = "#333");
-            content.appendChild(posTA);
-
-            content.appendChild(makeComfyLabel("Negative prompt"));
-            const negTA = makeTextarea(prompt.negative || "", "worst quality, low quality", 3);
-            css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
-            negTA.addEventListener("focus", () => negTA.style.borderColor = "#555");
-            negTA.addEventListener("blur", () => negTA.style.borderColor = "#333");
-            content.appendChild(negTA);
-
-            // Footer buttons (sticky)
-            if (mode === "edit") {
-                const delBtn = makeButton("Delete");
-                css(delBtn, delBtn.style.cssText + "background:#5a2a2a;border-color:#7a3a3a;color:#fdd;margin-right:auto;");
-                delBtn.addEventListener("click", async () => {
-                    if (!window.confirm(`Delete preset '${name}'?`)) return;
-                    try {
-                        await fetch(`/flakes/presets/delete?name=${encodeURIComponent(name)}`, { method: "DELETE" });
-                        close({ deleted: true, name });
-                    } catch (err) {
-                        window.alert(`Delete failed: ${err.message}`);
-                    }
-                });
-                footer.appendChild(delBtn);
-            }
-
-            const cancelBtn = makeButton("Cancel");
-            cancelBtn.addEventListener("click", () => close(undefined));
-            footer.appendChild(cancelBtn);
-
-            const saveBtn = makeButton("Save", true);
-            saveBtn.addEventListener("click", async () => {
-                const ordered = {
-                    checkpoint: ckptWrap.element.value,
-                    clip_skip: csSlider.getValue(),
-                    vae: vaeWrap.element.value || null,
-                    steps: stepsSlider.getValue(),
-                    cfg: cfgSlider.getValue(),
-                    sampler: samplerDD.element.value,
-                    scheduler: schedDD.element.value,
-                    width: parseInt(wInput.value) || 1024,
-                    height: parseInt(hInput.value) || 1024,
-                    prompt: { positive: posTA.value, negative: negTA.value },
-                    embeddings: {
-                        positive: posEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),
-                        negative: negEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),
-                    },
-                };
-
-                try {
-                    if (mode === "create") {
-                        const pName = (pathInput.value || "").trim();
-                        if (!pName) { window.alert("Preset name is required"); return; }
-                        await fetch("/flakes/presets/save", {
-                            method: "PUT",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ name: pName, data: ordered }),
-                        });
-                        close({ created: true, name: pName });
-                    } else {
-                        await fetch("/flakes/presets/save", {
-                            method: "PUT",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ name, data: ordered }),
-                        });
-                        close({ saved: true, name });
-                    }
-                } catch (err) {
-                    window.alert(`Save failed: ${err.message || err}`);
-                }
-            });
-            footer.appendChild(saveBtn);
-
-            setTimeout(() => { (pathInput || ckptWrap.element).focus(); }, 0);
-        });
-    }
-
-    async function handlePresetButton(e) {
-        if (e) e.stopPropagation();
-        const current = presetWidget.value || "";
-        const isPlaceholder = !current || current === "Select a preset..." || current === "No model preset is selected";
-
-        if (isPlaceholder) {
-            const result = await openPresetEditModal({
-                mode: "create",
-                data: {
-                    checkpoint: "",
-                    clip_skip: -2,
-                    vae: "",
-                    steps: 20,
-                    cfg: 7.0,
-                    sampler: "euler",
-                    scheduler: "karras",
-                    width: 1024,
-                    height: 1024,
-                    prompt: { positive: "", negative: "" },
-                    embeddings: [],
-                },
-            });
-            if (result) refreshPresetOptions();
-        } else {
-            let data;
-            try {
-                data = await fetchPreset(current);
-            } catch (err) {
-                window.alert(`Failed to load preset '${current}': ${err.message || err}`);
-                return;
-            }
-            const result = await openPresetEditModal({
-                mode: "edit",
-                name: current,
-                data,
-            });
-            if (result) refreshPresetOptions();
-        }
-    }
-    legacyBtn.addEventListener("click", handlePresetButton);
-
-    async function refreshPresetOptions() {
-        try {
-            const r = await fetch("/flakes/presets");
-            const d = await r.json();
-            const names = d.presets || [];
-            const newValues = names.length ? ["Select a preset...", ...names] : ["No model preset is selected"];
-            // Update ALL FlakeStack preset widgets globally
-            for (const n of app.graph.nodes) {
-                if (n.type !== "FlakeStack") continue;
-                const pw = n.widgets?.find(w => w.name === "preset");
-                if (pw && pw.options) pw.options.values = newValues;
-            }
-        } catch { /* ignore */ }
-    }
-
-    function addPresetButtonToParent(parent) {
-        if (!parent || parent.querySelector(".flake-preset-new-btn")) return false;
-
-        const btn = document.createElement("button");
-        btn.className = "flake-preset-new-btn";
-        btn.title = "Create or edit model preset";
-        btn.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
-                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 5v14M5 12h14"/>
-            </svg>`;
-        // Match ComfyUI widget style: same height as widget, left border separator,
-        // rounded right corners, widget background color, centered icon
-        css(btn, `
-            display:inline-flex;align-items:center;justify-content:center;
-            width:32px;height:32px;padding:0;margin:0;
-            background:#1f1f1f;color:#aaa;
-            border:none;border-left:1px solid #444;
-            border-radius:0 6px 6px 0;
-            cursor:pointer;flex-shrink:0;
-            transition:background 0.15s ease;
-        `);
-        btn.addEventListener("mouseenter", () => { btn.style.background = "#2a2a2a"; });
-        btn.addEventListener("mouseleave", () => { btn.style.background = "#1f1f1f"; });
-        btn.addEventListener("click", handlePresetButton);
-        btn.addEventListener("dblclick", (e) => e.stopPropagation());
-        btn.addEventListener("mousedown", (e) => e.stopPropagation());
-
-        parent.style.display = "flex";
-        parent.style.alignItems = "center";
-        parent.appendChild(btn);
-        return true;
-    }
-
-    function attachPresetButton() {
-        let attachedAny = false;
-
-        // Strategy 1: widget.element / inputEl (legacy canvas DOM)
-        let presetEl = presetWidget.element || presetWidget.inputEl;
-        if (presetEl?.parentElement) {
-            if (addPresetButtonToParent(presetEl.parentElement)) attachedAny = true;
-        }
-
-        // Strategy 2: Node 2.0 PrimeVue Select — search by aria-label
-        const byAria = document.querySelectorAll('[aria-label="preset"]');
-        for (const el of byAria) {
-            const parent = el.parentElement;
-            if (parent && addPresetButtonToParent(parent)) attachedAny = true;
-        }
-
-        // Strategy 3: Legacy/native <select> elements
-        const allSelects = document.querySelectorAll("select");
-        for (const sel of allSelects) {
-            const firstOpt = sel.options[0];
-            if (!firstOpt) continue;
-            const text = firstOpt.text || firstOpt.label || firstOpt.value || "";
-            if (!text.includes("Select a preset") && !text.includes("No model preset")) continue;
-            if (sel.parentElement && addPresetButtonToParent(sel.parentElement)) attachedAny = true;
-        }
-
-        return attachedAny;
-    }
-
-    // Attach immediately, then keep checking every 500ms so it survives Node 2.0 toggles
-    function updateToolbarVisibility() {
-        const hasBtn = !!document.querySelector(".flake-preset-new-btn");
-        toolbar.style.display = hasBtn ? "none" : "flex";
-    }
-
-    attachPresetButton();
-    updateToolbarVisibility();
-
-    const attachInterval = setInterval(() => {
-        attachPresetButton();
-        updateToolbarVisibility();
-    }, 500);
-
-    // Stop polling when the node is removed from the graph
-    const origOnRemoved = node.onRemoved;
-    node.onRemoved = function () {
-        clearInterval(attachInterval);
-        return origOnRemoved?.apply(this, arguments);
-    };
-
     // ---- Widget registration ----
     node._flakes_render = render;
     const flakeWidget = node.addDOMWidget("flakes_ui", "div", container, { serialize: false, margin: 4 });
@@ -1729,6 +1471,334 @@ function setupFlakeWidget(node) {
     };
     writeEntries(readEntries());
     render();
+}
+
+// ---------- Preset helpers (extracted for FlakeModelPreset) ----------
+
+async function refreshPresetOptions() {
+    try {
+        const r = await fetch("/flakes/presets");
+        const d = await r.json();
+        const names = d.presets || [];
+        const newValues = names.length ? ["Select a preset...", ...names] : ["No model preset is selected"];
+        for (const n of app.graph.nodes) {
+            if (n.type !== "FlakeModelPreset") continue;
+            const pw = n.widgets?.find(w => w.name === "preset");
+            if (pw && pw.options) pw.options.values = newValues;
+        }
+    } catch { /* ignore */ }
+}
+
+function addPresetButtonToParent(parent) {
+    if (!parent || parent.querySelector(".flake-preset-new-btn")) return false;
+
+    const btn = document.createElement("button");
+    btn.className = "flake-preset-new-btn";
+    btn.title = "Create or edit model preset";
+    btn.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5v14M5 12h14"/>
+        </svg>`;
+    css(btn, `
+        display:inline-flex;align-items:center;justify-content:center;
+        width:32px;height:32px;padding:0;margin:0;
+        background:#1f1f1f;color:#aaa;
+        border:none;border-left:1px solid #444;
+        border-radius:0 6px 6px 0;
+        cursor:pointer;flex-shrink:0;
+        transition:background 0.15s ease;
+    `);
+    btn.addEventListener("mouseenter", () => { btn.style.background = "#2a2a2a"; });
+    btn.addEventListener("mouseleave", () => { btn.style.background = "#1f1f1f"; });
+    btn.addEventListener("click", handlePresetButton);
+    btn.addEventListener("dblclick", (e) => e.stopPropagation());
+    btn.addEventListener("mousedown", (e) => e.stopPropagation());
+
+    parent.style.display = "flex";
+    parent.style.alignItems = "center";
+    parent.appendChild(btn);
+    return true;
+}
+
+function attachPresetButton(node) {
+    let attachedAny = false;
+    const presetWidget = node.widgets?.find(w => w.name === "preset");
+    if (!presetWidget) return false;
+
+    let presetEl = presetWidget.element || presetWidget.inputEl;
+    if (presetEl?.parentElement) {
+        if (addPresetButtonToParent(presetEl.parentElement)) attachedAny = true;
+    }
+    const byAria = document.querySelectorAll('[aria-label="preset"]');
+    for (const el of byAria) {
+        const parent = el.parentElement;
+        if (parent && addPresetButtonToParent(parent)) attachedAny = true;
+    }
+    const allSelects = document.querySelectorAll("select");
+    for (const sel of allSelects) {
+        const firstOpt = sel.options[0];
+        if (!firstOpt) continue;
+        const text = firstOpt.text || firstOpt.label || firstOpt.value || "";
+        if (!text.includes("Select a preset") && !text.includes("No model preset")) continue;
+        if (sel.parentElement && addPresetButtonToParent(sel.parentElement)) attachedAny = true;
+    }
+    return attachedAny;
+}
+
+async function handlePresetButton(e) {
+    if (e) e.stopPropagation();
+    let current = "";
+    for (const n of app.graph.nodes) {
+        if (n.type !== "FlakeModelPreset") continue;
+        const pw = n.widgets?.find(w => w.name === "preset");
+        if (pw) { current = pw.value || ""; break; }
+    }
+    const isPlaceholder = !current || current === "Select a preset..." || current === "No model preset is selected";
+
+    if (isPlaceholder) {
+        const result = await openPresetEditModal({
+            mode: "create",
+            data: {
+                checkpoint: "",
+                clip_skip: -2,
+                vae: "",
+                steps: 20,
+                cfg: 7.0,
+                sampler: "euler",
+                scheduler: "karras",
+                width: 1024,
+                height: 1024,
+                prompt: { positive: "", negative: "" },
+                embeddings: [],
+            },
+        });
+        if (result) refreshPresetOptions();
+    } else {
+        let data;
+        try {
+            data = await fetchPreset(current);
+        } catch (err) {
+            window.alert(`Failed to load preset '${current}': ${err.message || err}`);
+            return;
+        }
+        const result = await openPresetEditModal({
+            mode: "edit",
+            name: current,
+            data,
+        });
+        if (result) refreshPresetOptions();
+    }
+}
+
+function openPresetEditModal({ mode, name, data }) {
+    return new Promise((resolve) => {
+        let { content, footer, close, handlers } = openOverlay();
+        handlers.onClose = (v) => resolve(v ?? null);
+
+        const title = document.createElement("h3");
+        css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
+        title.textContent = mode === "create" ? "New Model Preset" : `Edit ${name}`;
+        content.appendChild(title);
+
+        let pathInput = null;
+        if (mode === "create") {
+            content.appendChild(makeComfyLabel("Preset name"));
+            pathInput = makeComfyInput("", "e.g. sdxl-juggernaut");
+            content.appendChild(pathInput);
+        }
+
+        content.appendChild(makeComfyLabel("Checkpoint"));
+        const ckptWrap = makeSearchableDropdown([], data.checkpoint || "", "Select checkpoint...");
+        content.appendChild(ckptWrap.container);
+        (async () => {
+            try {
+                const ckpts = await fetchCheckpoints();
+                for (const c of ckpts) ckptWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: c }));
+            } catch { /* ignore */ }
+        })();
+
+        const sliderRow = document.createElement("div");
+        css(sliderRow, "display:flex;gap:8px;align-items:flex-start;");
+        const csWrap = document.createElement("div");
+        css(csWrap, "flex:1;min-width:0;");
+        csWrap.appendChild(makeComfyLabel("Clip Skip"));
+        const csSlider = makeComfyValueSlider(data.clip_skip ?? -2, -24, -1, 1);
+        csWrap.appendChild(csSlider);
+        sliderRow.appendChild(csWrap);
+        const stepsWrap = document.createElement("div");
+        css(stepsWrap, "flex:1;min-width:0;");
+        stepsWrap.appendChild(makeComfyLabel("Steps"));
+        const stepsSlider = makeComfyValueSlider(data.steps ?? 20, 1, 150, 1);
+        stepsWrap.appendChild(stepsSlider);
+        sliderRow.appendChild(stepsWrap);
+        const cfgWrap = document.createElement("div");
+        css(cfgWrap, "flex:1;min-width:0;");
+        cfgWrap.appendChild(makeComfyLabel("CFG"));
+        const cfgSlider = makeComfyValueSlider(data.cfg ?? 7.0, 1, 30, 0.5);
+        cfgWrap.appendChild(cfgSlider);
+        sliderRow.appendChild(cfgWrap);
+        content.appendChild(sliderRow);
+
+        content.appendChild(makeComfyLabel("VAE (optional)"));
+        const vaeWrap = makeSearchableDropdown([], data.vae || "", "Select VAE...");
+        content.appendChild(vaeWrap.container);
+        (async () => {
+            try {
+                const vaes = await fetchVaes();
+                for (const v of vaes) vaeWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: v }));
+            } catch { /* ignore */ }
+        })();
+
+        const sampSchedRow = document.createElement("div");
+        css(sampSchedRow, "display:flex;gap:8px;align-items:flex-start;");
+        const sampWrap = document.createElement("div");
+        css(sampWrap, "flex:1;min-width:0;");
+        sampWrap.appendChild(makeComfyLabel("Sampler"));
+        const samplerOpts = ["euler", "euler_ancestral", "heun", "heunpp2", "dpm_2", "dpm_2_ancestral", "lms", "dpm_fast", "dpm_adaptive", "dpmpp_2s_ancestral", "dpmpp_sde", "dpmpp_sde_gpu", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_2m_sde_gpu", "dpmpp_3m_sde", "dpmpp_3m_sde_gpu", "ddpm", "lcm", "ipndm", "ipndm_v", "deis", "res_multistep", "res_multistep_cfg", "res_multistep_turbo", "uni_pc", "uni_pc_bh2"].map(s => ({ value: s, label: s }));
+        const samplerDD = makeComfyDropdown(samplerOpts, data.sampler || "euler");
+        sampWrap.appendChild(samplerDD.container);
+        sampSchedRow.appendChild(sampWrap);
+        const schedWrap = document.createElement("div");
+        css(schedWrap, "flex:1;min-width:0;");
+        schedWrap.appendChild(makeComfyLabel("Scheduler"));
+        const schedOpts = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform"].map(s => ({ value: s, label: s }));
+        const schedDD = makeComfyDropdown(schedOpts, data.scheduler || "karras");
+        schedWrap.appendChild(schedDD.container);
+        sampSchedRow.appendChild(schedWrap);
+        content.appendChild(sampSchedRow);
+
+        content.appendChild(makeComfyLabel("Resolution"));
+        const resRow = document.createElement("div");
+        css(resRow, "display:flex;gap:8px;align-items:center;");
+        const wInput = makeComfyNumberInput(data.width ?? 1024, "1024", 64);
+        const rLabel = document.createElement("span");
+        rLabel.textContent = "\u00d7";
+        css(rLabel, "color:#888;font-size:13px;");
+        const hInput = makeComfyNumberInput(data.height ?? 1024, "1024", 64);
+        resRow.appendChild(wInput);
+        resRow.appendChild(rLabel);
+        resRow.appendChild(hInput);
+        content.appendChild(resRow);
+
+        content.appendChild(makeComfyLabel("Positive embeddings"));
+        const posEmbWrap = makeSearchableDropdown([], (data.embeddings?.positive || []).join(", "), "embedding1, embedding2...");
+        content.appendChild(posEmbWrap.container);
+        (async () => {
+            try {
+                const embs = await fetchEmbeddings();
+                for (const e of embs) posEmbWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: e }));
+            } catch { /* ignore */ }
+        })();
+
+        content.appendChild(makeComfyLabel("Negative embeddings"));
+        const negEmbWrap = makeSearchableDropdown([], (data.embeddings?.negative || []).join(", "), "embedding1, embedding2...");
+        content.appendChild(negEmbWrap.container);
+        (async () => {
+            try {
+                const embs = await fetchEmbeddings();
+                for (const e of embs) negEmbWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: e }));
+            } catch { /* ignore */ }
+        })();
+
+        const prompt = data.prompt || {};
+        content.appendChild(makeComfyLabel("Positive prompt"));
+        const posTA = makeTextarea(prompt.positive || "", "masterpiece, best quality", 3);
+        css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+        posTA.addEventListener("focus", () => posTA.style.borderColor = "#555");
+        posTA.addEventListener("blur", () => posTA.style.borderColor = "#333");
+        content.appendChild(posTA);
+
+        content.appendChild(makeComfyLabel("Negative prompt"));
+        const negTA = makeTextarea(prompt.negative || "", "worst quality, low quality", 3);
+        css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+        negTA.addEventListener("focus", () => negTA.style.borderColor = "#555");
+        negTA.addEventListener("blur", () => negTA.style.borderColor = "#333");
+        content.appendChild(negTA);
+
+        if (mode === "edit") {
+            const delBtn = makeButton("Delete");
+            css(delBtn, delBtn.style.cssText + "background:#5a2a2a;border-color:#7a3a3a;color:#fdd;margin-right:auto;");
+            delBtn.addEventListener("click", async () => {
+                if (!window.confirm(`Delete preset '${name}'?`)) return;
+                try {
+                    await fetch(`/flakes/presets/delete?name=${encodeURIComponent(name)}`, { method: "DELETE" });
+                    close({ deleted: true, name });
+                } catch (err) {
+                    window.alert(`Delete failed: ${err.message}`);
+                }
+            });
+            footer.appendChild(delBtn);
+        }
+
+        const cancelBtn = makeButton("Cancel");
+        cancelBtn.addEventListener("click", () => close(undefined));
+        footer.appendChild(cancelBtn);
+
+        const saveBtn = makeButton("Save", true);
+        saveBtn.addEventListener("click", async () => {
+            const ordered = {
+                checkpoint: ckptWrap.element.value,
+                clip_skip: csSlider.getValue(),
+                vae: vaeWrap.element.value || null,
+                steps: stepsSlider.getValue(),
+                cfg: cfgSlider.getValue(),
+                sampler: samplerDD.element.value,
+                scheduler: schedDD.element.value,
+                width: parseInt(wInput.value) || 1024,
+                height: parseInt(hInput.value) || 1024,
+                prompt: { positive: posTA.value, negative: negTA.value },
+                embeddings: {
+                    positive: posEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),
+                    negative: negEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),
+                },
+            };
+
+            try {
+                if (mode === "create") {
+                    const pName = (pathInput.value || "").trim();
+                    if (!pName) { window.alert("Preset name is required"); return; }
+                    await fetch("/flakes/presets/save", {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: pName, data: ordered }),
+                    });
+                    close({ created: true, name: pName });
+                } else {
+                    await fetch("/flakes/presets/save", {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name, data: ordered }),
+                    });
+                    close({ saved: true, name });
+                }
+            } catch (err) {
+                window.alert(`Save failed: ${err.message || err}`);
+            }
+        });
+        footer.appendChild(saveBtn);
+
+        setTimeout(() => { (pathInput || ckptWrap.element).focus(); }, 0);
+    });
+}
+
+function setupFlakeModelPresetWidget(node) {
+    const presetWidget = node.widgets?.find(w => w.name === "preset");
+    if (!presetWidget) return;
+
+    attachPresetButton(node);
+
+    const attachInterval = setInterval(() => {
+        attachPresetButton(node);
+    }, 500);
+
+    const origOnRemoved = node.onRemoved;
+    node.onRemoved = function () {
+        clearInterval(attachInterval);
+        return origOnRemoved?.apply(this, arguments);
+    };
+
+    node._preset_render = () => {};
 }
 
 // ---------- Extension registration ----------
@@ -1748,6 +1818,21 @@ app.registerExtension({
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
                 this._flakes_render?.();
+                return r;
+            };
+        }
+        if (nodeData.name === "FlakeModelPreset") {
+            const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                const r = origOnNodeCreated?.apply(this, arguments);
+                setupFlakeModelPresetWidget(this);
+                return r;
+            };
+
+            const origOnConfigure = nodeType.prototype.onConfigure;
+            nodeType.prototype.onConfigure = function () {
+                const r = origOnConfigure?.apply(this, arguments);
+                this._preset_render?.();
                 return r;
             };
         }
