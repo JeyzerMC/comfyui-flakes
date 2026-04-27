@@ -14,16 +14,17 @@ from . import flake_io
 
 def _resolve_lora_name(stem_or_name: str) -> str:
     available = folder_paths.get_filename_list("loras")
-    available_set = set(available)
+    # Map normalized (forward-slash) paths back to original paths
+    available_norm = {p.replace("\\", "/"): p for p in available}
 
     norm = stem_or_name.replace("\\", "/")
-    if norm in available_set:
-        return norm
+    if norm in available_norm:
+        return available_norm[norm]
 
-    for candidate in available:
-        cand_norm = candidate.replace("\\", "/")
+    norm_stem, _ = os.path.splitext(norm)
+    for cand_norm, candidate in available_norm.items():
         stem, _ = os.path.splitext(cand_norm)
-        if stem == norm:
+        if stem == norm_stem:
             return candidate
 
     raise FileNotFoundError(f"LoRA '{stem_or_name}' not found in models/loras/")
@@ -81,7 +82,7 @@ class FlakeStack:
             )
 
         embedding_dir = folder_paths.get_folder_paths("embeddings")
-        model, clip, vae = comfy.sd.load_checkpoint_guess_config(
+        model, clip, vae, _ = comfy.sd.load_checkpoint_guess_config(
             ckpt_path,
             output_vae=True,
             output_clip=True,
