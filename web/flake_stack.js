@@ -522,15 +522,20 @@ function openEditModal({ mode, name, data, dirs }) {
             `Edit ${name}`;
         content.appendChild(title);
 
-        // ---- Name (display name for grid) ----
-        content.appendChild(makeComfyLabel("Display name"));
-        const displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
-        content.appendChild(displayNameInput);
+        // ---- Top section: name, path, cover image ----
+        const topSection = document.createElement("div");
+        css(topSection, "display:flex;gap:12px;align-items:flex-start;");
 
-        // ---- Path (create mode) ----
+        const leftCol = document.createElement("div");
+        css(leftCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+
+        leftCol.appendChild(makeComfyLabel("Display name"));
+        const displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
+        leftCol.appendChild(displayNameInput);
+
         let pathInput = null;
         if (mode === "create") {
-            content.appendChild(makeComfyLabel("Path"));
+            leftCol.appendChild(makeComfyLabel("Path"));
             pathInput = makeComfyInput("", "characters/musashi");
             const listId = `flake-dirs-${Math.random().toString(36).slice(2)}`;
             const dlist = document.createElement("datalist");
@@ -541,313 +546,547 @@ function openEditModal({ mode, name, data, dirs }) {
                 dlist.appendChild(o);
             }
             pathInput.setAttribute("list", listId);
-            content.appendChild(dlist);
-            content.appendChild(pathInput);
+            leftCol.appendChild(dlist);
+            leftCol.appendChild(pathInput);
         }
+        topSection.appendChild(leftCol);
 
-        // ---- Prompts ----
-        const prompt = data.prompt || {};
-        content.appendChild(makeComfyLabel("Positive prompt"));
-        const posTA = makeTextarea(prompt.positive || "", "joined with ' BREAK ' between flakes", 4);
-        css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
-        posTA.addEventListener("focus", () => posTA.style.borderColor = "#555");
-        posTA.addEventListener("blur", () => posTA.style.borderColor = "#333");
-        content.appendChild(posTA);
-
-        content.appendChild(makeComfyLabel("Negative prompt"));
-        const negTA = makeTextarea(prompt.negative || "", "joined with ', ' between flakes", 3);
-        css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
-        negTA.addEventListener("focus", () => negTA.style.borderColor = "#555");
-        negTA.addEventListener("blur", () => negTA.style.borderColor = "#333");
-        content.appendChild(negTA);
-
-        // ---- LoRA + strength on one line ----
-        const loraRow = document.createElement("div");
-        css(loraRow, "display:flex;gap:8px;align-items:flex-start;");
-        const loraCol = document.createElement("div");
-        css(loraCol, "flex:3;min-width:0;");
-        loraCol.appendChild(makeComfyLabel("LoRA"));
-        const loraWrap = makeSearchableDropdown([], data.path || "", "Select LoRA...");
-        loraCol.appendChild(loraWrap.container);
-        (async () => {
-            try {
-                const loras = await fetchLoras();
-                for (const l of loras) loraWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: l }));
-            } catch { /* ignore */ }
-        })();
-        loraRow.appendChild(loraCol);
-        const strCol = document.createElement("div");
-        css(strCol, "flex:2;min-width:0;");
-        strCol.appendChild(makeComfyLabel("Strength"));
-        const loraSlider = makeComfyValueSlider(data.strength ?? 1.0, 0, 2, 0.05);
-        strCol.appendChild(loraSlider);
-        loraRow.appendChild(strCol);
-        content.appendChild(loraRow);
-
-        // ---- Resolution ----
-        content.appendChild(makeComfyLabel("Resolution"));
-        const resBox = document.createElement("div");
-        css(resBox, "display:flex;gap:8px;align-items:center;");
-        const resWidth = makeComfyNumberInput(data.resolution?.[0] || "", "width", 64);
-        const resLabel = document.createElement("span");
-        resLabel.textContent = "\u00d7";
-        css(resLabel, "color:#888;font-size:13px;");
-        const resHeight = makeComfyNumberInput(data.resolution?.[1] || "", "height", 64);
-        resBox.appendChild(resWidth);
-        resBox.appendChild(resLabel);
-        resBox.appendChild(resHeight);
-        content.appendChild(resBox);
-
-        // ---- ControlNets ----
-        content.appendChild(makeComfyLabel("ControlNets"));
-        const cnsBox = document.createElement("div");
-        css(cnsBox, "display:flex;flex-direction:column;gap:6px;");
-        content.appendChild(cnsBox);
-
-        const cnsState = JSON.parse(JSON.stringify(data.controlnets || []));
-        if (!Array.isArray(cnsState._)) {
-            const arr = Array.isArray(cnsState) ? cnsState : [];
-            cnsState._ = arr;
-        }
-
-        function renderControlNets() {
-            cnsBox.replaceChildren();
-            const arr = cnsState._ || [];
-
-            for (let i = 0; i < arr.length; i++) {
-                const cn = arr[i];
-                const card = document.createElement("div");
-                css(card, "background:#1a1a1a;padding:10px;border-radius:6px;display:flex;flex-direction:column;gap:6px;border:1px solid #2a2a2a;");
-
-                const topRow = document.createElement("div");
-                css(topRow, "display:flex;gap:6px;align-items:center;");
-
-                const typeInput = makeComfyInput(cn.type || "", "type (e.g. openpose)");
-                typeInput.style.flex = "1";
-                typeInput.addEventListener("change", () => { arr[i].type = typeInput.value; });
-                topRow.appendChild(typeInput);
-
-                const modelInput = makeComfyInput(cn.model || cn.model_name || "", "model file");
-                const cnModelListId = `cnm-${Math.random().toString(36).slice(2)}`;
-                const cnModelList = document.createElement("datalist");
-                cnModelList.id = cnModelListId;
-                modelInput.setAttribute("list", cnModelListId);
-                modelInput.addEventListener("change", () => { arr[i].model = modelInput.value; });
-                modelInput.style.flex = "2";
-                topRow.appendChild(modelInput);
-                topRow.appendChild(cnModelList);
-                (async () => {
-                    try {
-                        const cns = await fetchCnModels();
-                        for (const c of cns) {
-                            const o = document.createElement("option"); o.value = c; cnModelList.appendChild(o);
-                        }
-                    } catch { /* ignore */ }
-                })();
-
-                const removeBtn = makeSmallButton("✕");
-                removeBtn.addEventListener("click", () => {
-                    arr.splice(i, 1);
-                    renderControlNets();
-                });
-                topRow.appendChild(removeBtn);
-                card.appendChild(topRow);
-
-                const midRow = document.createElement("div");
-                css(midRow, "display:flex;gap:6px;align-items:center;");
-                const imgInput = makeComfyInput(cn.image || cn.image_name || "", "input image");
-                const imgListId = `img-list-${Math.random().toString(36).slice(2)}`;
-                const imgList = document.createElement("datalist");
-                imgList.id = imgListId;
-                imgInput.setAttribute("list", imgListId);
-                imgInput.addEventListener("change", () => { arr[i].image = imgInput.value; });
-                imgInput.style.flex = "1";
-                midRow.appendChild(imgInput);
-                midRow.appendChild(imgList);
-                (async () => {
-                    try {
-                        const inputs = await fetchInputs();
-                        for (const inp of inputs) {
-                            const o = document.createElement("option"); o.value = inp; imgList.appendChild(o);
-                        }
-                    } catch { /* ignore */ }
-                })();
-                card.appendChild(midRow);
-
-                const botRow = document.createElement("div");
-                css(botRow, "display:flex;gap:6px;align-items:center;");
-                const strSlider = makeComfyValueSlider(cn.strength ?? 1.0, 0, 2, 0.05);
-                botRow.appendChild(strSlider);
-                const startSlider = makeComfyValueSlider(cn.start_percent ?? 0, 0, 1, 0.05);
-                botRow.appendChild(startSlider);
-                const endSlider = makeComfyValueSlider(cn.end_percent ?? 1, 0, 1, 0.05);
-                botRow.appendChild(endSlider);
-
-                card.appendChild(botRow);
-                cnsBox.appendChild(card);
-            }
-
-            const addBtn = makeSmallButton("+ controlnet");
-            addBtn.addEventListener("click", () => {
-                arr.push({ type: "", model: "", image: "", strength: 1.0, start_percent: 0, end_percent: 1 });
-                renderControlNets();
-            });
-            cnsBox.appendChild(addBtn);
-        }
-        renderControlNets();
-
-        // ---- Cover image ----
+        let coverFile = null;
+        let coverImg = null;
         if (mode === "edit" || mode === "create") {
-            content.appendChild(makeComfyLabel("Cover image"));
-            const coverRow = document.createElement("div");
-            css(coverRow, "display:flex;gap:8px;align-items:center;");
+            const coverWrap = document.createElement("div");
+            css(coverWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
 
-            const coverPreview = document.createElement("img");
-            css(coverPreview, "width:64px;height:64px;border-radius:6px;object-fit:cover;background:#1a1a1a;border:1px solid #333;");
-            if (mode === "edit" && name) {
-                coverPreview.src = getCoverUrl(name);
-            }
-            coverRow.appendChild(coverPreview);
+            const coverBox = document.createElement("div");
+            css(coverBox, "width:80px;height:80px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
+
+            coverImg = document.createElement("img");
+            css(coverImg, "width:100%;height:100%;object-fit:cover;display:none;");
+            coverBox.appendChild(coverImg);
+
+            const coverLabel = document.createElement("span");
+            coverLabel.textContent = "image";
+            css(coverLabel, "font-size:10px;color:#666;pointer-events:none;");
+            coverBox.appendChild(coverLabel);
 
             const coverInput = document.createElement("input");
             coverInput.type = "file";
             coverInput.accept = ".png,.jpg,.jpeg,.webp,.gif";
-            css(coverInput, "font-size:12px;color:#ddd;");
+            coverInput.style.display = "none";
+
+            function updateCoverPreview(src) {
+                if (src) {
+                    coverImg.src = src;
+                    coverImg.style.display = "block";
+                    coverLabel.style.display = "none";
+                } else {
+                    coverImg.style.display = "none";
+                    coverLabel.style.display = "block";
+                }
+            }
+
+            // Default cover for edit mode
+            if (mode === "edit" && name) {
+                updateCoverPreview(getCoverUrl(name));
+            }
+
+            coverBox.addEventListener("click", () => coverInput.click());
             coverInput.addEventListener("change", () => {
                 const file = coverInput.files?.[0];
                 if (file) {
+                    coverFile = file;
                     const reader = new FileReader();
-                    reader.onload = () => { coverPreview.src = reader.result; };
+                    reader.onload = () => updateCoverPreview(reader.result);
                     reader.readAsDataURL(file);
                 }
             });
-            coverRow.appendChild(coverInput);
 
-            content.appendChild(coverRow);
+            coverWrap.appendChild(coverBox);
+            coverWrap.appendChild(coverInput);
+            topSection.appendChild(coverWrap);
 
-            let _coverFile = null;
-            coverInput.addEventListener("change", () => { _coverFile = coverInput.files?.[0]; });
+            // Default cover when path changes in create mode
+            if (mode === "create" && pathInput) {
+                pathInput.addEventListener("input", () => {
+                    const p = pathInput.value.trim();
+                    if (p && !coverFile) {
+                        const pngPath = p.replace(/\.ya?ml$/i, ".png");
+                        // We can't know if it exists, but we can set the src anyway
+                        updateCoverPreview(getCoverUrl(pngPath));
+                    }
+                });
+            }
 
             const origClose = close;
             close = async (value) => {
-                if (value && (value.created || value.saved) && _coverFile) {
+                if (value && (value.created || value.saved) && coverFile) {
                     try {
-                        await uploadCover(value.name, _coverFile);
+                        await uploadCover(value.name, coverFile);
                     } catch { /* ignore */ }
                 }
                 origClose(value);
             };
         }
+        content.appendChild(topSection);
 
-        // ---- Option groups ----
-        content.appendChild(makeComfyLabel("Option groups"));
-        const optsBox = document.createElement("div");
-        css(optsBox, "display:flex;flex-direction:column;gap:8px;");
-        content.appendChild(optsBox);
+        // ---- Separator ----
+        const sep = document.createElement("div");
+        css(sep, "border-top:1px solid #333;margin:12px 0;");
+        content.appendChild(sep);
 
-        const optionsState = JSON.parse(JSON.stringify(data.options || {}));
+        // ---- Optional fields state ----
+        const fieldState = {
+            lora: data.path ? { path: data.path, strength: data.strength ?? 1.0 } : null,
+            prompt: (data.prompt?.positive != null || data.prompt?.negative != null)
+                ? { positive: data.prompt?.positive ?? null, negative: data.prompt?.negative ?? null }
+                : null,
+            resolution: data.resolution ? [...data.resolution] : null,
+            controlnets: JSON.parse(JSON.stringify(data.controlnets || [])),
+            options: JSON.parse(JSON.stringify(data.options || {})),
+        };
+        if (!Array.isArray(fieldState.controlnets._)) {
+            const arr = Array.isArray(fieldState.controlnets) ? [...fieldState.controlnets] : [];
+            fieldState.controlnets = { _: arr };
+        }
 
-        function renderOptions() {
-            optsBox.replaceChildren();
+        const activeFields = [];
+        if (fieldState.lora) activeFields.push("lora");
+        if (fieldState.prompt) activeFields.push("prompt");
+        if (fieldState.resolution) activeFields.push("resolution");
+        if (fieldState.controlnets._.length > 0) activeFields.push("controlnets");
+        if (Object.keys(fieldState.options).length > 0) activeFields.push("options");
 
-            for (const groupName of Object.keys(optionsState)) {
-                const groupCard = document.createElement("div");
-                css(groupCard, "background:#1a1a1a;padding:10px;border-radius:6px;display:flex;flex-direction:column;gap:6px;border:1px solid #2a2a2a;");
+        const optionalBox = document.createElement("div");
+        css(optionalBox, "display:flex;flex-direction:column;gap:8px;");
+        content.appendChild(optionalBox);
 
-                const headerRow = document.createElement("div");
-                css(headerRow, "display:flex;gap:6px;align-items:center;");
-                const groupNameInput = makeComfyInput(groupName, "group name");
-                groupNameInput.style.flex = "1";
-                const removeGroupBtn = makeSmallButton("✕ group");
-                groupNameInput.addEventListener("change", () => {
-                    const newName = groupNameInput.value.trim();
-                    if (!newName || newName === groupName) return;
-                    if (optionsState[newName]) { groupNameInput.value = groupName; return; }
-                    optionsState[newName] = optionsState[groupName];
-                    delete optionsState[groupName];
-                    renderOptions();
+        function renderFields() {
+            optionalBox.replaceChildren();
+
+            for (const fieldType of activeFields) {
+                const fieldWrap = document.createElement("div");
+                css(fieldWrap, "background:#1a1a1a;padding:10px;border-radius:6px;border:1px solid #2a2a2a;display:flex;flex-direction:column;gap:6px;");
+
+                const header = document.createElement("div");
+                css(header, "display:flex;gap:6px;align-items:center;");
+
+                const dragIcon = document.createElement("span");
+                dragIcon.textContent = "\u2630";
+                css(dragIcon, "cursor:grab;color:#666;font-size:12px;");
+                header.appendChild(dragIcon);
+
+                const fieldTitle = document.createElement("span");
+                fieldTitle.textContent = fieldType.charAt(0).toUpperCase() + fieldType.slice(1);
+                css(fieldTitle, "flex:1;font-size:12px;font-weight:500;color:#aaa;");
+                header.appendChild(fieldTitle);
+
+                const delFieldBtn = makeSmallButton("\u2715");
+                delFieldBtn.addEventListener("click", () => {
+                    const idx = activeFields.indexOf(fieldType);
+                    if (idx !== -1) activeFields.splice(idx, 1);
+                    if (fieldType === "lora") fieldState.lora = null;
+                    if (fieldType === "prompt") fieldState.prompt = null;
+                    if (fieldType === "resolution") fieldState.resolution = null;
+                    if (fieldType === "controlnets") fieldState.controlnets._ = [];
+                    if (fieldType === "options") {
+                        for (const k of Object.keys(fieldState.options)) delete fieldState.options[k];
+                    }
+                    renderFields();
                 });
-                removeGroupBtn.addEventListener("click", () => {
-                    delete optionsState[groupName];
-                    renderOptions();
-                });
-                headerRow.appendChild(groupNameInput);
-                headerRow.appendChild(removeGroupBtn);
-                groupCard.appendChild(headerRow);
+                header.appendChild(delFieldBtn);
+                fieldWrap.appendChild(header);
 
-                for (const choiceName of Object.keys(optionsState[groupName] || {})) {
-                    const choiceCard = document.createElement("div");
-                    css(choiceCard, "background:#252525;padding:8px;border-radius:4px;display:flex;flex-direction:column;gap:4px;");
+                if (fieldType === "lora") {
+                    const row = document.createElement("div");
+                    css(row, "display:flex;gap:8px;align-items:flex-start;");
 
-                    const cRow = document.createElement("div");
-                    css(cRow, "display:flex;gap:4px;align-items:center;");
-                    const cNameInput = makeComfyInput(choiceName, "choice name");
-                    cNameInput.style.flex = "1";
-                    const removeChoiceBtn = makeSmallButton("✕");
-                    cNameInput.addEventListener("change", () => {
-                        const newCName = cNameInput.value.trim();
-                        if (!newCName || newCName === choiceName) return;
-                        if (optionsState[groupName][newCName]) { cNameInput.value = choiceName; return; }
-                        optionsState[groupName][newCName] = optionsState[groupName][choiceName];
-                        delete optionsState[groupName][choiceName];
-                        renderOptions();
+                    const loraPathCol = document.createElement("div");
+                    css(loraPathCol, "flex:3;min-width:0;display:flex;gap:4px;align-items:center;");
+
+                    const loraBox = document.createElement("div");
+                    css(loraBox, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
+                    const loraPath = fieldState.lora?.path || "";
+                    const loraName = loraPath ? loraPath.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
+                    loraBox.textContent = loraName;
+                    loraBox.title = loraPath || "";
+
+                    const loraWrap = makeSearchableDropdown([], loraPath, "Select LoRA...");
+                    loraWrap.container.style.display = "none";
+                    (async () => {
+                        try {
+                            const loras = await fetchLoras();
+                            for (const l of loras) loraWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: l }));
+                        } catch { /* ignore */ }
+                    })();
+
+                    loraBox.addEventListener("click", () => {
+                        loraBox.style.display = "none";
+                        loraWrap.container.style.display = "block";
+                        loraWrap.element.focus();
                     });
-                    removeChoiceBtn.addEventListener("click", () => {
-                        delete optionsState[groupName][choiceName];
-                        renderOptions();
+                    loraWrap.element.addEventListener("change", () => {
+                        const val = loraWrap.element.value;
+                        if (!fieldState.lora) fieldState.lora = { strength: 1.0 };
+                        fieldState.lora.path = val;
+                        const newName = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
+                        loraBox.textContent = newName;
+                        loraBox.title = val;
                     });
-                    cRow.appendChild(cNameInput);
-                    cRow.appendChild(removeChoiceBtn);
-                    choiceCard.appendChild(cRow);
-
-                    const choice = optionsState[groupName][choiceName] || {};
-                    const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
-                    css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
-                    cPos.addEventListener("change", () => {
-                        optionsState[groupName][choiceName] = optionsState[groupName][choiceName] || {};
-                        optionsState[groupName][choiceName].positive = cPos.value;
+                    loraWrap.element.addEventListener("blur", () => {
+                        setTimeout(() => {
+                            loraWrap.container.style.display = "none";
+                            loraBox.style.display = "block";
+                        }, 200);
                     });
-                    choiceCard.appendChild(cPos);
 
-                    const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
-                    css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
-                    cNeg.addEventListener("change", () => {
-                        optionsState[groupName][choiceName] = optionsState[groupName][choiceName] || {};
-                        optionsState[groupName][choiceName].negative = cNeg.value;
-                    });
-                    choiceCard.appendChild(cNeg);
+                    loraPathCol.appendChild(loraBox);
+                    loraPathCol.appendChild(loraWrap.container);
 
-                    groupCard.appendChild(choiceCard);
+                    if (loraPath) {
+                        const clearLora = makeSmallButton("\u2715");
+                        css(clearLora, "color:#f88;");
+                        clearLora.addEventListener("click", (e) => {
+                            e.stopPropagation();
+                            if (fieldState.lora) fieldState.lora.path = "";
+                            loraBox.textContent = "No LoRA selected";
+                            loraBox.title = "";
+                            loraWrap.element.value = "";
+                        });
+                        loraPathCol.appendChild(clearLora);
+                    }
+
+                    row.appendChild(loraPathCol);
+
+                    const strCol = document.createElement("div");
+                    css(strCol, "flex:1;min-width:0;");
+                    const strSlider = makeComfyValueSlider(fieldState.lora?.strength ?? 1.0, 0, 2, 0.05);
+                    strCol.appendChild(strSlider);
+                    row.appendChild(strCol);
+                    fieldWrap.appendChild(row);
                 }
 
-                const addChoiceBtn = makeSmallButton("+ choice");
-                addChoiceBtn.addEventListener("click", () => {
-                    const cn = window.prompt("Choice name:", "");
-                    if (!cn) return;
-                    const trimmed = cn.trim();
-                    if (!trimmed || optionsState[groupName][trimmed]) return;
-                    optionsState[groupName][trimmed] = { positive: "", negative: "" };
-                    renderOptions();
-                });
-                groupCard.appendChild(addChoiceBtn);
+                if (fieldType === "prompt") {
+                    const promptBox = document.createElement("div");
+                    css(promptBox, "display:flex;flex-direction:column;gap:6px;");
+                    fieldWrap.appendChild(promptBox);
 
-                optsBox.appendChild(groupCard);
+                    const btnRow = document.createElement("div");
+                    css(btnRow, "display:flex;gap:8px;align-items:center;");
+                    const posBtn = makeSmallButton("+ positive");
+                    const negBtn = makeSmallButton("+ negative");
+                    btnRow.appendChild(posBtn);
+                    btnRow.appendChild(negBtn);
+                    fieldWrap.insertBefore(btnRow, promptBox);
+
+                    function renderPrompts() {
+                        promptBox.replaceChildren();
+                        if (fieldState.prompt?.positive != null) {
+                            const posRow = document.createElement("div");
+                            css(posRow, "display:flex;gap:4px;align-items:flex-start;");
+                            const posTA = makeTextarea(fieldState.prompt.positive, "positive prompt", 3);
+                            css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                            posTA.addEventListener("change", () => { fieldState.prompt.positive = posTA.value; });
+                            const rmPos = makeSmallButton("\u2715");
+                            rmPos.addEventListener("click", () => {
+                                if (fieldState.prompt.negative == null) {
+                                    fieldState.prompt = null;
+                                    activeFields.splice(activeFields.indexOf("prompt"), 1);
+                                    renderFields();
+                                } else {
+                                    delete fieldState.prompt.positive;
+                                    renderPrompts();
+                                }
+                            });
+                            posRow.appendChild(posTA);
+                            posRow.appendChild(rmPos);
+                            promptBox.appendChild(posRow);
+                        }
+                        if (fieldState.prompt?.negative != null) {
+                            const negRow = document.createElement("div");
+                            css(negRow, "display:flex;gap:4px;align-items:flex-start;");
+                            const negTA = makeTextarea(fieldState.prompt.negative, "negative prompt", 2);
+                            css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                            negTA.addEventListener("change", () => { fieldState.prompt.negative = negTA.value; });
+                            const rmNeg = makeSmallButton("\u2715");
+                            rmNeg.addEventListener("click", () => {
+                                if (fieldState.prompt.positive == null) {
+                                    fieldState.prompt = null;
+                                    activeFields.splice(activeFields.indexOf("prompt"), 1);
+                                    renderFields();
+                                } else {
+                                    delete fieldState.prompt.negative;
+                                    renderPrompts();
+                                }
+                            });
+                            negRow.appendChild(negTA);
+                            negRow.appendChild(rmNeg);
+                            promptBox.appendChild(negRow);
+                        }
+                    }
+                    renderPrompts();
+
+                    posBtn.addEventListener("click", () => {
+                        if (!fieldState.prompt) fieldState.prompt = {};
+                        fieldState.prompt.positive = fieldState.prompt.positive ?? "";
+                        renderPrompts();
+                    });
+                    negBtn.addEventListener("click", () => {
+                        if (!fieldState.prompt) fieldState.prompt = {};
+                        fieldState.prompt.negative = fieldState.prompt.negative ?? "";
+                        renderPrompts();
+                    });
+                }
+
+                if (fieldType === "resolution") {
+                    const row = document.createElement("div");
+                    css(row, "display:flex;gap:8px;align-items:center;");
+                    const wInput = makeComfyNumberInput(fieldState.resolution?.[0] || "", "width", 64);
+                    const xLabel = document.createElement("span");
+                    xLabel.textContent = "\u00d7";
+                    css(xLabel, "color:#888;font-size:13px;");
+                    const hInput = makeComfyNumberInput(fieldState.resolution?.[1] || "", "height", 64);
+                    row.appendChild(wInput);
+                    row.appendChild(xLabel);
+                    row.appendChild(hInput);
+                    fieldWrap.appendChild(row);
+                }
+
+                if (fieldType === "controlnets") {
+                    const cnsBox = document.createElement("div");
+                    css(cnsBox, "display:flex;flex-direction:column;gap:6px;");
+                    fieldWrap.appendChild(cnsBox);
+
+                    function renderCNs() {
+                        cnsBox.replaceChildren();
+                        const arr = fieldState.controlnets._ || [];
+                        for (let i = 0; i < arr.length; i++) {
+                            const cn = arr[i];
+                            const card = document.createElement("div");
+                            css(card, "background:#252525;padding:10px;border-radius:6px;display:flex;flex-direction:column;gap:6px;border:1px solid #333;");
+
+                            const topRow = document.createElement("div");
+                            css(topRow, "display:flex;gap:6px;align-items:center;");
+                            const typeInput = makeComfyInput(cn.type || "", "type (e.g. openpose)");
+                            typeInput.style.flex = "1";
+                            typeInput.addEventListener("change", () => { arr[i].type = typeInput.value; });
+                            topRow.appendChild(typeInput);
+
+                            const modelInput = makeComfyInput(cn.model || cn.model_name || "", "model file");
+                            const cnModelListId = `cnm-${Math.random().toString(36).slice(2)}`;
+                            const cnModelList = document.createElement("datalist");
+                            cnModelList.id = cnModelListId;
+                            modelInput.setAttribute("list", cnModelListId);
+                            modelInput.addEventListener("change", () => { arr[i].model = modelInput.value; });
+                            modelInput.style.flex = "2";
+                            topRow.appendChild(modelInput);
+                            topRow.appendChild(cnModelList);
+                            (async () => {
+                                try {
+                                    const cns = await fetchCnModels();
+                                    for (const c of cns) { const o = document.createElement("option"); o.value = c; cnModelList.appendChild(o); }
+                                } catch { /* ignore */ }
+                            })();
+
+                            const removeBtn = makeSmallButton("\u2715");
+                            removeBtn.addEventListener("click", () => { arr.splice(i, 1); renderCNs(); });
+                            topRow.appendChild(removeBtn);
+                            card.appendChild(topRow);
+
+                            const midRow = document.createElement("div");
+                            css(midRow, "display:flex;gap:6px;align-items:center;");
+                            const imgInput = makeComfyInput(cn.image || cn.image_name || "", "input image");
+                            const imgListId = `img-list-${Math.random().toString(36).slice(2)}`;
+                            const imgList = document.createElement("datalist");
+                            imgList.id = imgListId;
+                            imgInput.setAttribute("list", imgListId);
+                            imgInput.addEventListener("change", () => { arr[i].image = imgInput.value; });
+                            imgInput.style.flex = "1";
+                            midRow.appendChild(imgInput);
+                            midRow.appendChild(imgList);
+                            (async () => {
+                                try {
+                                    const inputs = await fetchInputs();
+                                    for (const inp of inputs) { const o = document.createElement("option"); o.value = inp; imgList.appendChild(o); }
+                                } catch { /* ignore */ }
+                            })();
+                            card.appendChild(midRow);
+
+                            const botRow = document.createElement("div");
+                            css(botRow, "display:flex;gap:6px;align-items:center;");
+                            const strSlider = makeComfyValueSlider(cn.strength ?? 1.0, 0, 2, 0.05);
+                            botRow.appendChild(strSlider);
+                            const startSlider = makeComfyValueSlider(cn.start_percent ?? 0, 0, 1, 0.05);
+                            botRow.appendChild(startSlider);
+                            const endSlider = makeComfyValueSlider(cn.end_percent ?? 1, 0, 1, 0.05);
+                            botRow.appendChild(endSlider);
+                            card.appendChild(botRow);
+                            cnsBox.appendChild(card);
+                        }
+
+                        const addBtn = makeSmallButton("+ controlnet");
+                        addBtn.addEventListener("click", () => {
+                            arr.push({ type: "", model: "", image: "", strength: 1.0, start_percent: 0, end_percent: 1 });
+                            renderCNs();
+                        });
+                        cnsBox.appendChild(addBtn);
+                    }
+                    renderCNs();
+                }
+
+                if (fieldType === "options") {
+                    const optsBox = document.createElement("div");
+                    css(optsBox, "display:flex;flex-direction:column;gap:8px;");
+                    fieldWrap.appendChild(optsBox);
+
+                    function renderOpts() {
+                        optsBox.replaceChildren();
+                        for (const groupName of Object.keys(fieldState.options)) {
+                            const groupCard = document.createElement("div");
+                            css(groupCard, "background:#252525;padding:10px;border-radius:6px;display:flex;flex-direction:column;gap:6px;border:1px solid #333;");
+
+                            const headerRow = document.createElement("div");
+                            css(headerRow, "display:flex;gap:6px;align-items:center;");
+                            const groupNameInput = makeComfyInput(groupName, "group name");
+                            groupNameInput.style.flex = "1";
+                            const removeGroupBtn = makeSmallButton("\u2715 group");
+                            groupNameInput.addEventListener("change", () => {
+                                const newName = groupNameInput.value.trim();
+                                if (!newName || newName === groupName) return;
+                                if (fieldState.options[newName]) { groupNameInput.value = groupName; return; }
+                                fieldState.options[newName] = fieldState.options[groupName];
+                                delete fieldState.options[groupName];
+                                renderOpts();
+                            });
+                            removeGroupBtn.addEventListener("click", () => {
+                                delete fieldState.options[groupName];
+                                renderOpts();
+                            });
+                            headerRow.appendChild(groupNameInput);
+                            headerRow.appendChild(removeGroupBtn);
+                            groupCard.appendChild(headerRow);
+
+                            for (const choiceName of Object.keys(fieldState.options[groupName] || {})) {
+                                const choiceCard = document.createElement("div");
+                                css(choiceCard, "background:#1a1a1a;padding:8px;border-radius:4px;display:flex;flex-direction:column;gap:4px;");
+
+                                const cRow = document.createElement("div");
+                                css(cRow, "display:flex;gap:4px;align-items:center;");
+                                const cNameInput = makeComfyInput(choiceName, "choice name");
+                                cNameInput.style.flex = "1";
+                                const removeChoiceBtn = makeSmallButton("\u2715");
+                                cNameInput.addEventListener("change", () => {
+                                    const newCName = cNameInput.value.trim();
+                                    if (!newCName || newCName === choiceName) return;
+                                    if (fieldState.options[groupName][newCName]) { cNameInput.value = choiceName; return; }
+                                    fieldState.options[groupName][newCName] = fieldState.options[groupName][choiceName];
+                                    delete fieldState.options[groupName][choiceName];
+                                    renderOpts();
+                                });
+                                removeChoiceBtn.addEventListener("click", () => {
+                                    delete fieldState.options[groupName][choiceName];
+                                    renderOpts();
+                                });
+                                cRow.appendChild(cNameInput);
+                                cRow.appendChild(removeChoiceBtn);
+                                choiceCard.appendChild(cRow);
+
+                                const choice = fieldState.options[groupName][choiceName] || {};
+                                const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
+                                css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                                cPos.addEventListener("change", () => {
+                                    fieldState.options[groupName][choiceName] = fieldState.options[groupName][choiceName] || {};
+                                    fieldState.options[groupName][choiceName].positive = cPos.value;
+                                });
+                                choiceCard.appendChild(cPos);
+
+                                const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
+                                css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                                cNeg.addEventListener("change", () => {
+                                    fieldState.options[groupName][choiceName] = fieldState.options[groupName][choiceName] || {};
+                                    fieldState.options[groupName][choiceName].negative = cNeg.value;
+                                });
+                                choiceCard.appendChild(cNeg);
+
+                                groupCard.appendChild(choiceCard);
+                            }
+
+                            const addChoiceBtn = makeSmallButton("+ choice");
+                            addChoiceBtn.addEventListener("click", () => {
+                                const cn = window.prompt("Choice name:", "");
+                                if (!cn) return;
+                                const trimmed = cn.trim();
+                                if (!trimmed || fieldState.options[groupName][trimmed]) return;
+                                fieldState.options[groupName][trimmed] = { positive: "", negative: "" };
+                                renderOpts();
+                            });
+                            groupCard.appendChild(addChoiceBtn);
+                            optsBox.appendChild(groupCard);
+                        }
+
+                        const addGroupBtn = makeSmallButton("+ option group");
+                        addGroupBtn.addEventListener("click", () => {
+                            const gn = window.prompt("Option group name (e.g. outfit):", "");
+                            if (!gn) return;
+                            const trimmed = gn.trim();
+                            if (!trimmed || fieldState.options[trimmed]) return;
+                            fieldState.options[trimmed] = {};
+                            renderOpts();
+                        });
+                        optsBox.appendChild(addGroupBtn);
+                    }
+                    renderOpts();
+                }
+
+                optionalBox.appendChild(fieldWrap);
             }
-
-            const addGroupBtn = makeSmallButton("+ option group");
-            addGroupBtn.addEventListener("click", () => {
-                const gn = window.prompt("Option group name (e.g. outfit):", "");
-                if (!gn) return;
-                const trimmed = gn.trim();
-                if (!trimmed || optionsState[trimmed]) return;
-                optionsState[trimmed] = {};
-                renderOptions();
-            });
-            optsBox.appendChild(addGroupBtn);
         }
-        renderOptions();
+        renderFields();
 
-        // ---- Footer buttons (sticky) ----
+        // Add field button
+        const addFieldRow = document.createElement("div");
+        css(addFieldRow, "display:flex;gap:8px;align-items:center;flex-wrap:wrap;");
+
+        const addFieldBtn = makeSmallButton("+ Add flake field");
+        addFieldRow.appendChild(addFieldBtn);
+
+        const fieldMenu = document.createElement("div");
+        css(fieldMenu, "display:none;flex-direction:column;gap:2px;background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:4px;box-shadow:0 4px 12px rgba(0,0,0,0.5);position:absolute;z-index:100;");
+        const fieldTypes = [
+            { key: "lora", label: "LoRA" },
+            { key: "prompt", label: "Prompts" },
+            { key: "resolution", label: "Resolution override" },
+            { key: "controlnets", label: "ControlNets" },
+            { key: "options", label: "Options" },
+        ];
+        for (const ft of fieldTypes) {
+            const item = document.createElement("button");
+            item.textContent = ft.label;
+            css(item, "text-align:left;padding:4px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
+            item.addEventListener("click", () => {
+                fieldMenu.style.display = "none";
+                if (activeFields.includes(ft.key)) return;
+                activeFields.push(ft.key);
+                if (ft.key === "lora") fieldState.lora = { path: "", strength: 1.0 };
+                if (ft.key === "prompt") fieldState.prompt = {};
+                if (ft.key === "resolution") fieldState.resolution = [1024, 1024];
+                if (ft.key === "controlnets") fieldState.controlnets._ = [];
+                if (ft.key === "options") fieldState.options = {};
+                renderFields();
+            });
+            fieldMenu.appendChild(item);
+        }
+        addFieldRow.appendChild(fieldMenu);
+
+        addFieldBtn.addEventListener("click", () => {
+            fieldMenu.style.display = fieldMenu.style.display === "flex" ? "none" : "flex";
+        });
+        // Hide menu on click outside
+        document.addEventListener("click", (e) => {
+            if (!addFieldRow.contains(e.target)) fieldMenu.style.display = "none";
+        });
+        content.appendChild(addFieldRow);
+
+        // ---- Footer ----
         if (mode === "edit") {
             const deleteBtn = makeButton("Delete");
             css(deleteBtn, deleteBtn.style.cssText + "background:#5a2a2a;border-color:#7a3a3a;color:#fdd;margin-right:auto;");
@@ -871,17 +1110,23 @@ function openEditModal({ mode, name, data, dirs }) {
         saveBtn.addEventListener("click", async () => {
             const ordered = {};
             if (displayNameInput.value) ordered.name = displayNameInput.value.trim();
-            if (loraWrap.element.value) ordered.path = loraWrap.element.value;
-            ordered.strength = loraSlider.getValue();
-            if (posTA.value || negTA.value) {
-                ordered.prompt = { positive: posTA.value, negative: negTA.value };
+            if (fieldState.lora) {
+                if (fieldState.lora.path) ordered.path = fieldState.lora.path;
+                ordered.strength = fieldState.lora.strength ?? 1.0;
             }
-            const rw = parseInt(resWidth.value);
-            const rh = parseInt(resHeight.value);
-            if (!isNaN(rw) && !isNaN(rh)) ordered.resolution = [rw, rh];
-            const cnArr = cnsState._ || [];
+            if (fieldState.prompt) {
+                ordered.prompt = {};
+                if (fieldState.prompt.positive != null) ordered.prompt.positive = fieldState.prompt.positive;
+                if (fieldState.prompt.negative != null) ordered.prompt.negative = fieldState.prompt.negative;
+            }
+            if (fieldState.resolution) {
+                const rw = parseInt(fieldState.resolution[0]);
+                const rh = parseInt(fieldState.resolution[1]);
+                if (!isNaN(rw) && !isNaN(rh)) ordered.resolution = [rw, rh];
+            }
+            const cnArr = fieldState.controlnets._ || [];
             if (cnArr.length > 0) ordered.controlnets = cnArr;
-            if (Object.keys(optionsState).length > 0) ordered.options = optionsState;
+            if (Object.keys(fieldState.options).length > 0) ordered.options = fieldState.options;
 
             try {
                 if (mode === "create") {
@@ -901,7 +1146,7 @@ function openEditModal({ mode, name, data, dirs }) {
         });
         footer.appendChild(saveBtn);
 
-        setTimeout(() => { (pathInput || posTA).focus(); }, 0);
+        setTimeout(() => { (pathInput || displayNameInput).focus(); }, 0);
     });
 }
 
