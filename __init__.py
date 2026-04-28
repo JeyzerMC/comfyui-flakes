@@ -31,9 +31,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "FlakeStack": "Flake Stack",
     "FlakeCombo": "Flake Combo",
     "FlakeModelCombo": "Flake Model Combo",
-    "FlakesModel": "Flakes Model",
-    "FlakesCond": "Flakes Cond",
-    "FlakesSampler": "Flakes Sampler",
+    "FlakesModel": "Flakes Model Split",
+    "FlakesCond": "Flakes Generation Data",
+    "FlakesSampler": "Flakes Sampling Values",
 }
 WEB_DIRECTORY = "./web"
 
