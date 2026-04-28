@@ -40,8 +40,8 @@ class FlakesCond:
             },
         }
 
-    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT", "INT", "INT", "STRING")
-    RETURN_NAMES = ("positive", "negative", "latent", "width", "height", "filename_prefix")
+    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT", "STRING", "INT", "INT")
+    RETURN_NAMES = ("positive", "negative", "latent", "filename_prefix", "width", "height")
     FUNCTION = "execute"
     CATEGORY = "flakes"
     DESCRIPTION = "Unpack a Full Flakes conditioning bundle into individual outputs."
@@ -55,7 +55,7 @@ class FlakesCond:
             filename_prefix = _build_filename_prefix(filename_state.get("preset", ""), filename_state.get("stems", []))
         else:
             filename_prefix = ""
-        return (positive, negative, latent, width, height, filename_prefix)
+        return (positive, negative, latent, filename_prefix, width, height)
 
 
 class FlakesSampler:
