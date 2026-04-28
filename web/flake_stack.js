@@ -492,6 +492,93 @@ function makeComfyValueSlider(value, min, max, step, onChange) {
     return row;
 }
 
+function makeSmallValueSlider(value, min, max, step, onChange) {
+    const row = document.createElement("div");
+    css(row, "display:flex;align-items:center;background:#1a1a1a;border:1px solid #333;border-radius:4px;overflow:hidden;height:22px;cursor:ew-resize;");
+
+    let current = parseFloat(value) || 0;
+    const clamp = (v) => Math.min(max, Math.max(min, Math.round(v / step) * step));
+    const format = (v) => Number.isInteger(step) ? String(v) : v.toFixed(step < 0.1 ? 2 : 1);
+    current = clamp(current);
+
+    const valSpan = document.createElement("span");
+    valSpan.textContent = format(current);
+    css(valSpan, "flex:1;text-align:center;font-size:10px;color:#ddd;font-variant-numeric:tabular-nums;user-select:none;height:22px;display:flex;align-items:center;justify-content:center;");
+
+    function update(v) {
+        current = clamp(v);
+        valSpan.textContent = format(current);
+        if (onChange) onChange(current);
+    }
+
+    valSpan.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const input = document.createElement("input");
+        input.type = "number";
+        input.value = String(current);
+        input.step = String(step);
+        css(input, "flex:1;text-align:center;font-size:10px;color:#ddd;background:transparent;border:none;outline:none;height:22px;");
+        valSpan.replaceWith(input);
+        input.focus();
+        input.select();
+        function commit() {
+            const v = parseFloat(input.value);
+            if (!isNaN(v)) update(v);
+            input.replaceWith(valSpan);
+            valSpan.textContent = format(current);
+        }
+        input.addEventListener("blur", commit);
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") { e.preventDefault(); commit(); }
+            if (e.key === "Escape") { input.replaceWith(valSpan); valSpan.textContent = format(current); }
+        });
+    });
+
+    let dragging = false;
+    let startX = 0;
+    let startVal = 0;
+    const pxPerStep = 4;
+
+    row.addEventListener("mousedown", (e) => {
+        if (e.target === valSpan) return;
+        e.preventDefault();
+        dragging = true;
+        startX = e.clientX;
+        startVal = current;
+        row.style.cursor = "grabbing";
+    });
+
+    valSpan.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        dragging = true;
+        startX = e.clientX;
+        startVal = current;
+        row.style.cursor = "grabbing";
+    });
+
+    window.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        const deltaPx = e.clientX - startX;
+        const deltaSteps = Math.round(deltaPx / pxPerStep);
+        const newVal = clamp(startVal + deltaSteps * step);
+        if (newVal !== current) {
+            current = newVal;
+            valSpan.textContent = format(current);
+        }
+    });
+
+    window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        row.style.cursor = "ew-resize";
+    });
+
+    row.appendChild(valSpan);
+    row.getValue = () => current;
+    row.update = update;
+    return row;
+}
+
 // ---------- Modal infrastructure ----------
 
 function openOverlay() {
@@ -739,12 +826,25 @@ function openEditModal({ mode, name, data, dirs }) {
                             header.appendChild(dragHandle);
 
                             const title = document.createElement("span");
-                            const titleText = lora.name ? `LoRA: ${lora.name}${lora.url ? " - " + lora.url : ""}` : "LoRA";
+                            const titleText = lora.name ? `LoRA: ${lora.name}` : "LoRA";
                             title.textContent = titleText;
                             css(title, "flex:1;font-size:12px;font-weight:500;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
                             header.appendChild(title);
 
-                            const editBtn = makeSmallButton("...");
+                            if (lora.url) {
+                                const linkIcon = document.createElement("a");
+                                linkIcon.textContent = "\uD83D\uDD17";
+                                css(linkIcon, "font-size:12px;text-decoration:none;cursor:pointer;");
+                                linkIcon.addEventListener("click", (e) => {
+                                    e.stopPropagation();
+                                    window.open(lora.url, "_blank");
+                                });
+                                header.appendChild(linkIcon);
+                            }
+
+                            const editBtn = document.createElement("button");
+                            editBtn.innerHTML = lora._editing ? "&#9652;" : "&#9662;";
+                            css(editBtn, "background:transparent;color:#888;border:none;padding:0;font-size:10px;cursor:pointer;");
                             editBtn.title = "Edit name and URL";
                             editBtn.addEventListener("click", () => {
                                 lora._editing = !lora._editing;
@@ -1545,10 +1645,10 @@ function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDr
 
     // Triangle button (bottom center) for options / LoRA
     let triangleBtn = null;
-    if (!isDefault && (entry.has_lora || entry.name)) {
+    if (!isDefault && entry.name) {
         triangleBtn = document.createElement("button");
         triangleBtn.innerHTML = "&#9662;"; // down-pointing triangle
-        css(triangleBtn, "position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:transparent;color:rgba(180,180,180,0.6);border:none;padding:0;font-size:12px;line-height:1;cursor:pointer;z-index:2;");
+        css(triangleBtn, "position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:transparent;color:rgba(180,180,180,0.6);border:none;padding:0;font-size:12px;line-height:1;cursor:pointer;z-index:2;display:none;");
         triangleBtn.addEventListener("click", (e) => {
             e.stopPropagation();
         });
@@ -1572,7 +1672,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
 
     // Options panel (hidden by default)
     const panel = document.createElement("div");
-    css(panel, "position:absolute;top:100%;left:0;right:0;background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:4px;display:none;flex-direction:column;gap:3px;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-top:1px;min-width:120px;");
+    css(panel, "position:absolute;top:100%;left:50%;transform:translateX(-50%);width:160px;background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:4px;display:none;flex-direction:column;gap:3px;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-top:1px;");
     panel.addEventListener("click", (e) => e.stopPropagation());
     panel.addEventListener("dblclick", (e) => e.stopPropagation());
     block.appendChild(panel);
@@ -1584,8 +1684,16 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
     function rebuildPanel() {
         panel.replaceChildren();
 
+        const hasLoras = entry.loras && entry.loras.length > 0;
+        const hasOptionGroups = hasOptions && Object.keys(hasOptions).length > 0;
+
+        // Show triangle only if there's something to tweak
+        if (triangleBtn) {
+            triangleBtn.style.display = (hasLoras || hasOptionGroups) ? "block" : "none";
+        }
+
         // LoRA strength sliders at top of panel
-        if (entry.loras && entry.loras.length > 0) {
+        if (hasLoras) {
             const lorasMeta = entry._pendingData?.loras || flakeData?.loras || [];
             for (let i = 0; i < entry.loras.length; i++) {
                 const sliderRow = document.createElement("div");
@@ -1593,9 +1701,9 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
                 const name = lorasMeta[i]?.name || "LoRA";
                 const label = document.createElement("div");
                 label.textContent = name;
-                css(label, "font-size:9px;opacity:0.7;padding:2px 0;");
+                css(label, "font-size:9px;opacity:0.7;padding:2px 0;text-align:center;");
                 sliderRow.appendChild(label);
-                const strSlider = makeComfyValueSlider(entry.loras[i] != null ? entry.loras[i] : 1.0, -10, 10, 0.05, (v) => {
+                const strSlider = makeSmallValueSlider(entry.loras[i] != null ? entry.loras[i] : 1.0, -10, 10, 0.05, (v) => {
                     entry.loras[i] = v;
                     onChanged();
                 });
@@ -1604,31 +1712,35 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
             }
         }
 
-        if (!hasOptions || !Object.keys(hasOptions).length) {
-            const empty = document.createElement("div");
-            css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
-            empty.textContent = "no option groups";
-            panel.appendChild(empty);
+        if (!hasOptionGroups) {
+            if (!hasLoras) {
+                const empty = document.createElement("div");
+                css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
+                empty.textContent = "no options";
+                panel.appendChild(empty);
+            }
         } else {
             for (const group of Object.keys(hasOptions)) {
                 const row = document.createElement("div");
-                css(row, "display:flex;gap:2px;align-items:center;");
+                css(row, "display:flex;flex-direction:column;gap:2px;");
                 const gLabel = document.createElement("span");
-                gLabel.textContent = group + ":";
-                css(gLabel, "font-size:9px;opacity:0.7;white-space:nowrap;");
+                gLabel.textContent = group;
+                css(gLabel, "font-size:9px;opacity:0.7;text-align:center;");
                 row.appendChild(gLabel);
 
                 const sel = document.createElement("select");
-                css(sel, "background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:2px;font-size:9px;padding:0 2px;flex:1;min-width:0;");
+                css(sel, "background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:2px;font-size:11px;padding:2px 4px;width:100%;text-align:center;cursor:pointer;");
                 const noneOpt = document.createElement("option");
                 noneOpt.value = "";
                 noneOpt.textContent = "-";
+                css(noneOpt, "font-size:11px;");
                 sel.appendChild(noneOpt);
 
                 for (const ch of hasOptions[group]) {
                     const opt = document.createElement("option");
                     opt.value = ch;
                     opt.textContent = ch;
+                    css(opt, "font-size:11px;");
                     if ((entry.option || {})[group] === ch) opt.selected = true;
                     sel.appendChild(opt);
                 }
@@ -1651,9 +1763,11 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
     async function toggleOptionsPanel() {
         if (panel.style.display === "flex") {
             panel.style.display = "none";
+            if (triangleBtn) triangleBtn.innerHTML = "&#9662;";
             return;
         }
         panel.style.display = "flex";
+        if (triangleBtn) triangleBtn.innerHTML = "&#9652;";
 
         if (!optionsLoaded && entry.name) {
             panel.textContent = "";
@@ -2226,7 +2340,33 @@ function openPresetEditModal({ mode, name, data }) {
             origPresetClose(value);
         };
 
-        content.appendChild(makeComfyLabel("Checkpoint"));
+        const ckptLabelRow = document.createElement("div");
+        css(ckptLabelRow, "display:flex;gap:6px;align-items:center;");
+        const ckptLabel = makeComfyLabel("Checkpoint");
+        ckptLabelRow.appendChild(ckptLabel);
+
+        const ckptLinkIcon = document.createElement("a");
+        ckptLinkIcon.textContent = "\uD83D\uDD17";
+        css(ckptLinkIcon, "font-size:12px;text-decoration:none;cursor:pointer;display:none;");
+        ckptLinkIcon.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const url = ckptUrlInput.value;
+            if (url) window.open(url, "_blank");
+        });
+        ckptLabelRow.appendChild(ckptLinkIcon);
+
+        const ckptUrlToggle = document.createElement("button");
+        ckptUrlToggle.innerHTML = "&#9662;";
+        css(ckptUrlToggle, "background:transparent;color:#888;border:none;padding:0;font-size:10px;cursor:pointer;");
+        ckptUrlToggle.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const showing = ckptUrlInput.style.display !== "none";
+            ckptUrlInput.style.display = showing ? "none" : "block";
+            ckptUrlToggle.innerHTML = showing ? "&#9662;" : "&#9652;";
+        });
+        ckptLabelRow.appendChild(ckptUrlToggle);
+        content.appendChild(ckptLabelRow);
+
         const ckptWrap = makeSearchableDropdown([], data.checkpoint || "", "Select checkpoint...");
 
         const ckptBox = document.createElement("div");
@@ -2280,9 +2420,17 @@ function openPresetEditModal({ mode, name, data }) {
             }, 200);
         });
 
-        content.appendChild(makeComfyLabel("Checkpoint URL (optional)"));
         const ckptUrlInput = makeComfyInput(data.checkpoint_url || "", "https://civitai.com/models/...");
+        ckptUrlInput.style.display = "none";
         content.appendChild(ckptUrlInput);
+
+        function updateCkptUrlVisibility() {
+            const hasUrl = !!ckptUrlInput.value;
+            ckptLinkIcon.style.display = hasUrl ? "inline" : "none";
+        }
+        ckptUrlInput.addEventListener("change", updateCkptUrlVisibility);
+        ckptUrlInput.addEventListener("input", updateCkptUrlVisibility);
+        updateCkptUrlVisibility();
 
         const sliderRow = document.createElement("div");
         css(sliderRow, "display:flex;gap:8px;align-items:flex-start;");
