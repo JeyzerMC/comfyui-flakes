@@ -917,7 +917,7 @@ function openEditModal({ mode, name, data, dirs }) {
                             if (lora.url) {
                                 const linkIcon = document.createElement("a");
                                 linkIcon.textContent = "\uD83D\uDD17";
-                                css(linkIcon, "font-size:12px;text-decoration:none;cursor:pointer;");
+                                css(linkIcon, "font-size:12px;text-decoration:none;cursor:pointer;color:#4a9eff;");
                                 linkIcon.addEventListener("click", (e) => {
                                     e.stopPropagation();
                                     window.open(lora.url, "_blank");
@@ -927,7 +927,7 @@ function openEditModal({ mode, name, data, dirs }) {
 
                             const editBtn = document.createElement("button");
                             editBtn.innerHTML = lora._editing ? "&#9652;" : "&#9662;";
-                            css(editBtn, "background:transparent;color:#888;border:none;padding:0;font-size:10px;cursor:pointer;");
+                            css(editBtn, "background:transparent;color:#888;border:none;padding:0;font-size:14px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;height:20px;width:20px;");
                             editBtn.title = "Edit name and URL";
                             editBtn.addEventListener("click", () => {
                                 lora._editing = !lora._editing;
@@ -2640,6 +2640,9 @@ function openPresetEditModal({ mode, name, data }) {
             origPresetClose(value);
         };
 
+        const ckptUrlInput = makeComfyInput(data.checkpoint_url || "", "https://civitai.com/models/...");
+        ckptUrlInput.style.display = "none";
+
         const ckptLabelRow = document.createElement("div");
         css(ckptLabelRow, "display:flex;gap:6px;align-items:center;");
         const ckptLabel = makeComfyLabel("Checkpoint");
@@ -2647,7 +2650,7 @@ function openPresetEditModal({ mode, name, data }) {
 
         const ckptLinkIcon = document.createElement("a");
         ckptLinkIcon.textContent = "\uD83D\uDD17";
-        css(ckptLinkIcon, "font-size:12px;text-decoration:none;cursor:pointer;display:none;");
+        css(ckptLinkIcon, "font-size:12px;text-decoration:none;cursor:pointer;display:none;color:#4a9eff;");
         ckptLinkIcon.addEventListener("click", (e) => {
             e.stopPropagation();
             const url = ckptUrlInput.value;
@@ -2657,7 +2660,7 @@ function openPresetEditModal({ mode, name, data }) {
 
         const ckptUrlToggle = document.createElement("button");
         ckptUrlToggle.innerHTML = "&#9662;";
-        css(ckptUrlToggle, "background:transparent;color:#888;border:none;padding:0;font-size:10px;cursor:pointer;");
+        css(ckptUrlToggle, "background:transparent;color:#888;border:none;padding:0;font-size:14px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;height:20px;width:20px;");
         ckptUrlToggle.addEventListener("click", (e) => {
             e.stopPropagation();
             const showing = ckptUrlInput.style.display !== "none";
@@ -2666,6 +2669,8 @@ function openPresetEditModal({ mode, name, data }) {
         });
         ckptLabelRow.appendChild(ckptUrlToggle);
         content.appendChild(ckptLabelRow);
+
+        content.appendChild(ckptUrlInput);
 
         const ckptWrap = makeSearchableDropdown([], data.checkpoint || "", "Select checkpoint...");
 
@@ -2719,10 +2724,6 @@ function openPresetEditModal({ mode, name, data }) {
                 ckptWrap.container.style.display = "none";
             }, 200);
         });
-
-        const ckptUrlInput = makeComfyInput(data.checkpoint_url || "", "https://civitai.com/models/...");
-        ckptUrlInput.style.display = "none";
-        content.appendChild(ckptUrlInput);
 
         function updateCkptUrlVisibility() {
             const hasUrl = !!ckptUrlInput.value;
