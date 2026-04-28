@@ -1690,6 +1690,7 @@ function setupFlakeWidget(node) {
         if (result.defaultUpdated) {
             const arr = readEntries();
             arr[idx].content = result.data;
+            arr[idx].has_lora = !!(result.data && (result.data.path || result.data.lora_path));
             writeEntries(arr);
             render();
         } else if (result.deleted) {
@@ -1699,6 +1700,7 @@ function setupFlakeWidget(node) {
         } else if (result.saved) {
             const arr = readEntries();
             arr[idx]._pendingData = result.data;
+            arr[idx].has_lora = !!(result.data && (result.data.path || result.data.lora_path));
             writeEntries(arr);
             render();
         }
@@ -1723,6 +1725,7 @@ function setupFlakeWidget(node) {
             await saveFlakeApi(entry.name, entry._pendingData);
             const arr = readEntries();
             delete arr[idx]._pendingData;
+            arr[idx].has_lora = !!(entry._pendingData && (entry._pendingData.path || entry._pendingData.lora_path));
             writeEntries(arr);
             render();
         } catch (err) {
@@ -1741,9 +1744,9 @@ function setupFlakeWidget(node) {
         const arr = readEntries();
         let has_lora = false;
         let display_name = null;
-        if (result.data && result.data.lora_path) has_lora = true;
+        if (result.data && result.data.path) has_lora = true;
         else if (result.name) {
-            try { const d = await fetchFlake(result.name); has_lora = !!(d && d.lora_path); } catch {}
+            try { const d = await fetchFlake(result.name); has_lora = !!(d && d.path); } catch {}
         }
         if (result.data && result.data.name) display_name = result.data.name;
         else if (result.name) {
@@ -1763,7 +1766,7 @@ function setupFlakeWidget(node) {
         const arr = readEntries();
         let has_lora = false;
         let display_name = null;
-        try { const d = await fetchFlake(result.name); has_lora = !!(d && d.lora_path); display_name = d.name || null; } catch {}
+        try { const d = await fetchFlake(result.name); has_lora = !!(d && d.path); display_name = d.name || null; } catch {}
         arr.push({ name: result.name, strength: 1.0, option: {}, has_lora, display_name });
         writeEntries(arr);
         render();
@@ -2304,9 +2307,9 @@ function setupFlakeComboWidget(node) {
         const arr = readAllFlakes();
         let has_lora = false;
         let display_name = null;
-        if (result.data && result.data.lora_path) has_lora = true;
+        if (result.data && result.data.path) has_lora = true;
         else if (result.name) {
-            try { const d = await fetchFlake(result.name); has_lora = !!(d && d.lora_path); } catch {}
+            try { const d = await fetchFlake(result.name); has_lora = !!(d && d.path); } catch {}
         }
         if (result.data && result.data.name) display_name = result.data.name;
         else if (result.name) {
@@ -2326,7 +2329,7 @@ function setupFlakeComboWidget(node) {
         const arr = readAllFlakes();
         let has_lora = false;
         let display_name = null;
-        try { const d = await fetchFlake(result.name); has_lora = !!(d && d.lora_path); display_name = d.name || null; } catch {}
+        try { const d = await fetchFlake(result.name); has_lora = !!(d && d.path); display_name = d.name || null; } catch {}
         arr.push({ name: result.name, strength: 1.0, option: {}, has_lora, display_name });
         writeAllFlakes(arr);
         render();
