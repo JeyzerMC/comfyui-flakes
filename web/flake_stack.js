@@ -387,7 +387,7 @@ function makeComfySlider(value, min, max, step) {
     return row;
 }
 
-function makeComfyValueSlider(value, min, max, step) {
+function makeComfyValueSlider(value, min, max, step, onChange) {
     const row = document.createElement("div");
     css(row, "display:flex;align-items:center;background:#1a1a1a;border:1px solid #333;border-radius:6px;overflow:hidden;height:32px;cursor:ew-resize;");
 
@@ -403,6 +403,7 @@ function makeComfyValueSlider(value, min, max, step) {
     function update(v) {
         current = clamp(v);
         valSpan.textContent = format(current);
+        if (onChange) onChange(current);
     }
 
     // Click to edit
@@ -1308,89 +1309,18 @@ function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDr
         block.appendChild(rm);
     }
 
-    // LoRA strength slider (bottom center, semi-transparent)
-    if (!isDefault && entry.has_lora) {
-        const step = 0.05;
-        const clampVal = (v) => Math.round(Math.min(10, Math.max(-10, v)) / step) * step;
-        const formatVal = (v) => v.toFixed(2);
-        let current = clampVal(entry.strength != null ? entry.strength : 1);
-
-        const sliderBox = document.createElement("div");
-        css(sliderBox, "position:absolute;bottom:4px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.5);border-radius:3px;padding:2px 6px;z-index:2;cursor:ew-resize;");
-
-        const valSpan = document.createElement("span");
-        valSpan.textContent = formatVal(current);
-        css(valSpan, "font-size:10px;color:#ccc;font-variant-numeric:tabular-nums;user-select:none;");
-        sliderBox.appendChild(valSpan);
-
-        function update(v) {
-            current = clampVal(v);
-            valSpan.textContent = formatVal(current);
-            entry.strength = current;
-        }
-
-        // Click to edit
-        valSpan.addEventListener("click", (e) => {
+    // Triangle button (bottom center) for options / LoRA
+    let triangleBtn = null;
+    if (!isDefault && (entry.has_lora || entry.name)) {
+        triangleBtn = document.createElement("button");
+        triangleBtn.innerHTML = "&#9662;"; // down-pointing triangle
+        css(triangleBtn, "position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:transparent;color:rgba(180,180,180,0.6);border:none;padding:0;font-size:12px;line-height:1;cursor:pointer;z-index:2;");
+        triangleBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            const input = document.createElement("input");
-            input.type = "number";
-            input.value = String(current);
-            input.step = String(step);
-            css(input, "font-size:10px;color:#ccc;background:transparent;border:none;outline:none;width:40px;text-align:center;");
-            valSpan.replaceWith(input);
-            input.focus();
-            input.select();
-            function commit() {
-                const v = parseFloat(input.value);
-                if (!isNaN(v)) update(v);
-                input.replaceWith(valSpan);
-                valSpan.textContent = formatVal(current);
-            }
-            input.addEventListener("blur", commit);
-            input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") { input.replaceWith(valSpan); valSpan.textContent = formatVal(current); } });
         });
-
-        // Drag to slide
-        let dragging = false;
-        let startX = 0;
-        let startVal = 0;
-        const pxPerStep = 4;
-
-        sliderBox.addEventListener("mousedown", (e) => {
-            if (e.target === valSpan) return;
-            e.preventDefault();
-            e.stopPropagation();
-            dragging = true;
-            startX = e.clientX;
-            startVal = current;
-        });
-
-        valSpan.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            dragging = true;
-            startX = e.clientX;
-            startVal = current;
-        });
-
-        window.addEventListener("mousemove", (e) => {
-            if (!dragging) return;
-            const deltaPx = e.clientX - startX;
-            const deltaSteps = Math.round(deltaPx / pxPerStep);
-            const newVal = clampVal(startVal + deltaSteps * step);
-            if (newVal !== current) {
-                current = newVal;
-                valSpan.textContent = formatVal(current);
-                entry.strength = current;
-            }
-        });
-
-        window.addEventListener("mouseup", () => {
-            if (!dragging) return;
-            dragging = false;
-        });
-
-        block.appendChild(sliderBox);
+        triangleBtn.addEventListener("dblclick", (e) => e.stopPropagation());
+        triangleBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+        block.appendChild(triangleBtn);
     }
 
     block.addEventListener("dblclick", () => onEdit(idx));
@@ -1398,13 +1328,13 @@ function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDr
     block.addEventListener("dragleave", () => { block.style.outline = ""; block.style.boxShadow = ""; });
     block.addEventListener("drop", (e) => onDrop(e, idx, block));
 
-    return block;
+    return { block, triangleBtn };
 }
 
 // ---- Per-instance controls ----
 
-function makeInstanceControls(block, entry, idx, onChanged) {
-    if (entry.inline) return;
+function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
+    if (entry.inline) return { toggleOptionsPanel: () => {} };
 
     // Options panel (hidden by default)
     const panel = document.createElement("div");
@@ -1414,6 +1344,66 @@ function makeInstanceControls(block, entry, idx, onChanged) {
     block.appendChild(panel);
 
     let optionsLoaded = false;
+    let hasOptions = false;
+
+    function rebuildPanel() {
+        panel.replaceChildren();
+
+        // LoRA strength slider at top of panel
+        if (entry.has_lora) {
+            const sliderRow = document.createElement("div");
+            css(sliderRow, "padding:2px 0;");
+            const strSlider = makeComfyValueSlider(entry.strength != null ? entry.strength : 1.0, -10, 10, 0.05, (v) => {
+                entry.strength = v;
+                onChanged();
+            });
+            sliderRow.appendChild(strSlider);
+            panel.appendChild(sliderRow);
+        }
+
+        if (!hasOptions || !Object.keys(hasOptions).length) {
+            const empty = document.createElement("div");
+            css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
+            empty.textContent = "no option groups";
+            panel.appendChild(empty);
+        } else {
+            for (const group of Object.keys(hasOptions)) {
+                const row = document.createElement("div");
+                css(row, "display:flex;gap:2px;align-items:center;");
+                const gLabel = document.createElement("span");
+                gLabel.textContent = group + ":";
+                css(gLabel, "font-size:9px;opacity:0.7;white-space:nowrap;");
+                row.appendChild(gLabel);
+
+                const sel = document.createElement("select");
+                css(sel, "background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:2px;font-size:9px;padding:0 2px;flex:1;min-width:0;");
+                const noneOpt = document.createElement("option");
+                noneOpt.value = "";
+                noneOpt.textContent = "-";
+                sel.appendChild(noneOpt);
+
+                for (const ch of hasOptions[group]) {
+                    const opt = document.createElement("option");
+                    opt.value = ch;
+                    opt.textContent = ch;
+                    if ((entry.option || {})[group] === ch) opt.selected = true;
+                    sel.appendChild(opt);
+                }
+
+                sel.addEventListener("change", () => {
+                    if (sel.value) {
+                        entry.option = entry.option || {};
+                        entry.option[group] = sel.value;
+                    } else {
+                        if (entry.option) delete entry.option[group];
+                    }
+                    onChanged();
+                });
+                row.appendChild(sel);
+                panel.appendChild(row);
+            }
+        }
+    }
 
     async function toggleOptionsPanel() {
         if (panel.style.display === "flex") {
@@ -1432,50 +1422,8 @@ function makeInstanceControls(block, entry, idx, onChanged) {
             try {
                 const options = await fetchFlakeMeta(entry.name);
                 optionsLoaded = true;
-                panel.replaceChildren();
-
-                if (!Object.keys(options).length) {
-                    const empty = document.createElement("div");
-                    css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
-                    empty.textContent = "no option groups";
-                    panel.appendChild(empty);
-                } else {
-                    for (const group of Object.keys(options)) {
-                        const row = document.createElement("div");
-                        css(row, "display:flex;gap:2px;align-items:center;");
-                        const gLabel = document.createElement("span");
-                        gLabel.textContent = group + ":";
-                        css(gLabel, "font-size:9px;opacity:0.7;white-space:nowrap;");
-                        row.appendChild(gLabel);
-
-                        const sel = document.createElement("select");
-                        css(sel, "background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:2px;font-size:9px;padding:0 2px;flex:1;min-width:0;");
-                        const noneOpt = document.createElement("option");
-                        noneOpt.value = "";
-                        noneOpt.textContent = "-";
-                        sel.appendChild(noneOpt);
-
-                        for (const ch of options[group]) {
-                            const opt = document.createElement("option");
-                            opt.value = ch;
-                            opt.textContent = ch;
-                            if ((entry.option || {})[group] === ch) opt.selected = true;
-                            sel.appendChild(opt);
-                        }
-
-                        sel.addEventListener("change", () => {
-                            if (sel.value) {
-                                entry.option = entry.option || {};
-                                entry.option[group] = sel.value;
-                            } else {
-                                if (entry.option) delete entry.option[group];
-                            }
-                            onChanged();
-                        });
-                        row.appendChild(sel);
-                        panel.appendChild(row);
-                    }
-                }
+                hasOptions = options;
+                rebuildPanel();
             } catch {
                 panel.replaceChildren();
                 const err = document.createElement("div");
@@ -1486,11 +1434,20 @@ function makeInstanceControls(block, entry, idx, onChanged) {
         }
     }
 
-    // Right-click or long-press to open options panel
+    // Right-click to open options panel
     block.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         toggleOptionsPanel();
     });
+
+    // Triangle button click
+    if (triangleBtn) {
+        triangleBtn.addEventListener("click", () => {
+            toggleOptionsPanel();
+        });
+    }
+
+    return { toggleOptionsPanel };
 }
 
 function makeAddBlock({ onNew, onLoad }) {
@@ -1604,7 +1561,7 @@ function setupFlakeWidget(node) {
             indicator.remove();
         }
         for (let i = 0; i < entries.length; i++) {
-            const blk = makeBlock({
+            const { block: blk, triangleBtn } = makeBlock({
                 entry: entries[i],
                 idx: i,
                 onEdit: handleEdit,
@@ -1637,12 +1594,12 @@ function setupFlakeWidget(node) {
                 onDragEnd: (el) => {
                     el.style.opacity = "";
                     dragSrcIdx = null;
-                    for (const blk of grid.querySelectorAll("[data-flake-block]")) {
-                        blk.style.boxShadow = "";
+                    for (const b of grid.querySelectorAll("[data-flake-block]")) {
+                        b.style.boxShadow = "";
                     }
                 },
             });
-            makeInstanceControls(blk, entries[i], i, () => writeEntries(entries));
+            makeInstanceControls(blk, entries[i], i, () => writeEntries(entries), triangleBtn);
             grid.appendChild(blk);
         }
         if (grid._addBlock) grid.appendChild(grid._addBlock);
