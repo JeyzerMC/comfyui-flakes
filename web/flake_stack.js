@@ -1658,6 +1658,7 @@ async function openFileLoadPicker({ flakes, directories }) {
                     currentFolder = parts.join("/");
                     renderGrid();
                 });
+                upItem.addEventListener("dblclick", (e) => e.stopPropagation());
                 grid.appendChild(upItem);
             }
 
@@ -1673,6 +1674,10 @@ async function openFileLoadPicker({ flakes, directories }) {
                 folderItem.appendChild(fIcon);
                 folderItem.appendChild(fLabel);
                 folderItem.addEventListener("click", () => {
+                    currentFolder = currentFolder ? normPath(currentFolder) + "/" + sub : sub;
+                    renderGrid();
+                });
+                folderItem.addEventListener("dblclick", () => {
                     currentFolder = currentFolder ? normPath(currentFolder) + "/" + sub : sub;
                     renderGrid();
                 });
@@ -1713,6 +1718,9 @@ async function openFileLoadPicker({ flakes, directories }) {
                 selectedName = name;
                 selectedEl = thumb;
                 thumb.style.borderColor = "#2a6acf";
+            });
+            thumb.addEventListener("dblclick", () => {
+                close({ name });
             });
 
             return thumb;
@@ -2379,9 +2387,7 @@ function setupFlakeWidget(node) {
 
     async function handleLoad() {
         const { flakes, directories } = await fetchList();
-        const used = new Set(readEntries().filter(e => e.name).map(e => e.name));
-        const available = flakes.filter(n => !used.has(n));
-        const result = await openFileLoadPicker({ flakes: available, directories });
+        const result = await openFileLoadPicker({ flakes, directories });
         if (!result || !result.name) return;
         const arr = readEntries();
         let has_lora = false;
@@ -3127,9 +3133,7 @@ function setupFlakeComboWidget(node) {
 
     async function handleLoad() {
         const { flakes, directories } = await fetchList();
-        const used = new Set(readAllFlakes().filter(e => e.name).map(e => e.name));
-        const available = flakes.filter(n => !used.has(n));
-        const result = await openFileLoadPicker({ flakes: available, directories });
+        const result = await openFileLoadPicker({ flakes, directories });
         if (!result || !result.name) return;
         const arr = readAllFlakes();
         let has_lora = false;
