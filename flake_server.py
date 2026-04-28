@@ -403,7 +403,12 @@ async def _browse(_request: web.Request) -> web.Response:
         return _bad_request("path resolves outside the allowed directory")
 
     if not os.path.isdir(target):
-        return _not_found(f"directory not found: {rel_path}")
+        if rel_path:
+            # Fallback to root directory if requested subdirectory does not exist
+            target = base
+            rel_path = ""
+        else:
+            return _not_found(f"directory not found: {rel_path}")
 
     entries: list[dict[str, str]] = []
     try:
