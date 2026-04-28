@@ -119,6 +119,32 @@ async function fetchFlakeMeta(name) {
     return META_CACHE[name];
 }
 
+// ---------- File picker helper ----------
+
+function createFilePicker({ accept, onSelect, text = "Browse files..." }) {
+    const wrap = document.createElement("div");
+    css(wrap, "position:relative;width:100%;");
+
+    const box = document.createElement("div");
+    css(box, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
+    box.textContent = text;
+
+    const input = document.createElement("input");
+    input.type = "file";
+    if (accept) input.accept = accept;
+    input.style.display = "none";
+
+    input.addEventListener("change", () => {
+        const file = input.files?.[0];
+        if (file && onSelect) onSelect(file);
+        input.value = "";
+    });
+
+    wrap.appendChild(box);
+    wrap.appendChild(input);
+    return { container: wrap, box, input, trigger: () => input.click() };
+}
+
 // ---------- Default-flake helpers ----------
 
 function makeDefaultEntry() {
@@ -704,14 +730,7 @@ function openEditModal({ mode, name, data, dirs }) {
                     const loraPathCol = document.createElement("div");
                     css(loraPathCol, "flex:3;min-width:0;display:flex;gap:4px;align-items:center;");
 
-                    const loraBox = document.createElement("div");
-                    css(loraBox, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
-                    const loraPath = fieldState.lora?.path || "";
-                    const loraName = loraPath ? loraPath.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
-                    loraBox.textContent = loraName;
-                    loraBox.title = loraPath || "";
-
-                    const loraWrap = makeSearchableDropdown([], loraPath, "Select LoRA...");
+                    const loraWrap = makeSearchableDropdown([], fieldState.lora?.path || "", "Select LoRA...");
                     loraWrap.container.style.display = "none";
                     (async () => {
                         try {
@@ -720,8 +739,34 @@ function openEditModal({ mode, name, data, dirs }) {
                         } catch { /* ignore */ }
                     })();
 
-                    loraBox.addEventListener("click", () => {
-                        loraBox.style.display = "none";
+                    const loraPicker = createFilePicker({
+                        accept: ".safetensors",
+                        onSelect: async (file) => {
+                            try {
+                                const loras = await fetchLoras();
+                                const name = file.name;
+                                const match = loras.find(l => l === name || l.endsWith("/" + name) || l.endsWith("\\" + name));
+                                const val = match || name;
+                                if (!fieldState.lora) fieldState.lora = { strength: 1.0 };
+                                fieldState.lora.path = val;
+                                loraWrap.element.value = val;
+                                loraWrap.element.dispatchEvent(new Event("change"));
+                            } catch { /* ignore */ }
+                        },
+                    });
+                    const loraBox = loraPicker.box;
+                    const loraPath = fieldState.lora?.path || "";
+                    loraBox.textContent = loraPath ? loraPath.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
+                    loraBox.title = loraPath || "";
+
+                    const loraEditBtn = makeSmallButton("...");
+                    loraEditBtn.title = "Type manually";
+
+                    loraBox.addEventListener("click", () => loraPicker.trigger());
+                    loraEditBtn.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        loraPicker.container.style.display = "none";
+                        loraEditBtn.style.display = "none";
                         loraWrap.container.style.display = "block";
                         loraWrap.element.focus();
                     });
@@ -729,18 +774,27 @@ function openEditModal({ mode, name, data, dirs }) {
                         const val = loraWrap.element.value;
                         if (!fieldState.lora) fieldState.lora = { strength: 1.0 };
                         fieldState.lora.path = val;
-                        const newName = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
-                        loraBox.textContent = newName;
+                        loraBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
                         loraBox.title = val;
+                        loraPicker.container.style.display = "block";
+                        loraEditBtn.style.display = "inline-block";
+                        loraWrap.container.style.display = "none";
                     });
                     loraWrap.element.addEventListener("blur", () => {
                         setTimeout(() => {
+                            const val = loraWrap.element.value;
+                            if (!fieldState.lora) fieldState.lora = { strength: 1.0 };
+                            fieldState.lora.path = val;
+                            loraBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
+                            loraBox.title = val;
+                            loraPicker.container.style.display = "block";
+                            loraEditBtn.style.display = "inline-block";
                             loraWrap.container.style.display = "none";
-                            loraBox.style.display = "block";
                         }, 200);
                     });
 
-                    loraPathCol.appendChild(loraBox);
+                    loraPathCol.appendChild(loraPicker.container);
+                    loraPathCol.appendChild(loraEditBtn);
                     loraPathCol.appendChild(loraWrap.container);
 
                     if (loraPath) {
@@ -1209,40 +1263,27 @@ function openEditModal({ mode, name, data, dirs }) {
 
 // ---------- Picker (Load existing) ----------
 
-function openPicker(available) {
+function openFileLoadPicker(available) {
     return new Promise((resolve) => {
-        const { content, footer, close, handlers } = openOverlay();
-        handlers.onClose = (v) => resolve(v ?? null);
-        css(content.parentElement, content.parentElement.style.cssText + "min-width:320px;");
-
-        const title = document.createElement("h3");
-        css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
-        title.textContent = "Load existing flake";
-        content.appendChild(title);
-
-        if (available.length === 0) {
-            const empty = document.createElement("div");
-            empty.textContent = "No saved flakes available.";
-            css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;");
-            content.appendChild(empty);
-        } else {
-            const listBox = document.createElement("div");
-            css(listBox, "display:flex;flex-direction:column;gap:4px;");
-            for (const n of available) {
-                const item = document.createElement("button");
-                item.textContent = n;
-                css(item, "text-align:left;padding:6px 10px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
-                item.addEventListener("mouseenter", () => { item.style.background = "#333"; });
-                item.addEventListener("mouseleave", () => { item.style.background = "#2a2a2a"; });
-                item.addEventListener("click", () => close({ name: n }));
-                listBox.appendChild(item);
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".yaml,.yml";
+        input.style.display = "none";
+        input.addEventListener("change", () => {
+            const file = input.files?.[0];
+            if (!file) { resolve(null); return; }
+            const stem = file.name.replace(/\.ya?ml$/i, "");
+            const match = available.find(n => n === stem || n.endsWith("/" + stem) || n.endsWith("\\" + stem));
+            if (match) {
+                resolve({ name: match });
+            } else {
+                window.alert(`'${stem}' not found in the flakes library. Make sure the file is inside the models/flakes/ folder.`);
+                resolve(null);
             }
-            content.appendChild(listBox);
-        }
-
-        const cancelBtn = makeButton("Cancel");
-        cancelBtn.addEventListener("click", () => close(undefined));
-        footer.appendChild(cancelBtn);
+        });
+        document.body.appendChild(input);
+        input.click();
+        setTimeout(() => { input.remove(); }, 60000);
     });
 }
 
@@ -1703,7 +1744,7 @@ function setupFlakeWidget(node) {
         const { flakes } = await fetchList();
         const used = new Set(readEntries().filter(e => e.name).map(e => e.name));
         const available = flakes.filter(n => !used.has(n));
-        const result = await openPicker(available);
+        const result = await openFileLoadPicker(available);
         if (!result || !result.name) return;
         const arr = readEntries();
         let has_lora = false;
@@ -1868,13 +1909,61 @@ function openPresetEditModal({ mode, name, data }) {
 
         content.appendChild(makeComfyLabel("Checkpoint"));
         const ckptWrap = makeSearchableDropdown([], data.checkpoint || "", "Select checkpoint...");
+        const ckptPicker = createFilePicker({
+            accept: ".safetensors",
+            onSelect: async (file) => {
+                try {
+                    const ckpts = await fetchCheckpoints();
+                    const name = file.name;
+                    const match = ckpts.find(c => c === name || c.endsWith("/" + name) || c.endsWith("\\" + name));
+                    ckptWrap.element.value = match || name;
+                    ckptWrap.element.dispatchEvent(new Event("change"));
+                } catch { /* ignore */ }
+            },
+        });
+        const ckptBox = ckptPicker.box;
+        ckptBox.textContent = data.checkpoint ? data.checkpoint.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select Checkpoint";
+
+        const ckptRow = document.createElement("div");
+        css(ckptRow, "display:flex;gap:4px;align-items:center;");
+        ckptRow.appendChild(ckptPicker.container);
+        const ckptEditBtn = makeSmallButton("...");
+        ckptEditBtn.title = "Type manually";
+        ckptRow.appendChild(ckptEditBtn);
+        content.appendChild(ckptRow);
         content.appendChild(ckptWrap.container);
+        ckptWrap.container.style.display = "none";
         (async () => {
             try {
                 const ckpts = await fetchCheckpoints();
                 for (const c of ckpts) ckptWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: c }));
             } catch { /* ignore */ }
         })();
+
+        ckptBox.addEventListener("click", () => ckptPicker.trigger());
+        ckptEditBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            ckptPicker.container.style.display = "none";
+            ckptEditBtn.style.display = "none";
+            ckptWrap.container.style.display = "block";
+            ckptWrap.element.focus();
+        });
+        ckptWrap.element.addEventListener("change", () => {
+            const val = ckptWrap.element.value;
+            ckptBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select Checkpoint";
+            ckptPicker.container.style.display = "block";
+            ckptEditBtn.style.display = "inline-block";
+            ckptWrap.container.style.display = "none";
+        });
+        ckptWrap.element.addEventListener("blur", () => {
+            setTimeout(() => {
+                const val = ckptWrap.element.value;
+                ckptBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select Checkpoint";
+                ckptPicker.container.style.display = "block";
+                ckptEditBtn.style.display = "inline-block";
+                ckptWrap.container.style.display = "none";
+            }, 200);
+        });
 
         const sliderRow = document.createElement("div");
         css(sliderRow, "display:flex;gap:8px;align-items:flex-start;");
@@ -2212,7 +2301,7 @@ function setupFlakeComboWidget(node) {
         const { flakes } = await fetchList();
         const used = new Set(readAllFlakes().filter(e => e.name).map(e => e.name));
         const available = flakes.filter(n => !used.has(n));
-        const result = await openPicker(available);
+        const result = await openFileLoadPicker(available);
         if (!result || !result.name) return;
         const arr = readAllFlakes();
         let has_lora = false;
