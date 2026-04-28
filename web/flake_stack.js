@@ -1301,6 +1301,29 @@ function openFileLoadPicker(available) {
     });
 }
 
+// ---------- Drag indicator helpers ----------
+
+function _showDropIndicator(block) {
+    let indicator = block.querySelector(".flake-drop-indicator");
+    if (!indicator) {
+        indicator = document.createElement("div");
+        indicator.className = "flake-drop-indicator";
+        css(indicator, "position:absolute;left:-3px;top:0;bottom:0;width:2px;background:#2a6acf;border-radius:1px;z-index:10;pointer-events:none;");
+        block.appendChild(indicator);
+    }
+}
+
+function _hideDropIndicator(block) {
+    const indicator = block.querySelector(".flake-drop-indicator");
+    if (indicator) indicator.remove();
+}
+
+function _hideAllDropIndicators() {
+    for (const ind of document.querySelectorAll(".flake-drop-indicator")) {
+        ind.remove();
+    }
+}
+
 // ---------- Block ----------
 
 function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDragOver, onDrop, onDragEnd }) {
@@ -1631,11 +1654,11 @@ function setupFlakeWidget(node) {
                     if (dragSrcIdx === null || idx === 0 || idx === dragSrcIdx) return;
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "move";
-                    el.style.boxShadow = "inset 2px 0 0 #2a6acf";
+                    _showDropIndicator(el);
                 },
                 onDrop: (e, idx, el) => {
                     e.preventDefault();
-                    el.style.boxShadow = "";
+                    _hideDropIndicator(el);
                     if (dragSrcIdx === null || idx === 0 || idx === dragSrcIdx) return;
                     const arr = readEntries();
                     const [moved] = arr.splice(dragSrcIdx, 1);
@@ -1649,9 +1672,7 @@ function setupFlakeWidget(node) {
                 onDragEnd: (el) => {
                     el.style.opacity = "";
                     dragSrcIdx = null;
-                    for (const b of grid.querySelectorAll("[data-flake-block]")) {
-                        b.style.boxShadow = "";
-                    }
+                    _hideAllDropIndicators();
                 },
             });
             makeInstanceControls(blk, entries[i], i, () => writeEntries(entries), triangleBtn);
@@ -1773,6 +1794,28 @@ function setupFlakeWidget(node) {
     }
 
     grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad });
+
+    // Allow dropping after the last item onto the add block
+    grid._addBlock.addEventListener("dragover", (e) => {
+        if (dragSrcIdx === null) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        _showDropIndicator(grid._addBlock);
+    });
+    grid._addBlock.addEventListener("dragleave", () => {
+        _hideDropIndicator(grid._addBlock);
+    });
+    grid._addBlock.addEventListener("drop", (e) => {
+        e.preventDefault();
+        _hideDropIndicator(grid._addBlock);
+        if (dragSrcIdx === null) return;
+        const arr = readEntries();
+        const [moved] = arr.splice(dragSrcIdx, 1);
+        arr.push(moved);
+        writeEntries(arr);
+        dragSrcIdx = null;
+        render();
+    });
 
     // ---- Widget registration ----
     node._flakes_render = render;
