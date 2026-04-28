@@ -23,11 +23,11 @@ class ModelPreset:
     clip_skip: int = -2
     vae: str | None = None
     steps: int = 20
-    cfg: float = 7.0
-    sampler: str = "euler"
+    cfg: float = 4.0
+    sampler: str = "dpmpp_2m"
     scheduler: str = "karras"
-    width: int = 1024
-    height: int = 1024
+    width: int = 832
+    height: int = 1216
     positive: str = ""
     negative: str = ""
     embeddings: list[str] = field(default_factory=list)
@@ -390,11 +390,11 @@ def load_preset(name: str) -> ModelPreset:
         clip_skip=int(raw.get("clip_skip", -2)),
         vae=raw.get("vae") or None,
         steps=int(raw.get("steps", 20)),
-        cfg=float(raw.get("cfg", 7.0)),
-        sampler=str(raw.get("sampler", "euler")),
+        cfg=float(raw.get("cfg", 4.0)),
+        sampler=str(raw.get("sampler", "dpmpp_2m")),
         scheduler=str(raw.get("scheduler", "karras")),
-        width=int(raw.get("width", 1024)),
-        height=int(raw.get("height", 1024)),
+        width=int(raw.get("width", 832)),
+        height=int(raw.get("height", 1216)),
         positive=str(prompt.get("positive", "") or ""),
         negative=str(prompt.get("negative", "") or ""),
         embeddings=list(raw.get("embeddings") or []),
