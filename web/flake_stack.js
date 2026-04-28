@@ -768,12 +768,16 @@ function openEditModal({ mode, name, data, dirs }) {
         css(optionalBox, "display:flex;flex-direction:column;gap:8px;");
         content.appendChild(optionalBox);
 
+        let dragFieldIdx = null;
+
         function renderFields() {
             optionalBox.replaceChildren();
 
-            for (const fieldType of activeFields) {
+            for (let fi = 0; fi < activeFields.length; fi++) {
+                const fieldType = activeFields[fi];
                 const fieldWrap = document.createElement("div");
                 css(fieldWrap, "background:#1a1a1a;padding:10px;border-radius:6px;border:1px solid #2a2a2a;display:flex;flex-direction:column;gap:6px;");
+                fieldWrap.dataset.fieldIdx = String(fi);
 
                 const header = document.createElement("div");
                 css(header, "display:flex;gap:6px;align-items:center;");
@@ -781,6 +785,19 @@ function openEditModal({ mode, name, data, dirs }) {
                 const dragIcon = document.createElement("span");
                 dragIcon.textContent = "\u2630";
                 css(dragIcon, "cursor:grab;color:#666;font-size:12px;");
+                dragIcon.draggable = true;
+                dragIcon.addEventListener("dragstart", (e) => {
+                    dragFieldIdx = fi;
+                    fieldWrap.style.opacity = "0.4";
+                    e.dataTransfer.effectAllowed = "move";
+                });
+                dragIcon.addEventListener("dragend", () => {
+                    dragFieldIdx = null;
+                    fieldWrap.style.opacity = "";
+                    for (const ind of optionalBox.querySelectorAll(".field-drop-indicator")) {
+                        ind.remove();
+                    }
+                });
                 header.appendChild(dragIcon);
 
                 const fieldTitle = document.createElement("span");
@@ -804,6 +821,39 @@ function openEditModal({ mode, name, data, dirs }) {
                 });
                 header.appendChild(delFieldBtn);
                 fieldWrap.appendChild(header);
+
+                fieldWrap.addEventListener("dragover", (e) => {
+                    if (dragFieldIdx === null || dragFieldIdx === fi) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    let indicator = optionalBox.querySelector(".field-drop-indicator");
+                    if (!indicator) {
+                        indicator = document.createElement("div");
+                        indicator.className = "field-drop-indicator";
+                        css(indicator, "height:2px;background:#2a6acf;border-radius:1px;margin:2px 0;");
+                    }
+                    if (optionalBox.children[fi] !== indicator) {
+                        optionalBox.insertBefore(indicator, optionalBox.children[fi]);
+                    }
+                });
+                fieldWrap.addEventListener("dragleave", () => {
+                    for (const ind of optionalBox.querySelectorAll(".field-drop-indicator")) {
+                        ind.remove();
+                    }
+                });
+                fieldWrap.addEventListener("drop", (e) => {
+                    e.preventDefault();
+                    for (const ind of optionalBox.querySelectorAll(".field-drop-indicator")) {
+                        ind.remove();
+                    }
+                    if (dragFieldIdx === null || dragFieldIdx === fi) return;
+                    const [movedField] = activeFields.splice(dragFieldIdx, 1);
+                    let insertIdx = fi;
+                    if (dragFieldIdx < fi) insertIdx--;
+                    activeFields.splice(insertIdx, 0, movedField);
+                    dragFieldIdx = null;
+                    renderFields();
+                });
 
                 if (fieldType === "lora") {
                     const loraBox = document.createElement("div");
