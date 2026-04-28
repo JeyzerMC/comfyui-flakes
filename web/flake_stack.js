@@ -782,13 +782,20 @@ function openEditModal({ mode, name, data, dirs }) {
             fieldState.controlnets = { _: arr };
         }
 
+        // Derive field order from YAML key order (Python preserves insertion order)
         const activeFields = [];
-        if (Array.isArray(data.loras) || data.path) activeFields.push("lora");
-        if (fieldState.prompt) activeFields.push("prompt");
-        if (fieldState.resolution) activeFields.push("resolution");
-        if (fieldState.controlnets._.length > 0) activeFields.push("controlnets");
-        if (Object.keys(fieldState.options).length > 0) activeFields.push("options");
-        if (fieldState.output_stem != null) activeFields.push("output_stem");
+        const knownFieldKeys = { loras: "lora", path: "lora", prompt: "prompt", resolution: "resolution", controlnets: "controlnets", options: "options", output_stem: "output_stem" };
+        for (const key of Object.keys(data)) {
+            const ft = knownFieldKeys[key];
+            if (ft && !activeFields.includes(ft)) activeFields.push(ft);
+        }
+        // Fallback: append any fields that exist but weren't in the key order
+        if (!activeFields.includes("lora") && (Array.isArray(data.loras) || data.path)) activeFields.push("lora");
+        if (!activeFields.includes("prompt") && fieldState.prompt) activeFields.push("prompt");
+        if (!activeFields.includes("resolution") && fieldState.resolution) activeFields.push("resolution");
+        if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0) activeFields.push("controlnets");
+        if (!activeFields.includes("options") && Object.keys(fieldState.options).length > 0) activeFields.push("options");
+        if (!activeFields.includes("output_stem") && fieldState.output_stem != null) activeFields.push("output_stem");
 
         const optionalBox = document.createElement("div");
         css(optionalBox, "display:flex;flex-direction:column;gap:8px;");
@@ -1465,36 +1472,46 @@ function openEditModal({ mode, name, data, dirs }) {
         saveBtn.addEventListener("click", async () => {
             const ordered = {};
             if (displayNameInput.value) ordered.name = displayNameInput.value.trim();
-            if (fieldState.loras && fieldState.loras.length > 0) {
-                ordered.loras = fieldState.loras.map(l => ({
-                    name: l.name || "",
-                    url: l.url || "",
-                    path: l.path || "",
-                    strength: l.strength ?? 1.0,
-                }));
-                // Backward compatibility: single unnamed LoRA
-                if (fieldState.loras.length === 1) {
-                    const l = fieldState.loras[0];
-                    if (!l.name && !l.url && l.path) {
-                        ordered.path = l.path;
-                        ordered.strength = l.strength ?? 1.0;
+
+            // Save fields in the user-selected order so YAML key order is preserved
+            for (const ft of activeFields) {
+                if (ft === "lora" && fieldState.loras && fieldState.loras.length > 0) {
+                    ordered.loras = fieldState.loras.map(l => ({
+                        name: l.name || "",
+                        url: l.url || "",
+                        path: l.path || "",
+                        strength: l.strength ?? 1.0,
+                    }));
+                    // Backward compatibility: single unnamed LoRA
+                    if (fieldState.loras.length === 1) {
+                        const l = fieldState.loras[0];
+                        if (!l.name && !l.url && l.path) {
+                            ordered.path = l.path;
+                            ordered.strength = l.strength ?? 1.0;
+                        }
                     }
                 }
+                if (ft === "prompt" && fieldState.prompt) {
+                    ordered.prompt = {};
+                    if (fieldState.prompt.positive != null) ordered.prompt.positive = fieldState.prompt.positive;
+                    if (fieldState.prompt.negative != null) ordered.prompt.negative = fieldState.prompt.negative;
+                }
+                if (ft === "resolution" && fieldState.resolution) {
+                    const rw = parseInt(fieldState.resolution[0]);
+                    const rh = parseInt(fieldState.resolution[1]);
+                    if (!isNaN(rw) && !isNaN(rh)) ordered.resolution = [rw, rh];
+                }
+                if (ft === "controlnets") {
+                    const cnArr = fieldState.controlnets._ || [];
+                    if (cnArr.length > 0) ordered.controlnets = cnArr;
+                }
+                if (ft === "options" && Object.keys(fieldState.options).length > 0) {
+                    ordered.options = fieldState.options;
+                }
+                if (ft === "output_stem" && fieldState.output_stem != null) {
+                    ordered.output_stem = fieldState.output_stem;
+                }
             }
-            if (fieldState.prompt) {
-                ordered.prompt = {};
-                if (fieldState.prompt.positive != null) ordered.prompt.positive = fieldState.prompt.positive;
-                if (fieldState.prompt.negative != null) ordered.prompt.negative = fieldState.prompt.negative;
-            }
-            if (fieldState.resolution) {
-                const rw = parseInt(fieldState.resolution[0]);
-                const rh = parseInt(fieldState.resolution[1]);
-                if (!isNaN(rw) && !isNaN(rh)) ordered.resolution = [rw, rh];
-            }
-            const cnArr = fieldState.controlnets._ || [];
-            if (cnArr.length > 0) ordered.controlnets = cnArr;
-            if (Object.keys(fieldState.options).length > 0) ordered.options = fieldState.options;
-            if (fieldState.output_stem != null) ordered.output_stem = fieldState.output_stem;
 
             try {
                 if (mode === "create") {
