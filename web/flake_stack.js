@@ -1888,6 +1888,17 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
         }
     }
 
+    async function loadOptions() {
+        if (optionsLoaded || !entry.name) return;
+        try {
+            const [options, fdata] = await Promise.all([fetchFlakeMeta(entry.name), fetchFlake(entry.name)]);
+            optionsLoaded = true;
+            hasOptions = options;
+            flakeData = fdata;
+            rebuildPanel();
+        } catch { /* ignore */ }
+    }
+
     async function toggleOptionsPanel() {
         if (panel.style.display === "flex") {
             panel.style.display = "none";
@@ -1905,11 +1916,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
             panel.appendChild(loading);
 
             try {
-                const [options, fdata] = await Promise.all([fetchFlakeMeta(entry.name), fetchFlake(entry.name)]);
-                optionsLoaded = true;
-                hasOptions = options;
-                flakeData = fdata;
-                rebuildPanel();
+                await loadOptions();
             } catch {
                 panel.replaceChildren();
                 const err = document.createElement("div");
@@ -1920,18 +1927,15 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
         }
     }
 
-    // Right-click to open options panel
-    block.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        toggleOptionsPanel();
-    });
-
     // Triangle button click
     if (triangleBtn) {
         triangleBtn.addEventListener("click", () => {
             toggleOptionsPanel();
         });
     }
+
+    // Load options in background so triangle shows immediately for flakes that have options/loras
+    loadOptions();
 
     return { toggleOptionsPanel };
 }
