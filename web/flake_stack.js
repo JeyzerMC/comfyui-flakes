@@ -1907,6 +1907,10 @@ function openPresetEditModal({ mode, name, data }) {
             content.appendChild(makeComfyLabel("Preset name"));
             pathInput = makeComfyInput("", "e.g. sdxl-juggernaut");
             content.appendChild(pathInput);
+        } else {
+            content.appendChild(makeComfyLabel("Preset name"));
+            pathInput = makeComfyInput(name, "");
+            content.appendChild(pathInput);
         }
 
         content.appendChild(makeComfyLabel("Checkpoint"));
@@ -2056,9 +2060,9 @@ function openPresetEditModal({ mode, name, data }) {
             };
 
             try {
+                const pName = (pathInput.value || "").trim();
+                if (!pName) { window.alert("Preset name is required"); return; }
                 if (mode === "create") {
-                    const pName = (pathInput.value || "").trim();
-                    if (!pName) { window.alert("Preset name is required"); return; }
                     await fetch("/flakes/presets/save", {
                         method: "PUT",
                         headers: { "Content-Type": "application/json" },
@@ -2066,12 +2070,23 @@ function openPresetEditModal({ mode, name, data }) {
                     });
                     close({ created: true, name: pName });
                 } else {
-                    await fetch("/flakes/presets/save", {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ name, data: ordered }),
-                    });
-                    close({ saved: true, name });
+                    if (pName !== name) {
+                        // Rename: save under new name, delete old
+                        await fetch("/flakes/presets/save", {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ name: pName, data: ordered }),
+                        });
+                        await fetch(`/flakes/presets/delete?name=${encodeURIComponent(name)}`, { method: "DELETE" });
+                        close({ saved: true, name: pName, oldName: name });
+                    } else {
+                        await fetch("/flakes/presets/save", {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ name, data: ordered }),
+                        });
+                        close({ saved: true, name });
+                    }
                 }
             } catch (err) {
                 window.alert(`Save failed: ${err.message || err}`);
