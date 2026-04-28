@@ -985,7 +985,7 @@ function openEditModal({ mode, name, data, dirs }) {
                             pathEditBtn.title = "Type manually";
 
                             pathBox.addEventListener("click", async () => {
-                                const result = await openFileBrowser({ type: "loras", defaultPath: "img" });
+                                const result = await openFileBrowser({ type: "loras", defaultPath: "" });
                                 if (result && result.file) {
                                     lora.path = result.file;
                                     pathBox.textContent = lora.path ? lora.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
@@ -1642,66 +1642,84 @@ function openFileBrowser({ type, defaultPath = "" }) {
         css(pathBar, "font-size:11px;color:#888;margin-bottom:8px;word-break:break-all;");
         content.appendChild(pathBar);
 
+        const searchRow = document.createElement("div");
+        css(searchRow, "margin-bottom:8px;");
+        const searchInput = makeComfyInput("", "Search...");
+        searchRow.appendChild(searchInput);
+        content.appendChild(searchRow);
+
         const listBox = document.createElement("div");
         css(listBox, "display:flex;flex-direction:column;gap:2px;max-height:320px;overflow:auto;");
         content.appendChild(listBox);
 
         let currentPath = defaultPath;
         let selectedFile = null;
+        let dirEntries = [];
+
+        function renderEntries(filter = "") {
+            listBox.replaceChildren();
+            const term = filter.toLowerCase().trim();
+            const entries = term
+                ? dirEntries.filter(e => e.name.toLowerCase().includes(term))
+                : dirEntries;
+
+            if (currentPath) {
+                const upBtn = document.createElement("button");
+                upBtn.textContent = "\u2191 ..";
+                css(upBtn, "text-align:left;padding:6px 10px;background:#252525;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
+                upBtn.addEventListener("mouseenter", () => { upBtn.style.background = "#333"; });
+                upBtn.addEventListener("mouseleave", () => { upBtn.style.background = "#252525"; });
+                upBtn.addEventListener("click", () => {
+                    const parts = currentPath.replace(/\\/g, "/").split("/").filter(Boolean);
+                    parts.pop();
+                    loadDir(parts.join("/"));
+                });
+                listBox.appendChild(upBtn);
+            }
+
+            for (const entry of entries) {
+                const row = document.createElement("button");
+                row.textContent = entry.type === "dir" ? "\uD83D\uDCC1 " + entry.name : entry.name;
+                css(row, "text-align:left;padding:6px 10px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
+                row.addEventListener("mouseenter", () => { row.style.background = "#333"; });
+                row.addEventListener("mouseleave", () => { row.style.background = "#2a2a2a"; });
+                if (entry.type === "dir") {
+                    row.addEventListener("click", () => {
+                        const next = currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name;
+                        loadDir(next);
+                    });
+                } else {
+                    row.addEventListener("click", () => {
+                        selectedFile = currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name;
+                        for (const b of listBox.querySelectorAll("button")) {
+                            b.style.borderColor = "#444";
+                        }
+                        row.style.borderColor = "#2a6acf";
+                    });
+                }
+                listBox.appendChild(row);
+            }
+
+            if (entries.length === 0) {
+                const empty = document.createElement("div");
+                empty.textContent = term ? "No matches" : "Empty folder";
+                css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;font-size:12px;");
+                listBox.appendChild(empty);
+            }
+        }
 
         async function loadDir(path) {
-            listBox.replaceChildren();
             pathBar.textContent = path || "/";
             selectedFile = null;
+            searchInput.value = "";
             try {
                 const data = await fetchBrowse(type, path);
                 currentPath = data.path || "";
                 pathBar.textContent = currentPath || "/";
-
-                if (currentPath) {
-                    const upBtn = document.createElement("button");
-                    upBtn.textContent = "\u2191 ..";
-                    css(upBtn, "text-align:left;padding:6px 10px;background:#252525;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
-                    upBtn.addEventListener("mouseenter", () => { upBtn.style.background = "#333"; });
-                    upBtn.addEventListener("mouseleave", () => { upBtn.style.background = "#252525"; });
-                    upBtn.addEventListener("click", () => {
-                        const parts = currentPath.replace(/\\/g, "/").split("/").filter(Boolean);
-                        parts.pop();
-                        loadDir(parts.join("/"));
-                    });
-                    listBox.appendChild(upBtn);
-                }
-
-                for (const entry of data.entries) {
-                    const row = document.createElement("button");
-                    row.textContent = entry.type === "dir" ? "\uD83D\uDCC1 " + entry.name : entry.name;
-                    css(row, "text-align:left;padding:6px 10px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
-                    row.addEventListener("mouseenter", () => { row.style.background = "#333"; });
-                    row.addEventListener("mouseleave", () => { row.style.background = "#2a2a2a"; });
-                    if (entry.type === "dir") {
-                        row.addEventListener("click", () => {
-                            const next = currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name;
-                            loadDir(next);
-                        });
-                    } else {
-                        row.addEventListener("click", () => {
-                            selectedFile = currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name;
-                            for (const b of listBox.querySelectorAll("button")) {
-                                b.style.borderColor = "#444";
-                            }
-                            row.style.borderColor = "#2a6acf";
-                        });
-                    }
-                    listBox.appendChild(row);
-                }
-
-                if (data.entries.length === 0) {
-                    const empty = document.createElement("div");
-                    empty.textContent = "Empty folder";
-                    css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;font-size:12px;");
-                    listBox.appendChild(empty);
-                }
+                dirEntries = data.entries || [];
+                renderEntries();
             } catch (err) {
+                dirEntries = [];
                 listBox.replaceChildren();
                 const errEl = document.createElement("div");
                 css(errEl, "color:#f88;padding:12px;text-align:center;font-size:12px;");
@@ -1710,6 +1728,7 @@ function openFileBrowser({ type, defaultPath = "" }) {
             }
         }
 
+        searchInput.addEventListener("input", () => renderEntries(searchInput.value));
         loadDir(defaultPath);
 
         const cancelBtn = makeButton("Cancel");
@@ -2553,7 +2572,7 @@ function openPresetEditModal({ mode, name, data }) {
         })();
 
         ckptBox.addEventListener("click", async () => {
-            const result = await openFileBrowser({ type: "checkpoints", defaultPath: "img" });
+            const result = await openFileBrowser({ type: "checkpoints", defaultPath: "" });
             if (result && result.file) {
                 ckptWrap.element.value = result.file;
                 ckptWrap.element.dispatchEvent(new Event("change"));
