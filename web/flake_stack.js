@@ -272,11 +272,11 @@ function makePanelDropdown(options = [], selected = "") {
         const o = document.createElement("option");
         o.value = opt.value;
         o.textContent = opt.label;
-        css(o, "font-size:10px;");
+        css(o, "font-size:13px;text-align:center;");
         if (opt.value === selected) o.selected = true;
         el.appendChild(o);
     }
-    css(el, "background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:4px;font-size:10px;height:22px;width:100%;box-sizing:border-box;appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;outline:none;text-align:center;text-align-last:center;-moz-text-align-last:center;padding:0 18px 0 4px;");
+    css(el, "background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:4px;font-size:13px;height:26px;width:100%;box-sizing:border-box;appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;outline:none;text-align:center;text-align-last:center;-moz-text-align-last:center;padding:0 18px;");
     el.addEventListener("focus", () => { el.style.borderColor = "#555"; });
     el.addEventListener("blur", () => { el.style.borderColor = "#333"; });
 
