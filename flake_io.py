@@ -20,6 +20,7 @@ _NAME_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_\- ]+$")
 class ModelPreset:
     name: str
     checkpoint: str = ""
+    checkpoint_url: str = ""
     clip_skip: int = -2
     vae: str | None = None
     steps: int = 20
@@ -389,6 +390,7 @@ def load_preset(name: str) -> ModelPreset:
     return ModelPreset(
         name=name,
         checkpoint=str(raw.get("checkpoint", "")),
+        checkpoint_url=str(raw.get("checkpoint_url", "")),
         clip_skip=int(raw.get("clip_skip", -2)),
         vae=raw.get("vae") or None,
         steps=int(raw.get("steps", 20)),

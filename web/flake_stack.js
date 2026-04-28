@@ -1870,6 +1870,7 @@ async function handlePresetButton(e) {
             mode: "create",
             data: {
                 checkpoint: "",
+                checkpoint_url: "",
                 clip_skip: -2,
                 vae: "",
                 steps: 20,
@@ -1978,6 +1979,10 @@ function openPresetEditModal({ mode, name, data }) {
                 ckptWrap.container.style.display = "none";
             }, 200);
         });
+
+        content.appendChild(makeComfyLabel("Checkpoint URL (optional)"));
+        const ckptUrlInput = makeComfyInput(data.checkpoint_url || "", "https://civitai.com/models/...");
+        content.appendChild(ckptUrlInput);
 
         const sliderRow = document.createElement("div");
         css(sliderRow, "display:flex;gap:8px;align-items:flex-start;");
@@ -2100,6 +2105,7 @@ function openPresetEditModal({ mode, name, data }) {
         saveBtn.addEventListener("click", async () => {
             const ordered = {
                 checkpoint: ckptWrap.element.value,
+                checkpoint_url: ckptUrlInput.value || "",
                 clip_skip: csSlider.getValue(),
                 vae: vaeWrap.element.value || null,
                 steps: stepsSlider.getValue(),
