@@ -48,12 +48,21 @@ class ControlNetEntry:
 
 
 @dataclass
+class LoraEntry:
+    name: str = ""
+    url: str = ""
+    path: str = ""
+    strength: float = 1.0
+
+
+@dataclass
 class Flake:
     name: str
     positive: str = ""
     negative: str = ""
-    lora_path: str | None = None
-    strength: float = 1.0
+    loras: list[LoraEntry] = field(default_factory=list)
+    lora_path: str | None = None  # legacy single LoRA
+    strength: float = 1.0  # legacy single LoRA strength
     resolution: tuple[int, int] | None = None
     controlnets: list[ControlNetEntry] = field(default_factory=list)
     options: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
@@ -204,10 +213,34 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
             )
         )
 
+    # Parse LoRAs: new multi-LoRA format takes precedence
+    loras: list[LoraEntry] = []
+    if raw.get("loras"):
+        for lr in raw["loras"]:
+            loras.append(
+                LoraEntry(
+                    name=str(lr.get("name", "")),
+                    url=str(lr.get("url", "")),
+                    path=str(lr.get("path", "")),
+                    strength=float(lr.get("strength", 1.0)),
+                )
+            )
+    elif raw.get("path"):
+        # Legacy single LoRA
+        loras.append(
+            LoraEntry(
+                name="",
+                url="",
+                path=str(raw["path"]),
+                strength=float(raw.get("strength", 1.0)),
+            )
+        )
+
     return Flake(
         name=name,
         positive=str(prompt.get("positive", "") or ""),
         negative=str(prompt.get("negative", "") or ""),
+        loras=loras,
         lora_path=raw.get("path") or None,
         strength=float(raw.get("strength", 1.0)),
         resolution=resolution,
@@ -230,8 +263,18 @@ def resolve(entry: dict[str, Any]) -> Flake:
     else:
         flake = load_flake(entry["name"])
 
+    # Legacy single LoRA strength override
     if "strength" in entry and entry["strength"] is not None:
         flake.strength = float(entry["strength"])
+        if flake.loras:
+            flake.loras[0].strength = flake.strength
+
+    # Multi-LoRA strength overrides
+    entry_loras = entry.get("loras")
+    if isinstance(entry_loras, list):
+        for i, override in enumerate(entry_loras):
+            if i < len(flake.loras) and override is not None:
+                flake.loras[i].strength = float(override)
 
     selected = entry.get("option") or {}
     for group, choice in selected.items():

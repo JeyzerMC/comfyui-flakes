@@ -140,6 +140,7 @@ function makeDefaultEntry() {
     return {
         inline: true,
         content: { options: {} },
+        loras: [],
         strength: 1.0,
         option: {},
     };
@@ -652,7 +653,9 @@ function openEditModal({ mode, name, data, dirs }) {
 
         // ---- Optional fields state ----
         const fieldState = {
-            lora: data.path ? { path: data.path, strength: data.strength ?? 1.0 } : null,
+            loras: Array.isArray(data.loras)
+                ? JSON.parse(JSON.stringify(data.loras))
+                : (data.path ? [{ name: "", url: "", path: data.path, strength: data.strength ?? 1.0 }] : []),
             prompt: (data.prompt?.positive != null || data.prompt?.negative != null)
                 ? { positive: data.prompt?.positive ?? null, negative: data.prompt?.negative ?? null }
                 : null,
@@ -667,7 +670,7 @@ function openEditModal({ mode, name, data, dirs }) {
         }
 
         const activeFields = [];
-        if (fieldState.lora) activeFields.push("lora");
+        if (Array.isArray(data.loras) || data.path) activeFields.push("lora");
         if (fieldState.prompt) activeFields.push("prompt");
         if (fieldState.resolution) activeFields.push("resolution");
         if (fieldState.controlnets._.length > 0) activeFields.push("controlnets");
@@ -702,7 +705,7 @@ function openEditModal({ mode, name, data, dirs }) {
                 delFieldBtn.addEventListener("click", () => {
                     const idx = activeFields.indexOf(fieldType);
                     if (idx !== -1) activeFields.splice(idx, 1);
-                    if (fieldType === "lora") fieldState.lora = null;
+                    if (fieldType === "lora") fieldState.loras = [];
                     if (fieldType === "prompt") fieldState.prompt = null;
                     if (fieldType === "resolution") fieldState.resolution = null;
                     if (fieldType === "controlnets") fieldState.controlnets._ = [];
@@ -716,94 +719,163 @@ function openEditModal({ mode, name, data, dirs }) {
                 fieldWrap.appendChild(header);
 
                 if (fieldType === "lora") {
-                    const row = document.createElement("div");
-                    css(row, "display:flex;gap:8px;align-items:flex-start;");
-
-                    const loraPathCol = document.createElement("div");
-                    css(loraPathCol, "flex:3;min-width:0;display:flex;gap:4px;align-items:center;");
-
-                    const loraWrap = makeSearchableDropdown([], fieldState.lora?.path || "", "Select LoRA...");
-                    loraWrap.container.style.display = "none";
-                    (async () => {
-                        try {
-                            const loras = await fetchLoras();
-                            for (const l of loras) loraWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: l }));
-                        } catch { /* ignore */ }
-                    })();
-
                     const loraBox = document.createElement("div");
-                    css(loraBox, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
-                    const loraPath = fieldState.lora?.path || "";
-                    loraBox.textContent = loraPath ? loraPath.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
-                    loraBox.title = loraPath || "";
+                    css(loraBox, "display:flex;flex-direction:column;gap:6px;");
+                    fieldWrap.appendChild(loraBox);
 
-                    const loraEditBtn = makeSmallButton("...");
-                    loraEditBtn.title = "Type manually";
+                    function renderLoras() {
+                        loraBox.replaceChildren();
+                        for (let i = 0; i < fieldState.loras.length; i++) {
+                            const lora = fieldState.loras[i];
+                            const card = document.createElement("div");
+                            css(card, "background:#252525;padding:10px;border-radius:6px;display:flex;flex-direction:column;gap:6px;border:1px solid #333;");
 
-                    loraBox.addEventListener("click", async () => {
-                        const result = await openFileBrowser({ type: "loras", defaultPath: "img" });
-                        if (result && result.file) {
-                            if (!fieldState.lora) fieldState.lora = { strength: 1.0 };
-                            fieldState.lora.path = result.file;
-                            loraWrap.element.value = result.file;
-                            loraWrap.element.dispatchEvent(new Event("change"));
-                        }
-                    });
-                    loraEditBtn.addEventListener("click", (e) => {
-                        e.stopPropagation();
-                        loraBox.style.display = "none";
-                        loraEditBtn.style.display = "none";
-                        loraWrap.container.style.display = "block";
-                        loraWrap.element.focus();
-                    });
-                    loraWrap.element.addEventListener("change", () => {
-                        const val = loraWrap.element.value;
-                        if (!fieldState.lora) fieldState.lora = { strength: 1.0 };
-                        fieldState.lora.path = val;
-                        loraBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
-                        loraBox.title = val;
-                        loraBox.style.display = "block";
-                        loraEditBtn.style.display = "inline-block";
-                        loraWrap.container.style.display = "none";
-                    });
-                    loraWrap.element.addEventListener("blur", () => {
-                        setTimeout(() => {
-                            const val = loraWrap.element.value;
-                            if (!fieldState.lora) fieldState.lora = { strength: 1.0 };
-                            fieldState.lora.path = val;
-                            loraBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
-                            loraBox.title = val;
-                            loraBox.style.display = "block";
-                            loraEditBtn.style.display = "inline-block";
+                            const header = document.createElement("div");
+                            css(header, "display:flex;gap:6px;align-items:center;");
+
+                            const dragHandle = document.createElement("span");
+                            dragHandle.textContent = "\u2630";
+                            css(dragHandle, "cursor:grab;color:#666;font-size:12px;");
+                            header.appendChild(dragHandle);
+
+                            const title = document.createElement("span");
+                            const titleText = lora.name ? `LoRA: ${lora.name}${lora.url ? " - " + lora.url : ""}` : "LoRA";
+                            title.textContent = titleText;
+                            css(title, "flex:1;font-size:12px;font-weight:500;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
+                            header.appendChild(title);
+
+                            const editBtn = makeSmallButton("...");
+                            editBtn.title = "Edit name and URL";
+                            editBtn.addEventListener("click", () => {
+                                lora._editing = !lora._editing;
+                                renderLoras();
+                            });
+                            header.appendChild(editBtn);
+
+                            const removeBtn = makeSmallButton("\u2715");
+                            removeBtn.addEventListener("click", () => {
+                                fieldState.loras.splice(i, 1);
+                                renderLoras();
+                            });
+                            header.appendChild(removeBtn);
+
+                            card.appendChild(header);
+
+                            if (lora._editing) {
+                                const editRow = document.createElement("div");
+                                css(editRow, "display:flex;flex-direction:column;gap:4px;");
+                                const nameInput = makeComfyInput(lora.name || "", "Display name");
+                                nameInput.addEventListener("change", () => {
+                                    lora.name = nameInput.value;
+                                    renderLoras();
+                                });
+                                const urlInput = makeComfyInput(lora.url || "", "https://civitai.com/models/...");
+                                urlInput.addEventListener("change", () => {
+                                    lora.url = urlInput.value;
+                                    renderLoras();
+                                });
+                                editRow.appendChild(makeLabel("Name"));
+                                editRow.appendChild(nameInput);
+                                editRow.appendChild(makeLabel("URL"));
+                                editRow.appendChild(urlInput);
+                                card.appendChild(editRow);
+                            }
+
+                            const pathRow = document.createElement("div");
+                            css(pathRow, "display:flex;gap:4px;align-items:center;");
+
+                            const loraWrap = makeSearchableDropdown([], lora.path || "", "Select LoRA...");
                             loraWrap.container.style.display = "none";
-                        }, 200);
-                    });
+                            (async () => {
+                                try {
+                                    const loras = await fetchLoras();
+                                    for (const l of loras) loraWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: l }));
+                                } catch { /* ignore */ }
+                            })();
 
-                    loraPathCol.appendChild(loraBox);
-                    loraPathCol.appendChild(loraEditBtn);
-                    loraPathCol.appendChild(loraWrap.container);
+                            const pathBox = document.createElement("div");
+                            css(pathBox, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
+                            pathBox.textContent = lora.path ? lora.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
+                            pathBox.title = lora.path || "";
 
-                    if (loraPath) {
-                        const clearLora = makeSmallButton("\u2715");
-                        css(clearLora, "color:#f88;");
-                        clearLora.addEventListener("click", (e) => {
-                            e.stopPropagation();
-                            if (fieldState.lora) fieldState.lora.path = "";
-                            loraBox.textContent = "No LoRA selected";
-                            loraBox.title = "";
-                            loraWrap.element.value = "";
+                            const pathEditBtn = makeSmallButton("...");
+                            pathEditBtn.title = "Type manually";
+
+                            pathBox.addEventListener("click", async () => {
+                                const result = await openFileBrowser({ type: "loras", defaultPath: "img" });
+                                if (result && result.file) {
+                                    lora.path = result.file;
+                                    pathBox.textContent = lora.path ? lora.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
+                                    pathBox.title = lora.path || "";
+                                    loraWrap.element.value = lora.path;
+                                }
+                            });
+
+                            pathEditBtn.addEventListener("click", (e) => {
+                                e.stopPropagation();
+                                pathBox.style.display = "none";
+                                pathEditBtn.style.display = "none";
+                                loraWrap.container.style.display = "block";
+                                loraWrap.element.focus();
+                            });
+
+                            loraWrap.element.addEventListener("change", () => {
+                                const val = loraWrap.element.value;
+                                lora.path = val;
+                                pathBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
+                                pathBox.title = val;
+                                pathBox.style.display = "block";
+                                pathEditBtn.style.display = "inline-block";
+                                loraWrap.container.style.display = "none";
+                            });
+
+                            loraWrap.element.addEventListener("blur", () => {
+                                setTimeout(() => {
+                                    const val = loraWrap.element.value;
+                                    lora.path = val;
+                                    pathBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
+                                    pathBox.title = val;
+                                    pathBox.style.display = "block";
+                                    pathEditBtn.style.display = "inline-block";
+                                    loraWrap.container.style.display = "none";
+                                }, 200);
+                            });
+
+                            pathRow.appendChild(pathBox);
+                            pathRow.appendChild(pathEditBtn);
+                            pathRow.appendChild(loraWrap.container);
+
+                            if (lora.path) {
+                                const clearBtn = makeSmallButton("\u2715");
+                                css(clearBtn, "color:#f88;");
+                                clearBtn.addEventListener("click", (e) => {
+                                    e.stopPropagation();
+                                    lora.path = "";
+                                    pathBox.textContent = "No LoRA selected";
+                                    pathBox.title = "";
+                                    loraWrap.element.value = "";
+                                });
+                                pathRow.appendChild(clearBtn);
+                            }
+
+                            card.appendChild(pathRow);
+
+                            const strSlider = makeComfyValueSlider(lora.strength ?? 1.0, -10, 10, 0.05, (v) => {
+                                lora.strength = v;
+                            });
+                            card.appendChild(strSlider);
+
+                            loraBox.appendChild(card);
+                        }
+
+                        const addBtn = makeSmallButton("+ Add LoRA");
+                        addBtn.addEventListener("click", () => {
+                            fieldState.loras.push({ name: "", url: "", path: "", strength: 1.0 });
+                            renderLoras();
                         });
-                        loraPathCol.appendChild(clearLora);
+                        loraBox.appendChild(addBtn);
                     }
-
-                    row.appendChild(loraPathCol);
-
-                    const strCol = document.createElement("div");
-                    css(strCol, "flex:1;min-width:0;");
-                    const strSlider = makeComfyValueSlider(fieldState.lora?.strength ?? 1.0, -10, 10, 0.05);
-                    strCol.appendChild(strSlider);
-                    row.appendChild(strCol);
-                    fieldWrap.appendChild(row);
+                    renderLoras();
                 }
 
                 if (fieldType === "prompt") {
@@ -1172,7 +1244,7 @@ function openEditModal({ mode, name, data, dirs }) {
                 fieldMenu.style.display = "none";
                 if (activeFields.includes(ft.key)) return;
                 activeFields.push(ft.key);
-                if (ft.key === "lora") fieldState.lora = { path: "", strength: 1.0 };
+                if (ft.key === "lora") fieldState.loras = [{ name: "", url: "", path: "", strength: 1.0 }];
                 if (ft.key === "prompt") fieldState.prompt = {};
                 if (ft.key === "resolution") fieldState.resolution = [1024, 1024];
                 if (ft.key === "controlnets") fieldState.controlnets._ = [];
@@ -1217,9 +1289,21 @@ function openEditModal({ mode, name, data, dirs }) {
         saveBtn.addEventListener("click", async () => {
             const ordered = {};
             if (displayNameInput.value) ordered.name = displayNameInput.value.trim();
-            if (fieldState.lora) {
-                if (fieldState.lora.path) ordered.path = fieldState.lora.path;
-                ordered.strength = fieldState.lora.strength ?? 1.0;
+            if (fieldState.loras && fieldState.loras.length > 0) {
+                ordered.loras = fieldState.loras.map(l => ({
+                    name: l.name || "",
+                    url: l.url || "",
+                    path: l.path || "",
+                    strength: l.strength ?? 1.0,
+                }));
+                // Backward compatibility: single unnamed LoRA
+                if (fieldState.loras.length === 1) {
+                    const l = fieldState.loras[0];
+                    if (!l.name && !l.url && l.path) {
+                        ordered.path = l.path;
+                        ordered.strength = l.strength ?? 1.0;
+                    }
+                }
             }
             if (fieldState.prompt) {
                 ordered.prompt = {};
@@ -1495,20 +1579,29 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
 
     let optionsLoaded = false;
     let hasOptions = false;
+    let flakeData = null;
 
     function rebuildPanel() {
         panel.replaceChildren();
 
-        // LoRA strength slider at top of panel
-        if (entry.has_lora) {
-            const sliderRow = document.createElement("div");
-            css(sliderRow, "padding:2px 0;");
-            const strSlider = makeComfyValueSlider(entry.strength != null ? entry.strength : 1.0, -10, 10, 0.05, (v) => {
-                entry.strength = v;
-                onChanged();
-            });
-            sliderRow.appendChild(strSlider);
-            panel.appendChild(sliderRow);
+        // LoRA strength sliders at top of panel
+        if (entry.loras && entry.loras.length > 0) {
+            const lorasMeta = entry._pendingData?.loras || flakeData?.loras || [];
+            for (let i = 0; i < entry.loras.length; i++) {
+                const sliderRow = document.createElement("div");
+                css(sliderRow, "padding:2px 0;");
+                const name = lorasMeta[i]?.name || "LoRA";
+                const label = document.createElement("div");
+                label.textContent = name;
+                css(label, "font-size:9px;opacity:0.7;padding:2px 0;");
+                sliderRow.appendChild(label);
+                const strSlider = makeComfyValueSlider(entry.loras[i] != null ? entry.loras[i] : 1.0, -10, 10, 0.05, (v) => {
+                    entry.loras[i] = v;
+                    onChanged();
+                });
+                sliderRow.appendChild(strSlider);
+                panel.appendChild(sliderRow);
+            }
         }
 
         if (!hasOptions || !Object.keys(hasOptions).length) {
@@ -1570,9 +1663,10 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
             panel.appendChild(loading);
 
             try {
-                const options = await fetchFlakeMeta(entry.name);
+                const [options, fdata] = await Promise.all([fetchFlakeMeta(entry.name), fetchFlake(entry.name)]);
                 optionsLoaded = true;
                 hasOptions = options;
+                flakeData = fdata;
                 rebuildPanel();
             } catch {
                 panel.replaceChildren();
@@ -1688,7 +1782,14 @@ function setupFlakeWidget(node) {
     function readEntries() {
         try {
             const arr = JSON.parse(flakesHidden.value || "[]");
-            return ensureDefault(Array.isArray(arr) ? arr : []);
+            const result = ensureDefault(Array.isArray(arr) ? arr : []);
+            for (const entry of result) {
+                if (!entry.loras && entry.strength != null) {
+                    entry.loras = [entry.strength];
+                }
+                if (!entry.loras) entry.loras = [];
+            }
+            return result;
         } catch { return ensureDefault([]); }
     }
     function writeEntries(entries) { flakesHidden.value = JSON.stringify(entries); }
@@ -1783,7 +1884,7 @@ function setupFlakeWidget(node) {
         if (result.defaultUpdated) {
             const arr = readEntries();
             arr[idx].content = result.data;
-            arr[idx].has_lora = !!(result.data && (result.data.path || result.data.lora_path));
+            arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
             writeEntries(arr);
             render();
         } else if (result.deleted) {
@@ -1793,7 +1894,7 @@ function setupFlakeWidget(node) {
         } else if (result.saved) {
             const arr = readEntries();
             arr[idx]._pendingData = result.data;
-            arr[idx].has_lora = !!(result.data && (result.data.path || result.data.lora_path));
+            arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
             writeEntries(arr);
             render();
         }
@@ -1818,7 +1919,7 @@ function setupFlakeWidget(node) {
             await saveFlakeApi(entry.name, entry._pendingData);
             const arr = readEntries();
             delete arr[idx]._pendingData;
-            arr[idx].has_lora = !!(entry._pendingData && (entry._pendingData.path || entry._pendingData.lora_path));
+            arr[idx].has_lora = !!(entry._pendingData && (entry._pendingData.path || (entry._pendingData.loras && entry._pendingData.loras.length > 0)));
             writeEntries(arr);
             render();
         } catch (err) {
@@ -1837,15 +1938,27 @@ function setupFlakeWidget(node) {
         const arr = readEntries();
         let has_lora = false;
         let display_name = null;
-        if (result.data && result.data.path) has_lora = true;
+        let loras = [];
+        if (result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0))) has_lora = true;
         else if (result.name) {
-            try { const d = await fetchFlake(result.name); has_lora = !!(d && d.path); } catch {}
+            try { const d = await fetchFlake(result.name); has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0))); } catch {}
         }
         if (result.data && result.data.name) display_name = result.data.name;
         else if (result.name) {
             try { const d = await fetchFlake(result.name); display_name = d.name || null; } catch {}
         }
-        arr.push({ name: result.name, strength: 1.0, option: {}, has_lora, display_name });
+        if (result.data && result.data.loras) {
+            loras = result.data.loras.map(l => l.strength ?? 1.0);
+        } else if (result.data && result.data.path) {
+            loras = [result.data.strength ?? 1.0];
+        } else if (result.name) {
+            try {
+                const d = await fetchFlake(result.name);
+                if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
+                else if (d.path) loras = [d.strength ?? 1.0];
+            } catch {}
+        }
+        arr.push({ name: result.name, loras, option: {}, has_lora, display_name });
         writeEntries(arr);
         render();
     }
@@ -1859,8 +1972,15 @@ function setupFlakeWidget(node) {
         const arr = readEntries();
         let has_lora = false;
         let display_name = null;
-        try { const d = await fetchFlake(result.name); has_lora = !!(d && d.path); display_name = d.name || null; } catch {}
-        arr.push({ name: result.name, strength: 1.0, option: {}, has_lora, display_name });
+        let loras = [];
+        try {
+            const d = await fetchFlake(result.name);
+            has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
+            display_name = d.name || null;
+            if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
+            else if (d.path) loras = [d.strength ?? 1.0];
+        } catch {}
+        arr.push({ name: result.name, loras, option: {}, has_lora, display_name });
         writeEntries(arr);
         render();
     }
@@ -2462,7 +2582,14 @@ function setupFlakeComboWidget(node) {
     if (node.properties._combo_active_index == null) node.properties._combo_active_index = 0;
 
     function readAllFlakes() {
-        return node.properties._combo_flakes || [];
+        const flakes = node.properties._combo_flakes || [];
+        for (const entry of flakes) {
+            if (!entry.loras && entry.strength != null) {
+                entry.loras = [entry.strength];
+            }
+            if (!entry.loras) entry.loras = [];
+        }
+        return flakes;
     }
     function writeAllFlakes(flakes) {
         node.properties._combo_flakes = flakes;
@@ -2524,15 +2651,27 @@ function setupFlakeComboWidget(node) {
         const arr = readAllFlakes();
         let has_lora = false;
         let display_name = null;
-        if (result.data && result.data.path) has_lora = true;
+        let loras = [];
+        if (result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0))) has_lora = true;
         else if (result.name) {
-            try { const d = await fetchFlake(result.name); has_lora = !!(d && d.path); } catch {}
+            try { const d = await fetchFlake(result.name); has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0))); } catch {}
         }
         if (result.data && result.data.name) display_name = result.data.name;
         else if (result.name) {
             try { const d = await fetchFlake(result.name); display_name = d.name || null; } catch {}
         }
-        arr.push({ name: result.name, strength: 1.0, option: {}, has_lora, display_name });
+        if (result.data && result.data.loras) {
+            loras = result.data.loras.map(l => l.strength ?? 1.0);
+        } else if (result.data && result.data.path) {
+            loras = [result.data.strength ?? 1.0];
+        } else if (result.name) {
+            try {
+                const d = await fetchFlake(result.name);
+                if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
+                else if (d.path) loras = [d.strength ?? 1.0];
+            } catch {}
+        }
+        arr.push({ name: result.name, loras, option: {}, has_lora, display_name });
         writeAllFlakes(arr);
         render();
     }
@@ -2546,8 +2685,15 @@ function setupFlakeComboWidget(node) {
         const arr = readAllFlakes();
         let has_lora = false;
         let display_name = null;
-        try { const d = await fetchFlake(result.name); has_lora = !!(d && d.path); display_name = d.name || null; } catch {}
-        arr.push({ name: result.name, strength: 1.0, option: {}, has_lora, display_name });
+        let loras = [];
+        try {
+            const d = await fetchFlake(result.name);
+            has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
+            display_name = d.name || null;
+            if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
+            else if (d.path) loras = [d.strength ?? 1.0];
+        } catch {}
+        arr.push({ name: result.name, loras, option: {}, has_lora, display_name });
         writeAllFlakes(arr);
         render();
     }

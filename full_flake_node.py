@@ -203,10 +203,16 @@ class FlakeStack:
         # --- Apply LoRAs --------------------------------------------------------
         lora_loader = LoraLoader()
         for f in flakes:
-            if not f.lora_path:
-                continue
-            lora_name = _resolve_lora_name(f.lora_path)
-            model, clip = lora_loader.load_lora(model, clip, lora_name, f.strength, f.strength)
+            # New multi-LoRA format
+            for lr in f.loras:
+                if not lr.path:
+                    continue
+                lora_name = _resolve_lora_name(lr.path)
+                model, clip = lora_loader.load_lora(model, clip, lora_name, lr.strength, lr.strength)
+            # Legacy single LoRA fallback
+            if f.lora_path:
+                lora_name = _resolve_lora_name(f.lora_path)
+                model, clip = lora_loader.load_lora(model, clip, lora_name, f.strength, f.strength)
 
         # --- Build prompt text (existing → flakes) ------------------------------
         pos_parts: list[str] = []
