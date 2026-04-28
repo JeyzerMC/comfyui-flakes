@@ -1495,13 +1495,91 @@ function openEditModal({ mode, name, data, dirs }) {
 // ---------- Picker (Load existing) ----------
 
 async function openFileLoadPicker(available) {
-    const result = await openFileBrowser({ type: "flakes", defaultPath: "img" });
-    if (!result || !result.file) return null;
-    const rel = result.file.replace(/\.ya?ml$/i, "");
-    const match = available.find(n => n === rel || n.endsWith("/" + rel) || n.endsWith("\\" + rel));
-    if (match) return { name: match };
-    window.alert(`'${rel}' not found in the flakes library. Make sure the file is inside the models/flakes/ folder.`);
-    return null;
+    return new Promise((resolve) => {
+        const { content, footer, close, handlers } = openOverlay();
+        handlers.onClose = (v) => resolve(v ?? null);
+        css(content.parentElement, content.parentElement.style.cssText + "min-width:420px;max-width:640px;");
+
+        const title = document.createElement("h3");
+        css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
+        title.textContent = "Load existing flake";
+        content.appendChild(title);
+
+        // Search bar
+        const searchRow = document.createElement("div");
+        css(searchRow, "margin-bottom:8px;");
+        const searchInput = makeComfyInput("", "Search flakes...");
+        searchRow.appendChild(searchInput);
+        content.appendChild(searchRow);
+
+        const grid = document.createElement("div");
+        css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;max-height:360px;overflow:auto;");
+        content.appendChild(grid);
+
+        let selectedName = null;
+        let selectedEl = null;
+
+        function renderGrid(filter = "") {
+            grid.replaceChildren();
+            const term = filter.toLowerCase().trim();
+            const filtered = term
+                ? available.filter(n => n.toLowerCase().includes(term))
+                : available;
+
+            if (filtered.length === 0) {
+                const empty = document.createElement("div");
+                empty.textContent = "No flakes found.";
+                css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;grid-column:1 / -1;");
+                grid.appendChild(empty);
+                return;
+            }
+
+            for (const name of filtered) {
+                const thumb = document.createElement("div");
+                css(thumb, `position:relative;height:80px;background:#2a2a2a;border:1px solid #444;border-radius:4px;cursor:pointer;font-size:10px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(${getCoverUrl(name)});background-size:cover;background-position:center;`);
+
+                // Dark overlay for readability
+                const overlay = document.createElement("div");
+                css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;");
+                thumb.appendChild(overlay);
+
+                const shortName = name.split(/[\/\\ _\-]+/).pop() || name;
+                const nameEl = document.createElement("div");
+                nameEl.title = name;
+                css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:1;");
+                nameEl.textContent = shortName;
+                thumb.appendChild(nameEl);
+
+                thumb.addEventListener("click", () => {
+                    if (selectedEl) {
+                        selectedEl.style.borderColor = "#444";
+                    }
+                    selectedName = name;
+                    selectedEl = thumb;
+                    thumb.style.borderColor = "#2a6acf";
+                });
+
+                grid.appendChild(thumb);
+            }
+        }
+
+        renderGrid();
+        searchInput.addEventListener("input", () => renderGrid(searchInput.value));
+
+        const cancelBtn = makeButton("Cancel");
+        cancelBtn.addEventListener("click", () => close(undefined));
+        footer.appendChild(cancelBtn);
+
+        const selectBtn = makeButton("Select", true);
+        selectBtn.addEventListener("click", () => {
+            if (!selectedName) {
+                window.alert("Select a flake first.");
+                return;
+            }
+            close({ name: selectedName });
+        });
+        footer.appendChild(selectBtn);
+    });
 }
 
 // ---------- File browser (Python-backed) ----------
