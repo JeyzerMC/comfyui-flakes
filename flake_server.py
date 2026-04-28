@@ -313,6 +313,51 @@ async def _delete_preset(request: web.Request) -> web.Response:
 
 
 # ---------------------------------------------------------------------------
+# Preset cover image
+# ---------------------------------------------------------------------------
+
+@routes.get("/flakes/preset_cover")
+async def _get_preset_cover(request: web.Request) -> web.Response:
+    name = request.query.get("name", "").strip()
+    if not name:
+        return _bad_request("missing 'name' query param")
+    try:
+        result = flake_io.read_preset_cover(name)
+    except ValueError as exc:
+        return _bad_request(str(exc))
+    except Exception as exc:
+        logging.exception("[flakes] failed to read preset cover for %s", name)
+        return _server_error(str(exc))
+    if result is None:
+        return _not_found(f"no cover for preset '{name}'")
+    data, mime = result
+    return web.Response(body=data, content_type=mime)
+
+
+@routes.post("/flakes/preset_cover")
+async def _upload_preset_cover(request: web.Request) -> web.Response:
+    reader = await request.multipart()
+    field = await reader.next()
+    if field is None:
+        return _bad_request("no file field in multipart body")
+    filename = field.filename or "cover.png"
+    ext = os.path.splitext(filename)[1]
+    data = await field.read()
+
+    name = request.query.get("name", "").strip()
+    if not name:
+        return _bad_request("missing 'name' query param")
+    try:
+        flake_io.save_preset_cover(name, ext, data)
+    except ValueError as exc:
+        return _bad_request(str(exc))
+    except Exception as exc:
+        logging.exception("[flakes] failed to save preset cover for %s", name)
+        return _server_error(str(exc))
+    return web.json_response({"ok": True, "name": name})
+
+
+# ---------------------------------------------------------------------------
 # File browser (custom directory picker backed by Python)
 # ---------------------------------------------------------------------------
 

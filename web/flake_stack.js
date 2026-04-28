@@ -2040,6 +2040,72 @@ function openPresetEditModal({ mode, name, data }) {
             content.appendChild(pathInput);
         }
 
+        // Cover image
+        let presetCoverFile = null;
+        let presetCoverImg = null;
+        const presetCoverWrap = document.createElement("div");
+        css(presetCoverWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;margin:8px 0;");
+
+        const presetCoverBox = document.createElement("div");
+        css(presetCoverBox, "width:120px;height:120px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
+
+        presetCoverImg = document.createElement("img");
+        css(presetCoverImg, "width:100%;height:100%;object-fit:cover;display:none;");
+        presetCoverBox.appendChild(presetCoverImg);
+
+        const presetCoverLabel = document.createElement("span");
+        presetCoverLabel.textContent = "cover image";
+        css(presetCoverLabel, "font-size:10px;color:#666;pointer-events:none;");
+        presetCoverBox.appendChild(presetCoverLabel);
+
+        const presetCoverInput = document.createElement("input");
+        presetCoverInput.type = "file";
+        presetCoverInput.accept = ".png,.jpg,.jpeg,.webp,.gif";
+        presetCoverInput.style.display = "none";
+
+        function updatePresetCoverPreview(src) {
+            if (src) {
+                presetCoverImg.src = src;
+                presetCoverImg.style.display = "block";
+                presetCoverLabel.style.display = "none";
+            } else {
+                presetCoverImg.style.display = "none";
+                presetCoverLabel.style.display = "block";
+            }
+        }
+
+        if (mode === "edit" && name) {
+            updatePresetCoverPreview(`/flakes/preset_cover?name=${encodeURIComponent(name)}`);
+        }
+
+        presetCoverBox.addEventListener("click", () => presetCoverInput.click());
+        presetCoverInput.addEventListener("change", () => {
+            const file = presetCoverInput.files?.[0];
+            if (file) {
+                presetCoverFile = file;
+                const reader = new FileReader();
+                reader.onload = () => updatePresetCoverPreview(reader.result);
+                reader.readAsDataURL(file);
+            }
+        });
+
+        presetCoverWrap.appendChild(presetCoverBox);
+        presetCoverWrap.appendChild(presetCoverInput);
+        content.appendChild(presetCoverWrap);
+
+        // Update close handler to upload cover
+        const origPresetClose = close;
+        close = async (value) => {
+            if (value && (value.created || value.saved) && presetCoverFile) {
+                try {
+                    const form = new FormData();
+                    form.append("file", presetCoverFile);
+                    await fetch(`/flakes/preset_cover?name=${encodeURIComponent(value.name)}`, { method: "POST", body: form });
+                } catch { /* ignore */ }
+            }
+            origPresetClose(value);
+        };
+
         content.appendChild(makeComfyLabel("Checkpoint"));
         const ckptWrap = makeSearchableDropdown([], data.checkpoint || "", "Select checkpoint...");
 
@@ -2284,6 +2350,46 @@ function setupFlakeModelPresetWidget(node) {
         attachPresetButton(node);
     }, 500);
 
+    // Cover image widget
+    const coverContainer = document.createElement("div");
+    css(coverContainer, "display:flex;justify-content:center;padding:4px 0;");
+    const coverImg = document.createElement("img");
+    css(coverImg, "max-width:100%;max-height:200px;border-radius:6px;display:none;object-fit:cover;");
+    coverContainer.appendChild(coverImg);
+
+    function updateCover() {
+        const val = presetWidget.value || "";
+        if (!val || val === "Select a preset..." || val === "No model preset is selected") {
+            coverImg.style.display = "none";
+            coverImg.src = "";
+        } else {
+            coverImg.src = `/flakes/preset_cover?name=${encodeURIComponent(val)}`;
+            coverImg.style.display = "block";
+        }
+    }
+
+    coverImg.addEventListener("error", () => {
+        coverImg.style.display = "none";
+    });
+
+    const origOnConfigure = node.onConfigure;
+    node.onConfigure = function () {
+        const r = origOnConfigure?.apply(this, arguments);
+        updateCover();
+        return r;
+    };
+
+    // Watch for preset changes
+    const origSetValue = presetWidget.setValue;
+    presetWidget.setValue = function (v) {
+        const r = origSetValue?.apply(this, arguments);
+        updateCover();
+        return r;
+    };
+
+    node.addDOMWidget("preset_cover", "div", coverContainer, { serialize: false });
+    updateCover();
+
     const origOnRemoved = node.onRemoved;
     node.onRemoved = function () {
         clearInterval(attachInterval);
@@ -2468,7 +2574,12 @@ function makeModelComboBlock({ preset, idx, isActive, onActivate, onRemove }) {
         isActive ? "#2a4a3a" : "#2a2a2a"
     };border:2px solid ${
         isActive ? "#3a8a5a" : "#444"
-    };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;`);
+    };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(preset)});background-size:cover;background-position:center;`);
+
+    // Dark overlay for cover readability
+    const overlay = document.createElement("div");
+    css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;");
+    block.appendChild(overlay);
 
     const nameEl = document.createElement("div");
     nameEl.title = preset;

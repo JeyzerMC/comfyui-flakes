@@ -382,6 +382,69 @@ def save_preset(name: str, data: dict[str, Any]) -> None:
 def delete_preset(name: str) -> None:
     path = _resolve_preset_file(name)
     os.remove(path)
+    _delete_preset_cover(name)
+
+
+def _preset_cover_path(name: str, ext: str | None = None) -> str | None:
+    """Find the cover file for a given preset name."""
+    for root in _presets_roots():
+        if ext:
+            candidate = os.path.join(root, f"{name}{ext}")
+            try:
+                _ensure_inside(candidate, root)
+            except ValueError:
+                continue
+            if os.path.isfile(candidate):
+                return candidate
+        else:
+            for e in _COVER_EXTENSIONS:
+                candidate = os.path.join(root, f"{name}{e}")
+                try:
+                    _ensure_inside(candidate, root)
+                except ValueError:
+                    continue
+                if os.path.isfile(candidate):
+                    return candidate
+    return None
+
+
+def _delete_preset_cover(name: str) -> None:
+    path = _preset_cover_path(name)
+    if path:
+        os.remove(path)
+
+
+def save_preset_cover(name: str, ext: str, data: bytes) -> None:
+    """Save a cover image alongside the preset YAML."""
+    _validate_name(name)
+    ext_lower = ext.lower()
+    if ext_lower not in _COVER_EXTENSIONS:
+        raise ValueError(f"unsupported cover extension: {ext}")
+    _delete_preset_cover(name)
+    root = _primary_presets_root()
+    path = os.path.join(root, f"{name}{ext_lower}")
+    _ensure_inside(path, root)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+def read_preset_cover(name: str) -> tuple[bytes, str] | None:
+    """Return (data, mime_type) or None if no cover exists."""
+    path = _preset_cover_path(name)
+    if not path:
+        return None
+    ext = os.path.splitext(path)[1].lower()
+    mime_map = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+    }
+    mime = mime_map.get(ext, "application/octet-stream")
+    with open(path, "rb") as f:
+        return f.read(), mime
 
 
 def load_preset(name: str) -> ModelPreset:
