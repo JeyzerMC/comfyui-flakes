@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import datetime
 
 import folder_paths
 import comfy.sd
@@ -10,6 +11,26 @@ import comfy.utils
 from nodes import CLIPTextEncode, EmptyLatentImage, ControlNetApplyAdvanced, ControlNetLoader, LoraLoader
 
 from . import flake_io
+
+
+def _build_filename_prefix(preset_name: str, stems: list[str]) -> str:
+    """Build a filename prefix from preset name and flake stems."""
+    folder_parts = []
+    file_parts = []
+    for stem in stems:
+        if "/" in stem:
+            folder_parts.append(stem)
+        else:
+            file_parts.append(stem)
+    path = (preset_name + "/") if preset_name else ""
+    if folder_parts:
+        path += "".join(folder_parts)
+    now = datetime.now()
+    path += now.strftime("%Y-%m-%d") + "/"
+    filename = now.strftime("%H-%M-%S")
+    if file_parts:
+        filename += "_" + "_".join(file_parts)
+    return path + filename
 
 
 def _resolve_lora_name(stem_or_name: str) -> str:
@@ -73,7 +94,8 @@ def _load_preset_bundle(preset_name: str):
     latent = EmptyLatentImage().generate(width, height, 1)[0]
 
     model_bundle = (model, clip, vae)
-    generation_data = (positive, negative, latent, width, height, pos_text, neg_text)
+    filename_state = {"preset": preset_name, "stems": []}
+    generation_data = (positive, negative, latent, width, height, pos_text, neg_text, filename_state)
     sampling_preset = (preset_data.steps, preset_data.cfg, preset_data.sampler, preset_data.scheduler)
 
     return model_bundle, generation_data, sampling_preset
@@ -147,8 +169,14 @@ class FlakeStack:
 
     def execute(self, model_bundle, generation_data, sampling_preset, flakes_json: str):
         model, clip, vae = model_bundle
-        positive_cond, negative_cond, latent, width, height, pos_text, neg_text = generation_data
+        positive_cond, negative_cond, latent, width, height, pos_text, neg_text = generation_data[:7]
         steps, cfg, sampler, scheduler = sampling_preset
+
+        # --- Filename prefix state ----------------------------------------------
+        if len(generation_data) > 7:
+            filename_state = generation_data[7]
+        else:
+            filename_state = {"preset": "", "stems": []}
 
         # --- Parse flakes_json --------------------------------------------------
         try:
@@ -232,13 +260,18 @@ class FlakeStack:
         if (new_width, new_height) != (width, height):
             latent = EmptyLatentImage().generate(new_width, new_height, 1)[0]
 
+        # --- Filename prefix ----------------------------------------------------
+        for f in flakes:
+            if f.output_stem:
+                filename_state["stems"].append(f.output_stem)
+
         logging.info(
             "[FlakeStack] %dx%s steps=%s cfg=%s flakes=%d",
             new_width, new_height, steps, cfg, len(flakes),
         )
 
         out_model_bundle = (model, clip, vae)
-        out_generation_data = (positive_cond, negative_cond, latent, new_width, new_height, new_pos_text, new_neg_text)
+        out_generation_data = (positive_cond, negative_cond, latent, new_width, new_height, new_pos_text, new_neg_text, filename_state)
         out_sampling_preset = (steps, cfg, sampler, scheduler)
 
         return (

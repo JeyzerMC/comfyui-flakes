@@ -30,7 +30,7 @@ class FlakesModel:
 
 
 class FlakesCond:
-    """Unpacks a FLAKES_COND (generation_data) bundle into positive / negative / latent / resolution."""
+    """Unpacks a FLAKES_COND (generation_data) bundle into positive / negative / latent / resolution / filename_prefix."""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -40,8 +40,8 @@ class FlakesCond:
             },
         }
 
-    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT", "INT", "INT")
-    RETURN_NAMES = ("positive", "negative", "latent", "width", "height")
+    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT", "INT", "INT", "STRING")
+    RETURN_NAMES = ("positive", "negative", "latent", "width", "height", "filename_prefix")
     FUNCTION = "execute"
     CATEGORY = "flakes"
     DESCRIPTION = "Unpack a Full Flakes conditioning bundle into individual outputs."
@@ -49,7 +49,13 @@ class FlakesCond:
     def execute(self, generation_data):
         # generation_data may contain extra prompt-text fields after the 5th element.
         positive, negative, latent, width, height = generation_data[:5]
-        return (positive, negative, latent, width, height)
+        if len(generation_data) > 7:
+            filename_state = generation_data[7]
+            from .full_flake_node import _build_filename_prefix
+            filename_prefix = _build_filename_prefix(filename_state.get("preset", ""), filename_state.get("stems", []))
+        else:
+            filename_prefix = ""
+        return (positive, negative, latent, width, height, filename_prefix)
 
 
 class FlakesSampler:

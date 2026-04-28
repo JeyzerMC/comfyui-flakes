@@ -56,6 +56,7 @@ class Flake:
     resolution: tuple[int, int] | None = None
     controlnets: list[ControlNetEntry] = field(default_factory=list)
     options: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
+    output_stem: str | None = None
 
 # ---------------------------------------------------------------------------
 # Directory helpers
@@ -211,6 +212,7 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
         resolution=resolution,
         controlnets=cns,
         options=raw.get("options") or {},
+        output_stem=raw.get("output_stem") or None,
     )
 
 

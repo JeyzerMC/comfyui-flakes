@@ -670,6 +670,7 @@ function openEditModal({ mode, name, data, dirs }) {
             resolution: data.resolution ? [...data.resolution] : null,
             controlnets: JSON.parse(JSON.stringify(data.controlnets || [])),
             options: JSON.parse(JSON.stringify(data.options || {})),
+            output_stem: data.output_stem ?? null,
         };
         if (!Array.isArray(fieldState.controlnets._)) {
             const arr = Array.isArray(fieldState.controlnets) ? [...fieldState.controlnets] : [];
@@ -682,6 +683,7 @@ function openEditModal({ mode, name, data, dirs }) {
         if (fieldState.resolution) activeFields.push("resolution");
         if (fieldState.controlnets._.length > 0) activeFields.push("controlnets");
         if (Object.keys(fieldState.options).length > 0) activeFields.push("options");
+        if (fieldState.output_stem != null) activeFields.push("output_stem");
 
         const optionalBox = document.createElement("div");
         css(optionalBox, "display:flex;flex-direction:column;gap:8px;");
@@ -718,6 +720,7 @@ function openEditModal({ mode, name, data, dirs }) {
                     if (fieldType === "options") {
                         for (const k of Object.keys(fieldState.options)) delete fieldState.options[k];
                     }
+                    if (fieldType === "output_stem") fieldState.output_stem = null;
                     renderFields();
                 });
                 header.appendChild(delFieldBtn);
@@ -1148,6 +1151,14 @@ function openEditModal({ mode, name, data, dirs }) {
                     renderOpts();
                 }
 
+                if (fieldType === "output_stem") {
+                    const stemInput = makeComfyInput(fieldState.output_stem ?? "", "e.g. musashi/ or bike");
+                    stemInput.addEventListener("change", () => {
+                        fieldState.output_stem = stemInput.value || null;
+                    });
+                    fieldWrap.appendChild(stemInput);
+                }
+
                 optionalBox.appendChild(fieldWrap);
             }
         }
@@ -1168,6 +1179,7 @@ function openEditModal({ mode, name, data, dirs }) {
             { key: "resolution", label: "Resolution override" },
             { key: "controlnets", label: "ControlNets" },
             { key: "options", label: "Options" },
+            { key: "output_stem", label: "Output Filename Stem" },
         ];
         for (const ft of fieldTypes) {
             const item = document.createElement("button");
@@ -1182,6 +1194,7 @@ function openEditModal({ mode, name, data, dirs }) {
                 if (ft.key === "resolution") fieldState.resolution = [1024, 1024];
                 if (ft.key === "controlnets") fieldState.controlnets._ = [];
                 if (ft.key === "options") fieldState.options = {};
+                if (ft.key === "output_stem") fieldState.output_stem = "";
                 renderFields();
             });
             fieldMenu.appendChild(item);
@@ -1238,6 +1251,7 @@ function openEditModal({ mode, name, data, dirs }) {
             const cnArr = fieldState.controlnets._ || [];
             if (cnArr.length > 0) ordered.controlnets = cnArr;
             if (Object.keys(fieldState.options).length > 0) ordered.options = fieldState.options;
+            if (fieldState.output_stem != null) ordered.output_stem = fieldState.output_stem;
 
             try {
                 if (mode === "create") {
