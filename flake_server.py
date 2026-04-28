@@ -361,17 +361,26 @@ async def _upload_preset_cover(request: web.Request) -> web.Response:
 # File browser (custom directory picker backed by Python)
 # ---------------------------------------------------------------------------
 
-_BROWSE_ROOTS = {
-    "checkpoints": folder_paths.get_folder_paths("checkpoints"),
-    "loras": folder_paths.get_folder_paths("loras"),
-    "flakes": folder_paths.get_folder_paths("flakes"),
-}
+_BROWSE_TYPES = ("checkpoints", "loras", "flakes")
 
 _BROWSE_FILTERS = {
     "checkpoints": (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".sft"),
     "loras": (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".sft"),
     "flakes": (".yaml", ".yml"),
 }
+
+
+def _get_browse_roots(browse_type: str) -> list[str]:
+    """Resolve folder roots dynamically at request time."""
+    try:
+        paths = folder_paths.get_folder_paths(browse_type)
+    except Exception:
+        paths = []
+    # get_folder_paths returns a list of str on modern ComfyUI,
+    # but defensively wrap a single string.
+    if isinstance(paths, str):
+        return [paths]
+    return [p for p in paths if p and isinstance(p, str)]
 
 
 @routes.post("/flakes/browse")
@@ -386,41 +395,51 @@ async def _browse(_request: web.Request) -> web.Response:
     browse_type = (body.get("type") or "").strip()
     rel_path = (body.get("path") or "").strip()
 
-    if browse_type not in _BROWSE_ROOTS:
+    if browse_type not in _BROWSE_TYPES:
         return _bad_request(f"invalid browse type: {browse_type!r}")
 
-    roots = _BROWSE_ROOTS[browse_type]
+    roots = _get_browse_roots(browse_type)
     exts = _BROWSE_FILTERS.get(browse_type, ())
 
-    # Build absolute path from first root + rel_path
-    base = roots[0] if roots else ""
-    target = os.path.normpath(os.path.join(base, rel_path)) if rel_path else base
+    if not roots:
+        return _server_error(f"no roots configured for {browse_type!r}")
 
-    # Security: ensure target is inside base
-    real_target = os.path.realpath(target)
-    real_base = os.path.realpath(base)
-    if os.path.commonpath([real_target, real_base]) != real_base:
-        return _bad_request("path resolves outside the allowed directory")
-
-    if not os.path.isdir(target):
-        if rel_path:
-            # Fallback to root directory if requested subdirectory does not exist
-            target = base
-            rel_path = ""
-        else:
-            return _not_found(f"directory not found: {rel_path}")
-
+    seen: set[str] = set()
     entries: list[dict[str, str]] = []
-    try:
-        for item in sorted(os.listdir(target)):
-            full = os.path.join(target, item)
-            if os.path.isdir(full):
-                entries.append({"name": item, "type": "dir"})
-            elif os.path.isfile(full):
-                if exts and not item.lower().endswith(exts):
+    valid_target_found = False
+
+    for base in roots:
+        target = os.path.normpath(os.path.join(base, rel_path)) if rel_path else base
+
+        # Security: ensure target is inside base
+        real_target = os.path.realpath(target)
+        real_base = os.path.realpath(base)
+        try:
+            if os.path.commonpath([real_target, real_base]) != real_base:
+                continue
+        except ValueError:
+            continue
+
+        if not os.path.isdir(target):
+            continue
+
+        valid_target_found = True
+        try:
+            for item in sorted(os.listdir(target)):
+                if item in seen:
                     continue
-                entries.append({"name": item, "type": "file"})
-    except Exception as exc:
-        return _server_error(str(exc))
+                seen.add(item)
+                full = os.path.join(target, item)
+                if os.path.isdir(full):
+                    entries.append({"name": item, "type": "dir"})
+                elif os.path.isfile(full):
+                    if exts and not item.lower().endswith(exts):
+                        continue
+                    entries.append({"name": item, "type": "file"})
+        except Exception:
+            continue
+
+    if not valid_target_found and not entries:
+        return _not_found(f"directory not found: {rel_path}")
 
     return web.json_response({"path": rel_path, "entries": entries})
