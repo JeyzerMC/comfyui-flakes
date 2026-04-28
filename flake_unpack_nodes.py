@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+try:
+    from comfy.samplers import KSampler as _KSampler
+    _SAMPLER_TYPES = (_KSampler.SAMPLERS, _KSampler.SCHEDULERS)
+except Exception:
+    _SAMPLER_TYPES = ("STRING", "STRING")
+
 
 class FlakesModel:
     """Unpacks a FLAKES_MODEL bundle into model / clip / vae."""
@@ -57,7 +63,7 @@ class FlakesSampler:
             },
         }
 
-    RETURN_TYPES = ("INT", "FLOAT", "STRING", "STRING")
+    RETURN_TYPES = ("INT", "FLOAT", _SAMPLER_TYPES[0], _SAMPLER_TYPES[1])
     RETURN_NAMES = ("steps", "cfg", "sampler_name", "scheduler")
     FUNCTION = "execute"
     CATEGORY = "flakes"
