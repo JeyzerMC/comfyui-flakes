@@ -79,6 +79,19 @@ function fetchVaes() {
     return VAES_PROMISE;
 }
 
+async function fetchBrowse(type, path = "") {
+    const r = await fetch("/flakes/browse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, path }),
+    });
+    if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${r.status}`);
+    }
+    return (await r.json());
+}
+
 async function fetchPreset(name) {
     const r = await fetch(`/flakes/preset?name=${encodeURIComponent(name)}`);
     if (!r.ok) {
@@ -120,30 +133,6 @@ async function fetchFlakeMeta(name) {
 }
 
 // ---------- File picker helper ----------
-
-function createFilePicker({ accept, onSelect, text = "Browse files..." }) {
-    const wrap = document.createElement("div");
-    css(wrap, "position:relative;width:100%;");
-
-    const box = document.createElement("div");
-    css(box, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
-    box.textContent = text;
-
-    const input = document.createElement("input");
-    input.type = "file";
-    if (accept) input.accept = accept;
-    input.style.display = "none";
-
-    input.addEventListener("change", () => {
-        const file = input.files?.[0];
-        if (file && onSelect) onSelect(file);
-        input.value = "";
-    });
-
-    wrap.appendChild(box);
-    wrap.appendChild(input);
-    return { container: wrap, box, input, trigger: () => input.click() };
-}
 
 // ---------- Default-flake helpers ----------
 
@@ -742,22 +731,8 @@ function openEditModal({ mode, name, data, dirs }) {
                         } catch { /* ignore */ }
                     })();
 
-                    const loraPicker = createFilePicker({
-                        accept: ".safetensors",
-                        onSelect: async (file) => {
-                            try {
-                                const loras = await fetchLoras();
-                                const name = file.name;
-                                const match = loras.find(l => l === name || l.endsWith("/" + name) || l.endsWith("\\" + name));
-                                const val = match || name;
-                                if (!fieldState.lora) fieldState.lora = { strength: 1.0 };
-                                fieldState.lora.path = val;
-                                loraWrap.element.value = val;
-                                loraWrap.element.dispatchEvent(new Event("change"));
-                            } catch { /* ignore */ }
-                        },
-                    });
-                    const loraBox = loraPicker.box;
+                    const loraBox = document.createElement("div");
+                    css(loraBox, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
                     const loraPath = fieldState.lora?.path || "";
                     loraBox.textContent = loraPath ? loraPath.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
                     loraBox.title = loraPath || "";
@@ -765,10 +740,18 @@ function openEditModal({ mode, name, data, dirs }) {
                     const loraEditBtn = makeSmallButton("...");
                     loraEditBtn.title = "Type manually";
 
-                    loraBox.addEventListener("click", () => loraPicker.trigger());
+                    loraBox.addEventListener("click", async () => {
+                        const result = await openFileBrowser({ type: "loras", defaultPath: "img" });
+                        if (result && result.file) {
+                            if (!fieldState.lora) fieldState.lora = { strength: 1.0 };
+                            fieldState.lora.path = result.file;
+                            loraWrap.element.value = result.file;
+                            loraWrap.element.dispatchEvent(new Event("change"));
+                        }
+                    });
                     loraEditBtn.addEventListener("click", (e) => {
                         e.stopPropagation();
-                        loraPicker.container.style.display = "none";
+                        loraBox.style.display = "none";
                         loraEditBtn.style.display = "none";
                         loraWrap.container.style.display = "block";
                         loraWrap.element.focus();
@@ -779,7 +762,7 @@ function openEditModal({ mode, name, data, dirs }) {
                         fieldState.lora.path = val;
                         loraBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
                         loraBox.title = val;
-                        loraPicker.container.style.display = "block";
+                        loraBox.style.display = "block";
                         loraEditBtn.style.display = "inline-block";
                         loraWrap.container.style.display = "none";
                     });
@@ -790,13 +773,13 @@ function openEditModal({ mode, name, data, dirs }) {
                             fieldState.lora.path = val;
                             loraBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
                             loraBox.title = val;
-                            loraPicker.container.style.display = "block";
+                            loraBox.style.display = "block";
                             loraEditBtn.style.display = "inline-block";
                             loraWrap.container.style.display = "none";
                         }, 200);
                     });
 
-                    loraPathCol.appendChild(loraPicker.container);
+                    loraPathCol.appendChild(loraBox);
                     loraPathCol.appendChild(loraEditBtn);
                     loraPathCol.appendChild(loraWrap.container);
 
@@ -1277,27 +1260,116 @@ function openEditModal({ mode, name, data, dirs }) {
 
 // ---------- Picker (Load existing) ----------
 
-function openFileLoadPicker(available) {
+async function openFileLoadPicker(available) {
+    const result = await openFileBrowser({ type: "flakes", defaultPath: "img" });
+    if (!result || !result.file) return null;
+    const rel = result.file.replace(/\.ya?ml$/i, "");
+    const match = available.find(n => n === rel || n.endsWith("/" + rel) || n.endsWith("\\" + rel));
+    if (match) return { name: match };
+    window.alert(`'${rel}' not found in the flakes library. Make sure the file is inside the models/flakes/ folder.`);
+    return null;
+}
+
+// ---------- File browser (Python-backed) ----------
+
+function openFileBrowser({ type, defaultPath = "" }) {
     return new Promise((resolve) => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".yaml,.yml";
-        input.style.display = "none";
-        input.addEventListener("change", () => {
-            const file = input.files?.[0];
-            if (!file) { resolve(null); return; }
-            const stem = file.name.replace(/\.ya?ml$/i, "");
-            const match = available.find(n => n === stem || n.endsWith("/" + stem) || n.endsWith("\\" + stem));
-            if (match) {
-                resolve({ name: match });
-            } else {
-                window.alert(`'${stem}' not found in the flakes library. Make sure the file is inside the models/flakes/ folder.`);
-                resolve(null);
+        const { content, footer, close, handlers } = openOverlay();
+        handlers.onClose = (v) => resolve(v ?? null);
+        css(content.parentElement, content.parentElement.style.cssText + "min-width:420px;max-width:560px;");
+
+        const title = document.createElement("h3");
+        css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
+        title.textContent = type === "checkpoints" ? "Select Checkpoint" : type === "loras" ? "Select LoRA" : "Select Flake";
+        content.appendChild(title);
+
+        const pathBar = document.createElement("div");
+        css(pathBar, "font-size:11px;color:#888;margin-bottom:8px;word-break:break-all;");
+        content.appendChild(pathBar);
+
+        const listBox = document.createElement("div");
+        css(listBox, "display:flex;flex-direction:column;gap:2px;max-height:320px;overflow:auto;");
+        content.appendChild(listBox);
+
+        let currentPath = defaultPath;
+        let selectedFile = null;
+
+        async function loadDir(path) {
+            listBox.replaceChildren();
+            pathBar.textContent = path || "/";
+            selectedFile = null;
+            try {
+                const data = await fetchBrowse(type, path);
+                currentPath = data.path || "";
+                pathBar.textContent = currentPath || "/";
+
+                if (currentPath) {
+                    const upBtn = document.createElement("button");
+                    upBtn.textContent = "\u2191 ..";
+                    css(upBtn, "text-align:left;padding:6px 10px;background:#252525;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
+                    upBtn.addEventListener("mouseenter", () => { upBtn.style.background = "#333"; });
+                    upBtn.addEventListener("mouseleave", () => { upBtn.style.background = "#252525"; });
+                    upBtn.addEventListener("click", () => {
+                        const parts = currentPath.replace(/\\/g, "/").split("/").filter(Boolean);
+                        parts.pop();
+                        loadDir(parts.join("/"));
+                    });
+                    listBox.appendChild(upBtn);
+                }
+
+                for (const entry of data.entries) {
+                    const row = document.createElement("button");
+                    row.textContent = entry.type === "dir" ? "\uD83D\uDCC1 " + entry.name : entry.name;
+                    css(row, "text-align:left;padding:6px 10px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
+                    row.addEventListener("mouseenter", () => { row.style.background = "#333"; });
+                    row.addEventListener("mouseleave", () => { row.style.background = "#2a2a2a"; });
+                    if (entry.type === "dir") {
+                        row.addEventListener("click", () => {
+                            const next = currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name;
+                            loadDir(next);
+                        });
+                    } else {
+                        row.addEventListener("click", () => {
+                            selectedFile = currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name;
+                            for (const b of listBox.querySelectorAll("button")) {
+                                b.style.borderColor = "#444";
+                            }
+                            row.style.borderColor = "#2a6acf";
+                        });
+                    }
+                    listBox.appendChild(row);
+                }
+
+                if (data.entries.length === 0) {
+                    const empty = document.createElement("div");
+                    empty.textContent = "Empty folder";
+                    css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;font-size:12px;");
+                    listBox.appendChild(empty);
+                }
+            } catch (err) {
+                listBox.replaceChildren();
+                const errEl = document.createElement("div");
+                css(errEl, "color:#f88;padding:12px;text-align:center;font-size:12px;");
+                errEl.textContent = err.message || "failed to load";
+                listBox.appendChild(errEl);
             }
+        }
+
+        loadDir(defaultPath);
+
+        const cancelBtn = makeButton("Cancel");
+        cancelBtn.addEventListener("click", () => close(undefined));
+        footer.appendChild(cancelBtn);
+
+        const selectBtn = makeButton("Select", true);
+        selectBtn.addEventListener("click", () => {
+            if (!selectedFile) {
+                window.alert("Select a file first.");
+                return;
+            }
+            close({ file: selectedFile });
         });
-        document.body.appendChild(input);
-        input.click();
-        setTimeout(() => { input.remove(); }, 60000);
+        footer.appendChild(selectBtn);
     });
 }
 
@@ -1970,24 +2042,14 @@ function openPresetEditModal({ mode, name, data }) {
 
         content.appendChild(makeComfyLabel("Checkpoint"));
         const ckptWrap = makeSearchableDropdown([], data.checkpoint || "", "Select checkpoint...");
-        const ckptPicker = createFilePicker({
-            accept: ".safetensors",
-            onSelect: async (file) => {
-                try {
-                    const ckpts = await fetchCheckpoints();
-                    const name = file.name;
-                    const match = ckpts.find(c => c === name || c.endsWith("/" + name) || c.endsWith("\\" + name));
-                    ckptWrap.element.value = match || name;
-                    ckptWrap.element.dispatchEvent(new Event("change"));
-                } catch { /* ignore */ }
-            },
-        });
-        const ckptBox = ckptPicker.box;
+
+        const ckptBox = document.createElement("div");
+        css(ckptBox, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
         ckptBox.textContent = data.checkpoint ? data.checkpoint.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select Checkpoint";
 
         const ckptRow = document.createElement("div");
         css(ckptRow, "display:flex;gap:4px;align-items:center;");
-        ckptRow.appendChild(ckptPicker.container);
+        ckptRow.appendChild(ckptBox);
         const ckptEditBtn = makeSmallButton("...");
         ckptEditBtn.title = "Type manually";
         ckptRow.appendChild(ckptEditBtn);
@@ -2001,10 +2063,16 @@ function openPresetEditModal({ mode, name, data }) {
             } catch { /* ignore */ }
         })();
 
-        ckptBox.addEventListener("click", () => ckptPicker.trigger());
+        ckptBox.addEventListener("click", async () => {
+            const result = await openFileBrowser({ type: "checkpoints", defaultPath: "img" });
+            if (result && result.file) {
+                ckptWrap.element.value = result.file;
+                ckptWrap.element.dispatchEvent(new Event("change"));
+            }
+        });
         ckptEditBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            ckptPicker.container.style.display = "none";
+            ckptBox.style.display = "none";
             ckptEditBtn.style.display = "none";
             ckptWrap.container.style.display = "block";
             ckptWrap.element.focus();
@@ -2012,7 +2080,7 @@ function openPresetEditModal({ mode, name, data }) {
         ckptWrap.element.addEventListener("change", () => {
             const val = ckptWrap.element.value;
             ckptBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select Checkpoint";
-            ckptPicker.container.style.display = "block";
+            ckptBox.style.display = "block";
             ckptEditBtn.style.display = "inline-block";
             ckptWrap.container.style.display = "none";
         });
@@ -2020,7 +2088,7 @@ function openPresetEditModal({ mode, name, data }) {
             setTimeout(() => {
                 const val = ckptWrap.element.value;
                 ckptBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select Checkpoint";
-                ckptPicker.container.style.display = "block";
+                ckptBox.style.display = "block";
                 ckptEditBtn.style.display = "inline-block";
                 ckptWrap.container.style.display = "none";
             }, 200);

@@ -310,3 +310,67 @@ async def _delete_preset(request: web.Request) -> web.Response:
         logging.exception("[flakes] failed to delete preset %s", name)
         return _server_error(str(exc))
     return web.json_response({"ok": True, "name": name})
+
+
+# ---------------------------------------------------------------------------
+# File browser (custom directory picker backed by Python)
+# ---------------------------------------------------------------------------
+
+_BROWSE_ROOTS = {
+    "checkpoints": folder_paths.get_folder_paths("checkpoints"),
+    "loras": folder_paths.get_folder_paths("loras"),
+    "flakes": folder_paths.get_folder_paths("flakes"),
+}
+
+_BROWSE_FILTERS = {
+    "checkpoints": (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".sft"),
+    "loras": (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".sft"),
+    "flakes": (".yaml", ".yml"),
+}
+
+
+@routes.post("/flakes/browse")
+async def _browse(_request: web.Request) -> web.Response:
+    try:
+        body = await _request.json()
+    except Exception:
+        return _bad_request("invalid JSON body")
+    if not isinstance(body, dict):
+        return _bad_request("body must be a JSON object")
+
+    browse_type = (body.get("type") or "").strip()
+    rel_path = (body.get("path") or "").strip()
+
+    if browse_type not in _BROWSE_ROOTS:
+        return _bad_request(f"invalid browse type: {browse_type!r}")
+
+    roots = _BROWSE_ROOTS[browse_type]
+    exts = _BROWSE_FILTERS.get(browse_type, ())
+
+    # Build absolute path from first root + rel_path
+    base = roots[0] if roots else ""
+    target = os.path.normpath(os.path.join(base, rel_path)) if rel_path else base
+
+    # Security: ensure target is inside base
+    real_target = os.path.realpath(target)
+    real_base = os.path.realpath(base)
+    if os.path.commonpath([real_target, real_base]) != real_base:
+        return _bad_request("path resolves outside the allowed directory")
+
+    if not os.path.isdir(target):
+        return _not_found(f"directory not found: {rel_path}")
+
+    entries: list[dict[str, str]] = []
+    try:
+        for item in sorted(os.listdir(target)):
+            full = os.path.join(target, item)
+            if os.path.isdir(full):
+                entries.append({"name": item, "type": "dir"})
+            elif os.path.isfile(full):
+                if exts and not item.lower().endswith(exts):
+                    continue
+                entries.append({"name": item, "type": "file"})
+    except Exception as exc:
+        return _server_error(str(exc))
+
+    return web.json_response({"path": rel_path, "entries": entries})
