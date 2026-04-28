@@ -1252,6 +1252,7 @@ function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDr
     const hasCover = !isDefault && entry.name;
     const block = document.createElement("div");
     block.dataset.idx = String(idx);
+    block.dataset.flakeBlock = "1";
 
     css(block, `position:relative;height:80px;background:${
         isDefault ? "#2a3a4a" : "#2a2a2a"
@@ -1394,7 +1395,7 @@ function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDr
 
     block.addEventListener("dblclick", () => onEdit(idx));
     block.addEventListener("dragover", (e) => onDragOver(e, idx, block));
-    block.addEventListener("dragleave", () => { block.style.outline = ""; });
+    block.addEventListener("dragleave", () => { block.style.outline = ""; block.style.boxShadow = ""; });
     block.addEventListener("drop", (e) => onDrop(e, idx, block));
 
     return block;
@@ -1618,22 +1619,17 @@ function setupFlakeWidget(node) {
                     if (dragSrcIdx === null || idx === 0 || idx === dragSrcIdx) return;
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "move";
-                    let indicator = grid.querySelector(".flake-drop-indicator");
-                    if (!indicator) {
-                        indicator = document.createElement("div");
-                        indicator.className = "flake-drop-indicator";
-                        css(indicator, "width:2px;background:#2a6acf;border-radius:1px;align-self:stretch;justify-self:center;");
-                    }
-                    if (grid.children[idx] !== indicator) {
-                        grid.insertBefore(indicator, grid.children[idx]);
-                    }
+                    el.style.boxShadow = "inset 2px 0 0 #2a6acf";
                 },
-                onDrop: (e, idx) => {
+                onDrop: (e, idx, el) => {
                     e.preventDefault();
+                    el.style.boxShadow = "";
                     if (dragSrcIdx === null || idx === 0 || idx === dragSrcIdx) return;
                     const arr = readEntries();
                     const [moved] = arr.splice(dragSrcIdx, 1);
-                    arr.splice(idx, 0, moved);
+                    let insertIdx = idx;
+                    if (dragSrcIdx < idx) insertIdx--;
+                    arr.splice(insertIdx, 0, moved);
                     writeEntries(arr);
                     dragSrcIdx = null;
                     render();
@@ -1641,8 +1637,8 @@ function setupFlakeWidget(node) {
                 onDragEnd: (el) => {
                     el.style.opacity = "";
                     dragSrcIdx = null;
-                    for (const indicator of grid.querySelectorAll(".flake-drop-indicator")) {
-                        indicator.remove();
+                    for (const blk of grid.querySelectorAll("[data-flake-block]")) {
+                        blk.style.boxShadow = "";
                     }
                 },
             });
