@@ -124,7 +124,7 @@ async function fetchFlakeMeta(name) {
 function makeDefaultEntry() {
     return {
         inline: true,
-        content: { prompt: { positive: "", negative: "" }, options: {} },
+        content: { options: {} },
         strength: 1.0,
         option: {},
     };
@@ -759,7 +759,7 @@ function openEditModal({ mode, name, data, dirs }) {
 
                     const strCol = document.createElement("div");
                     css(strCol, "flex:1;min-width:0;");
-                    const strSlider = makeComfyValueSlider(fieldState.lora?.strength ?? 1.0, 0, 2, 0.05);
+                    const strSlider = makeComfyValueSlider(fieldState.lora?.strength ?? 1.0, -10, 10, 0.05);
                     strCol.appendChild(strSlider);
                     row.appendChild(strCol);
                     fieldWrap.appendChild(row);
@@ -991,21 +991,77 @@ function openEditModal({ mode, name, data, dirs }) {
                                 choiceCard.appendChild(cRow);
 
                                 const choice = fieldState.options[groupName][choiceName] || {};
-                                const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
-                                css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
-                                cPos.addEventListener("change", () => {
-                                    fieldState.options[groupName][choiceName] = fieldState.options[groupName][choiceName] || {};
-                                    fieldState.options[groupName][choiceName].positive = cPos.value;
-                                });
-                                choiceCard.appendChild(cPos);
 
-                                const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
-                                css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
-                                cNeg.addEventListener("change", () => {
+                                const choiceBtnRow = document.createElement("div");
+                                css(choiceBtnRow, "display:flex;gap:8px;align-items:center;");
+                                const choicePosBtn = makeSmallButton("+ positive");
+                                const choiceNegBtn = makeSmallButton("+ negative");
+                                choiceBtnRow.appendChild(choicePosBtn);
+                                choiceBtnRow.appendChild(choiceNegBtn);
+                                choiceCard.appendChild(choiceBtnRow);
+
+                                function renderChoicePrompts() {
+                                    // Remove existing prompt textareas (they come after the button row)
+                                    while (choiceCard.children.length > 2) {
+                                        choiceCard.removeChild(choiceCard.lastChild);
+                                    }
+                                    if (choice.positive != null) {
+                                        const posRow = document.createElement("div");
+                                        css(posRow, "display:flex;gap:4px;align-items:flex-start;");
+                                        const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
+                                        css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                                        cPos.addEventListener("change", () => {
+                                            fieldState.options[groupName][choiceName] = fieldState.options[groupName][choiceName] || {};
+                                            fieldState.options[groupName][choiceName].positive = cPos.value;
+                                        });
+                                        const rmPos = makeSmallButton("\u2715");
+                                        rmPos.addEventListener("click", () => {
+                                            if (choice.negative == null) {
+                                                fieldState.options[groupName][choiceName] = {};
+                                            } else {
+                                                delete fieldState.options[groupName][choiceName].positive;
+                                            }
+                                            renderChoicePrompts();
+                                        });
+                                        posRow.appendChild(cPos);
+                                        posRow.appendChild(rmPos);
+                                        choiceCard.appendChild(posRow);
+                                    }
+                                    if (choice.negative != null) {
+                                        const negRow = document.createElement("div");
+                                        css(negRow, "display:flex;gap:4px;align-items:flex-start;");
+                                        const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
+                                        css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                                        cNeg.addEventListener("change", () => {
+                                            fieldState.options[groupName][choiceName] = fieldState.options[groupName][choiceName] || {};
+                                            fieldState.options[groupName][choiceName].negative = cNeg.value;
+                                        });
+                                        const rmNeg = makeSmallButton("\u2715");
+                                        rmNeg.addEventListener("click", () => {
+                                            if (choice.positive == null) {
+                                                fieldState.options[groupName][choiceName] = {};
+                                            } else {
+                                                delete fieldState.options[groupName][choiceName].negative;
+                                            }
+                                            renderChoicePrompts();
+                                        });
+                                        negRow.appendChild(cNeg);
+                                        negRow.appendChild(rmNeg);
+                                        choiceCard.appendChild(negRow);
+                                    }
+                                }
+                                renderChoicePrompts();
+
+                                choicePosBtn.addEventListener("click", () => {
                                     fieldState.options[groupName][choiceName] = fieldState.options[groupName][choiceName] || {};
-                                    fieldState.options[groupName][choiceName].negative = cNeg.value;
+                                    fieldState.options[groupName][choiceName].positive = fieldState.options[groupName][choiceName].positive ?? "";
+                                    renderChoicePrompts();
                                 });
-                                choiceCard.appendChild(cNeg);
+                                choiceNegBtn.addEventListener("click", () => {
+                                    fieldState.options[groupName][choiceName] = fieldState.options[groupName][choiceName] || {};
+                                    fieldState.options[groupName][choiceName].negative = fieldState.options[groupName][choiceName].negative ?? "";
+                                    renderChoicePrompts();
+                                });
 
                                 groupCard.appendChild(choiceCard);
                             }
@@ -1016,7 +1072,7 @@ function openEditModal({ mode, name, data, dirs }) {
                                 if (!cn) return;
                                 const trimmed = cn.trim();
                                 if (!trimmed || fieldState.options[groupName][trimmed]) return;
-                                fieldState.options[groupName][trimmed] = { positive: "", negative: "" };
+                                fieldState.options[groupName][trimmed] = {};
                                 renderOpts();
                             });
                             groupCard.appendChild(addChoiceBtn);
@@ -1254,7 +1310,7 @@ function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDr
     // LoRA strength slider (bottom center, semi-transparent)
     if (!isDefault && entry.has_lora) {
         const step = 0.05;
-        const clampVal = (v) => Math.round(Math.min(2, Math.max(0, v)) / step) * step;
+        const clampVal = (v) => Math.round(Math.min(10, Math.max(-10, v)) / step) * step;
         const formatVal = (v) => v.toFixed(2);
         let current = clampVal(entry.strength != null ? entry.strength : 1);
 
@@ -1670,7 +1726,7 @@ function setupFlakeWidget(node) {
         const { directories } = await fetchList();
         const result = await openEditModal({
             mode: "create",
-            data: { prompt: { positive: "", negative: "" }, options: {} },
+            data: { options: {} },
             dirs: directories,
         });
         if (!result || !result.created) return;
@@ -2164,7 +2220,7 @@ function setupFlakeComboWidget(node) {
         const { directories } = await fetchList();
         const result = await openEditModal({
             mode: "create",
-            data: { prompt: { positive: "", negative: "" }, options: {} },
+            data: { options: {} },
             dirs: directories,
         });
         if (!result || !result.created) return;
