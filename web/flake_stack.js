@@ -264,6 +264,32 @@ function makeComfyDropdown(options = [], selected = "") {
     return { element: el, container: wrap };
 }
 
+function makePanelDropdown(options = [], selected = "") {
+    const wrap = document.createElement("div");
+    css(wrap, "position:relative;width:100%;");
+    const el = document.createElement("select");
+    for (const opt of options) {
+        const o = document.createElement("option");
+        o.value = opt.value;
+        o.textContent = opt.label;
+        css(o, "font-size:10px;");
+        if (opt.value === selected) o.selected = true;
+        el.appendChild(o);
+    }
+    css(el, "background:#1a1a1a;color:#ddd;border:1px solid #333;border-radius:4px;font-size:10px;height:22px;width:100%;box-sizing:border-box;appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;outline:none;text-align:center;text-align-last:center;-moz-text-align-last:center;padding:0 18px 0 4px;");
+    el.addEventListener("focus", () => { el.style.borderColor = "#555"; });
+    el.addEventListener("blur", () => { el.style.borderColor = "#333"; });
+
+    // Chevron icon
+    const chevron = document.createElement("div");
+    chevron.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>`;
+    css(chevron, "position:absolute;right:4px;top:50%;transform:translateY(-50%);pointer-events:none;");
+
+    wrap.appendChild(el);
+    wrap.appendChild(chevron);
+    return { element: el, container: wrap };
+}
+
 let EMBEDDINGS_PROMISE = null;
 function fetchEmbeddings() {
     if (!EMBEDDINGS_PROMISE) EMBEDDINGS_PROMISE = fetch("/flakes/embeddings").then(r => r.json()).then(d => d.embeddings || []);
@@ -1856,33 +1882,21 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
                 css(gLabel, "font-size:9px;opacity:0.7;text-align:center;");
                 row.appendChild(gLabel);
 
-                const sel = document.createElement("select");
-                css(sel, "background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:2px;font-size:11px;padding:2px 4px;width:100%;text-align:center;cursor:pointer;");
-                const noneOpt = document.createElement("option");
-                noneOpt.value = "";
-                noneOpt.textContent = "-";
-                css(noneOpt, "font-size:11px;");
-                sel.appendChild(noneOpt);
-
+                const ddOptions = [{ value: "", label: "-" }];
                 for (const ch of hasOptions[group]) {
-                    const opt = document.createElement("option");
-                    opt.value = ch;
-                    opt.textContent = ch;
-                    css(opt, "font-size:11px;");
-                    if ((entry.option || {})[group] === ch) opt.selected = true;
-                    sel.appendChild(opt);
+                    ddOptions.push({ value: ch, label: ch });
                 }
-
-                sel.addEventListener("change", () => {
-                    if (sel.value) {
+                const dd = makePanelDropdown(ddOptions, (entry.option || {})[group] || "");
+                dd.element.addEventListener("change", () => {
+                    if (dd.element.value) {
                         entry.option = entry.option || {};
-                        entry.option[group] = sel.value;
+                        entry.option[group] = dd.element.value;
                     } else {
                         if (entry.option) delete entry.option[group];
                     }
                     onChanged();
                 });
-                row.appendChild(sel);
+                row.appendChild(dd.container);
                 panel.appendChild(row);
             }
         }
