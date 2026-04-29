@@ -1822,6 +1822,10 @@ function openFileBrowser({ type, defaultPath = "" }) {
                         }
                         row.style.borderColor = "#2a6acf";
                     });
+                    row.addEventListener("dblclick", () => {
+                        selectedFile = currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name;
+                        close({ file: selectedFile });
+                    });
                 }
                 listBox.appendChild(row);
             }
@@ -1855,7 +1859,19 @@ function openFileBrowser({ type, defaultPath = "" }) {
         }
 
         searchInput.addEventListener("input", () => renderEntries(searchInput.value));
+        searchInput.addEventListener("keyup", () => renderEntries(searchInput.value));
+        searchInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                const term = searchInput.value.toLowerCase().trim();
+                const matches = dirEntries.filter(e => e.type === "file" && e.name.toLowerCase().includes(term));
+                if (matches.length > 0) {
+                    selectedFile = currentPath ? currentPath.replace(/\\/g, "/") + "/" + matches[0].name : matches[0].name;
+                    close({ file: selectedFile });
+                }
+            }
+        });
         loadDir(defaultPath);
+        searchInput.focus();
 
         const cancelBtn = makeButton("Cancel");
         cancelBtn.addEventListener("click", () => close(undefined));
