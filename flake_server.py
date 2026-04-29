@@ -313,6 +313,42 @@ async def _delete_preset(request: web.Request) -> web.Response:
 
 
 # ---------------------------------------------------------------------------
+# Checkpoint sibling image (auto-cover)
+# ---------------------------------------------------------------------------
+
+_CHECKPOINT_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+
+
+@routes.get("/flakes/checkpoint_sibling_image")
+async def _get_checkpoint_sibling_image(request: web.Request) -> web.Response:
+    path = request.query.get("path", "").strip()
+    if not path:
+        return _bad_request("missing 'path' query param")
+    try:
+        full_path = folder_paths.get_full_path("checkpoints", path)
+    except Exception:
+        full_path = None
+    if not full_path or not os.path.isfile(full_path):
+        return _not_found(f"checkpoint not found: {path}")
+    dir_path = os.path.dirname(full_path)
+    basename = os.path.splitext(os.path.basename(full_path))[0]
+    mime_map = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+    }
+    for ext in _CHECKPOINT_IMAGE_EXTS:
+        sibling = os.path.join(dir_path, basename + ext)
+        if os.path.isfile(sibling):
+            mime = mime_map.get(ext, "application/octet-stream")
+            with open(sibling, "rb") as f:
+                return web.Response(body=f.read(), content_type=mime)
+    return _not_found("no sibling image found")
+
+
+# ---------------------------------------------------------------------------
 # Preset cover image
 # ---------------------------------------------------------------------------
 

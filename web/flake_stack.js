@@ -2649,6 +2649,26 @@ function openPresetEditModal({ mode, name, data }) {
             updatePresetCoverPreview(`/flakes/preset_cover?name=${encodeURIComponent(name)}`);
         }
 
+        presetCoverImg.addEventListener("error", () => {
+            presetCoverImg.style.display = "none";
+            presetCoverLabel.style.display = "block";
+        });
+
+        async function tryAutoCover(val) {
+            if (!val || presetCoverFile || presetCoverImg.style.display === "block") return;
+            try {
+                const resp = await fetch(`/flakes/checkpoint_sibling_image?path=${encodeURIComponent(val)}`);
+                if (resp.ok) {
+                    const blob = await resp.blob();
+                    const ctype = resp.headers.get("content-type") || "image/png";
+                    const ext = ctype.includes("jpeg") ? ".jpg" : ctype.includes("webp") ? ".webp" : ctype.includes("gif") ? ".gif" : ".png";
+                    presetCoverFile = new File([blob], `cover${ext}`, { type: ctype });
+                    const url = URL.createObjectURL(blob);
+                    updatePresetCoverPreview(url);
+                }
+            } catch { /* ignore */ }
+        }
+
         presetCoverBox.addEventListener("click", () => presetCoverInput.click());
         presetCoverInput.addEventListener("change", () => {
             const file = presetCoverInput.files?.[0];
@@ -2751,6 +2771,7 @@ function openPresetEditModal({ mode, name, data }) {
             ckptBox.style.display = "block";
             ckptEditBtn.style.display = "inline-block";
             ckptWrap.container.style.display = "none";
+            tryAutoCover(val);
         });
         ckptWrap.element.addEventListener("blur", () => {
             setTimeout(() => {
@@ -2759,6 +2780,7 @@ function openPresetEditModal({ mode, name, data }) {
                 ckptBox.style.display = "block";
                 ckptEditBtn.style.display = "inline-block";
                 ckptWrap.container.style.display = "none";
+                tryAutoCover(val);
             }, 200);
         });
 
@@ -2993,12 +3015,22 @@ function setupFlakeModelPresetWidget(node) {
         return r;
     };
 
+    // Poll for direct value changes (ComfyUI combo widgets may not call setValue)
+    let lastPresetValue = presetWidget.value;
+    const presetPoll = setInterval(() => {
+        if (presetWidget.value !== lastPresetValue) {
+            lastPresetValue = presetWidget.value;
+            updateCover();
+        }
+    }, 200);
+
     node.addDOMWidget("preset_cover", "div", coverContainer, { serialize: false });
     updateCover();
 
     const origOnRemoved = node.onRemoved;
     node.onRemoved = function () {
         clearInterval(attachInterval);
+        clearInterval(presetPoll);
         return origOnRemoved?.apply(this, arguments);
     };
 
