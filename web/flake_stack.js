@@ -340,7 +340,7 @@ function makeComfySlider(value, min, max, step) {
     css(row, "display:flex;align-items:center;gap:0;background:#1a1a1a;border:1px solid #333;border-radius:6px;overflow:hidden;");
 
     let current = parseFloat(value) || 0;
-    const clamp = (v) => Math.min(max, Math.max(min, Math.round(v / step) * step));
+    const clamp = (v) => Math.min(max, Math.max(min, v));
     const format = (v) => Number.isInteger(step) ? String(v) : v.toFixed(step < 0.1 ? 2 : 1);
     current = clamp(current);
 
@@ -434,7 +434,7 @@ function makeComfyValueSlider(value, min, max, step, onChange) {
     css(row, "display:flex;align-items:center;background:#1a1a1a;border:1px solid #333;border-radius:6px;overflow:hidden;height:32px;cursor:ew-resize;");
 
     let current = parseFloat(value) || 0;
-    const clamp = (v) => Math.min(max, Math.max(min, Math.round(v / step) * step));
+    const clamp = (v) => Math.min(max, Math.max(min, v));
     const format = (v) => Number.isInteger(step) ? String(v) : v.toFixed(step < 0.1 ? 2 : 1);
     current = clamp(current);
 
@@ -523,7 +523,7 @@ function makeSmallValueSlider(value, min, max, step, onChange) {
     css(row, "display:flex;align-items:center;background:#1a1a1a;border:1px solid #333;border-radius:4px;overflow:hidden;height:22px;cursor:ew-resize;");
 
     let current = parseFloat(value) || 0;
-    const clamp = (v) => Math.min(max, Math.max(min, Math.round(v / step) * step));
+    const clamp = (v) => Math.min(max, Math.max(min, v));
     const format = (v) => Number.isInteger(step) ? String(v) : v.toFixed(step < 0.1 ? 2 : 1);
     current = clamp(current);
 
