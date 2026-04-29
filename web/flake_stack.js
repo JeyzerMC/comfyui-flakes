@@ -2465,9 +2465,24 @@ async function refreshPresetOptions() {
         const names = d.presets || [];
         const newValues = names.length ? ["Select a preset...", ...names] : ["No model preset is selected"];
         for (const n of app.graph.nodes) {
-            if (n.type !== "FlakeModelPreset") continue;
+            if (n.type !== "FlakeModelPreset" && n.type !== "FlakeModelCombo") continue;
             const pw = n.widgets?.find(w => w.name === "preset");
-            if (pw && pw.options) pw.options.values = newValues;
+            if (!pw || !pw.options) continue;
+            pw.options.values = newValues;
+            const selectEl = pw.inputEl || pw.element;
+            if (selectEl && selectEl.tagName === "SELECT") {
+                selectEl.replaceChildren();
+                for (const v of newValues) {
+                    const opt = document.createElement("option");
+                    opt.value = v;
+                    opt.textContent = v;
+                    selectEl.appendChild(opt);
+                }
+                if (!newValues.includes(pw.value)) {
+                    pw.value = newValues[0] || "";
+                }
+                selectEl.value = pw.value;
+            }
         }
     } catch { /* ignore */ }
 }
