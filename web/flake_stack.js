@@ -2353,7 +2353,7 @@ function setupFlakeWidget(node) {
         const { directories } = await fetchList();
         const result = await openEditModal({
             mode: "create",
-            data: { options: {} },
+            data: {},
             dirs: directories,
         });
         if (!result || !result.created) return;
@@ -3099,7 +3099,7 @@ function setupFlakeComboWidget(node) {
         const { directories } = await fetchList();
         const result = await openEditModal({
             mode: "create",
-            data: { options: {} },
+            data: {},
             dirs: directories,
         });
         if (!result || !result.created) return;
