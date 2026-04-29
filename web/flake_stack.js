@@ -2016,7 +2016,15 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
     function rebuildPanel() {
         panel.replaceChildren();
 
-        const hasLoras = entry.loras && entry.loras.length > 0;
+        const lorasMeta = entry._pendingData?.loras || flakeData?.loras || [];
+        // Sync override array length to match the YAML
+        if (entry.loras.length > lorasMeta.length) {
+            entry.loras.length = lorasMeta.length;
+        }
+        while (entry.loras.length < lorasMeta.length) {
+            entry.loras.push(lorasMeta[entry.loras.length]?.strength ?? 1.0);
+        }
+        const hasLoras = lorasMeta.length > 0;
         const hasOptionGroups = hasOptions && Object.keys(hasOptions).length > 0;
 
         // Show triangle only if there's something to tweak
@@ -2026,8 +2034,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
 
         // LoRA strength sliders at top of panel
         if (hasLoras) {
-            const lorasMeta = entry._pendingData?.loras || flakeData?.loras || [];
-            for (let i = 0; i < entry.loras.length; i++) {
+            for (let i = 0; i < lorasMeta.length; i++) {
                 const sliderRow = document.createElement("div");
                 css(sliderRow, "padding:2px 0;");
                 const name = lorasMeta[i]?.name || "LoRA";
@@ -2035,7 +2042,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
                 label.textContent = name;
                 css(label, "font-size:9px;opacity:0.7;padding:2px 0;text-align:center;");
                 sliderRow.appendChild(label);
-                const strSlider = makeSmallValueSlider(entry.loras[i] != null ? entry.loras[i] : 1.0, -10, 10, 0.05, (v) => {
+                const strSlider = makeSmallValueSlider(entry.loras[i] != null ? entry.loras[i] : (lorasMeta[i]?.strength ?? 1.0), -10, 10, 0.05, (v) => {
                     entry.loras[i] = v;
                     onChanged();
                 });
