@@ -37,6 +37,7 @@ MEMORY.md
 # Logs / local data
 *.log
 *.bak
+*.bak2
 *.tmp
 
 # Pytest / coverage
