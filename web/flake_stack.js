@@ -1784,9 +1784,9 @@ function openFileBrowser({ type, defaultPath = "" }) {
 
         function renderEntries(filter = "") {
             listBox.replaceChildren();
-            const term = filter.toLowerCase().trim();
+            const term = String(filter || "").toLowerCase().trim();
             const entries = term
-                ? dirEntries.filter(e => e.name.toLowerCase().includes(term))
+                ? dirEntries.filter(e => String(e.name || "").toLowerCase().includes(term))
                 : dirEntries;
 
             if (currentPath) {
@@ -1859,7 +1859,6 @@ function openFileBrowser({ type, defaultPath = "" }) {
         }
 
         searchInput.addEventListener("input", () => renderEntries(searchInput.value));
-        searchInput.addEventListener("keyup", () => renderEntries(searchInput.value));
         searchInput.addEventListener("keydown", (e) => {
             if (e.key === "Enter") {
                 const term = searchInput.value.toLowerCase().trim();
