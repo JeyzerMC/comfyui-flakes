@@ -2466,7 +2466,7 @@ function setupFlakeWidget(node) {
 
 async function refreshPresetOptions() {
     try {
-        const r = await fetch("/flakes/presets");
+        const r = await fetch("/flakes/presets", { cache: "no-store" });
         const d = await r.json();
         const names = d.presets || [];
         const newValues = names.length ? ["Select a preset...", ...names] : ["No model preset is selected"];
@@ -2475,7 +2475,28 @@ async function refreshPresetOptions() {
             const pw = n.widgets?.find(w => w.name === "preset");
             if (!pw || !pw.options) continue;
             pw.options.values = newValues;
-            const selectEl = pw.inputEl || pw.element;
+
+            // Update the widget value list that ComfyUI/LiteGraph uses internally
+            if (pw.options.values) {
+                pw.options.values = newValues;
+            }
+
+            // Try multiple ways to find the <select> element in case ComfyUI wraps it
+            let selectEl = pw.inputEl || pw.element;
+            if (!selectEl || selectEl.tagName !== "SELECT") {
+                // Search within the node's DOM for the select
+                const widgetEl = n.widgets?.find(w => w.name === "preset")?.inputEl;
+                if (widgetEl && widgetEl.tagName === "SELECT") {
+                    selectEl = widgetEl;
+                }
+            }
+            if (!selectEl || selectEl.tagName !== "SELECT") {
+                // Last resort: search the node's HTML element
+                if (n.htmlEl) {
+                    selectEl = n.htmlEl.querySelector('select');
+                }
+            }
+
             if (selectEl && selectEl.tagName === "SELECT") {
                 selectEl.replaceChildren();
                 for (const v of newValues) {
@@ -2489,8 +2510,18 @@ async function refreshPresetOptions() {
                 }
                 selectEl.value = pw.value;
             }
+
+            // Force ComfyUI to redraw the widget
+            if (pw.callback) {
+                try { pw.callback(pw.value); } catch { /* ignore */ }
+            }
+            if (n.setDirtyCanvas) {
+                n.setDirtyCanvas(true, true);
+            }
         }
-    } catch { /* ignore */ }
+    } catch (err) {
+        console.error("[flakes] failed to refresh preset options:", err);
+    }
 }
 
 function addPresetButtonToParent(parent) {
