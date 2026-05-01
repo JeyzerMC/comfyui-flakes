@@ -1751,6 +1751,122 @@ async function openFileLoadPicker({ flakes, directories }) {
     });
 }
 
+// ---------- Preset picker ----------
+
+async function openPresetPicker({ selected = "" } = {}) {
+    return new Promise(async (resolve) => {
+        let presets = [];
+        try {
+            const r = await fetch("/flakes/presets", { cache: "no-store" });
+            const d = await r.json();
+            presets = d.presets || [];
+        } catch (err) {
+            console.error("[flakes] failed to load presets for picker:", err);
+        }
+
+        const { content, footer, close, handlers } = openOverlay();
+        handlers.onClose = (v) => resolve(v ?? null);
+        css(content.parentElement, content.parentElement.style.cssText + "min-width:420px;max-width:640px;");
+
+        const title = document.createElement("h3");
+        css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
+        title.textContent = "Select a Preset";
+        content.appendChild(title);
+
+        // Search bar
+        const searchRow = document.createElement("div");
+        css(searchRow, "margin-bottom:8px;");
+        const searchInput = makeComfyInput("", "Search presets...");
+        searchRow.appendChild(searchInput);
+        content.appendChild(searchRow);
+
+        const grid = document.createElement("div");
+        css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(100px, 1fr));gap:8px;max-height:400px;overflow:auto;padding:4px;");
+        content.appendChild(grid);
+
+        let selectedName = selected || null;
+        let selectedEl = null;
+
+        function renderGrid(filter = "") {
+            grid.replaceChildren();
+            selectedEl = null;
+            const term = String(filter || "").toLowerCase().trim();
+            const filtered = term
+                ? presets.filter(n => String(n || "").toLowerCase().includes(term))
+                : presets;
+
+            if (filtered.length === 0) {
+                const empty = document.createElement("div");
+                empty.textContent = term ? "No presets found." : "No presets available.";
+                css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;grid-column:1 / -1;");
+                grid.appendChild(empty);
+                return;
+            }
+
+            for (const name of filtered) {
+                const thumb = document.createElement("div");
+                css(thumb, `position:relative;height:100px;background:#2a2a2a;border:2px solid ${name === selectedName ? "#2a6acf" : "#444"};border-radius:6px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(name)});background-size:cover;background-position:center;transition:border-color 0.15s ease;`);
+
+                const overlay = document.createElement("div");
+                css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.4);pointer-events:none;z-index:0;transition:background 0.15s ease;");
+                thumb.appendChild(overlay);
+
+                const shortName = name.split(/[\/\\ _\-]+/).pop() || name;
+                const nameEl = document.createElement("div");
+                nameEl.title = name;
+                css(nameEl, "position:absolute;bottom:0;left:0;right:0;padding:6px 4px;text-align:center;font-size:11px;font-weight:500;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.9);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:1;");
+                nameEl.textContent = shortName;
+                thumb.appendChild(nameEl);
+
+                thumb.addEventListener("mouseenter", () => {
+                    thumb.style.borderColor = "#555";
+                    overlay.style.background = "rgba(0,0,0,0.25)";
+                });
+                thumb.addEventListener("mouseleave", () => {
+                    thumb.style.borderColor = name === selectedName ? "#2a6acf" : "#444";
+                    overlay.style.background = "rgba(0,0,0,0.4)";
+                });
+
+                thumb.addEventListener("click", () => {
+                    if (selectedEl) {
+                        selectedEl.style.borderColor = "#444";
+                    }
+                    selectedName = name;
+                    selectedEl = thumb;
+                    thumb.style.borderColor = "#2a6acf";
+                });
+                thumb.addEventListener("dblclick", () => {
+                    close({ name });
+                });
+
+                if (name === selectedName) {
+                    selectedEl = thumb;
+                }
+
+                grid.appendChild(thumb);
+            }
+        }
+
+        renderGrid();
+        searchInput.addEventListener("input", () => renderGrid(searchInput.value));
+        searchInput.focus();
+
+        const cancelBtn = makeButton("Cancel");
+        cancelBtn.addEventListener("click", () => close(undefined));
+        footer.appendChild(cancelBtn);
+
+        const selectBtn = makeButton("Select", true);
+        selectBtn.addEventListener("click", () => {
+            if (!selectedName) {
+                window.alert("Select a preset first.");
+                return;
+            }
+            close({ name: selectedName });
+        });
+        footer.appendChild(selectBtn);
+    });
+}
+
 // ---------- File browser (Python-backed) ----------
 
 function openFileBrowser({ type, defaultPath = "" }) {
@@ -3009,69 +3125,185 @@ function setupFlakeModelPresetWidget(node) {
     const presetWidget = node.widgets?.find(w => w.name === "preset");
     if (!presetWidget) return;
 
-    attachPresetButton(node);
+    // Hide the original ComfyUI combo widget
+    presetWidget.computeSize = () => [0, -4];
+    presetWidget.type = "hidden";
+    presetWidget.hidden = true;
+    if (presetWidget.element) { presetWidget.element.remove(); presetWidget.element = null; }
+    if (presetWidget.inputEl) { presetWidget.inputEl.remove(); presetWidget.inputEl = null; }
 
-    const attachInterval = setInterval(() => {
-        attachPresetButton(node);
-    }, 500);
+    const container = document.createElement("div");
+    css(container, "display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px;");
 
-    // Cover image widget
-    const coverContainer = document.createElement("div");
-    css(coverContainer, "display:flex;justify-content:center;padding:4px 0;");
+    // ---- Unselected state: two buttons ----
+    const buttonRow = document.createElement("div");
+    css(buttonRow, "display:flex;gap:8px;align-items:center;justify-content:center;");
+
+    const selectBtn = document.createElement("button");
+    selectBtn.textContent = "Select Preset";
+    css(selectBtn, "padding:6px 14px;cursor:pointer;border-radius:4px;font-size:12px;background:#2a2a2a;color:#ddd;border:1px solid #555;transition:background 0.15s ease;");
+    selectBtn.addEventListener("mouseenter", () => { selectBtn.style.background = "#333"; });
+    selectBtn.addEventListener("mouseleave", () => { selectBtn.style.background = "#2a2a2a"; });
+    selectBtn.addEventListener("click", async () => {
+        const result = await openPresetPicker({ selected: presetWidget.value });
+        if (result && result.name) {
+            presetWidget.value = result.name;
+            render();
+        }
+    });
+    buttonRow.appendChild(selectBtn);
+
+    const createBtn = document.createElement("button");
+    createBtn.textContent = "Create Preset";
+    css(createBtn, "padding:6px 14px;cursor:pointer;border-radius:4px;font-size:12px;background:#2a2a2a;color:#ddd;border:1px solid #555;transition:background 0.15s ease;");
+    createBtn.addEventListener("mouseenter", () => { createBtn.style.background = "#333"; });
+    createBtn.addEventListener("mouseleave", () => { createBtn.style.background = "#2a2a2a"; });
+    createBtn.addEventListener("click", async () => {
+        const result = await openPresetEditModal({
+            mode: "create",
+            data: {
+                checkpoint: "",
+                checkpoint_url: "",
+                clip_skip: -2,
+                vae: "",
+                steps: 20,
+                cfg: 4.0,
+                sampler: "dpmpp_2m",
+                scheduler: "karras",
+                width: 832,
+                height: 1216,
+                prompt: { positive: "", negative: "" },
+                embeddings: [],
+            },
+        });
+        if (result && result.name) {
+            presetWidget.value = result.name;
+            await refreshPresetOptions();
+            render();
+        }
+    });
+    buttonRow.appendChild(createBtn);
+    container.appendChild(buttonRow);
+
+    // ---- Selected state: image + label + hover buttons ----
+    const selectedWrap = document.createElement("div");
+    css(selectedWrap, "display:none;flex-direction:column;align-items:center;gap:4px;width:100%;position:relative;");
+
+    const imgWrap = document.createElement("div");
+    css(imgWrap, "position:relative;width:100%;max-width:200px;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:#1a1a1a;border:1px solid #444;cursor:pointer;");
+
     const coverImg = document.createElement("img");
-    css(coverImg, "max-width:100%;max-height:200px;border-radius:6px;display:none;object-fit:cover;");
-    coverContainer.appendChild(coverImg);
+    css(coverImg, "width:100%;height:100%;object-fit:cover;display:block;");
+    imgWrap.appendChild(coverImg);
 
-    function updateCover() {
+    // Hover buttons container (top-right)
+    const hoverBtns = document.createElement("div");
+    css(hoverBtns, "position:absolute;top:4px;right:4px;display:none;gap:4px;z-index:2;");
+
+    // Modify Preset button (edit icon, styled like Load Image edit button)
+    const modifyBtn = document.createElement("button");
+    modifyBtn.title = "Modify Preset";
+    modifyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+    css(modifyBtn, "width:24px;height:24px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.9);color:#333;border:none;border-radius:3px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.3);");
+    modifyBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const current = presetWidget.value;
+        if (!current) return;
+        let data;
+        try {
+            data = await fetchPreset(current);
+        } catch (err) {
+            window.alert(`Failed to load preset '${current}': ${err.message || err}`);
+            return;
+        }
+        const result = await openPresetEditModal({ mode: "edit", name: current, data });
+        if (result) {
+            await refreshPresetOptions();
+            render();
+        }
+    });
+    hoverBtns.appendChild(modifyBtn);
+
+    // Remove Preset button (X in circle, styled like Load Image remove button)
+    const removeBtn = document.createElement("button");
+    removeBtn.title = "Remove Preset";
+    removeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>`;
+    css(removeBtn, "width:24px;height:24px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.9);color:#333;border:none;border-radius:3px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.3);");
+    removeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        presetWidget.value = "Select a preset...";
+        render();
+    });
+    hoverBtns.appendChild(removeBtn);
+
+    imgWrap.appendChild(hoverBtns);
+
+    // Show/hide hover buttons on image hover
+    imgWrap.addEventListener("mouseenter", () => { hoverBtns.style.display = "flex"; });
+    imgWrap.addEventListener("mouseleave", () => { hoverBtns.style.display = "none"; });
+
+    selectedWrap.appendChild(imgWrap);
+
+    const nameLabel = document.createElement("div");
+    css(nameLabel, "font-size:12px;color:#aaa;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px;");
+    selectedWrap.appendChild(nameLabel);
+
+    container.appendChild(selectedWrap);
+
+    function render() {
         const val = presetWidget.value || "";
-        if (!val || val === "Select a preset..." || val === "No model preset is selected") {
-            coverImg.style.display = "none";
-            coverImg.src = "";
+        const isPlaceholder = !val || val === "Select a preset..." || val === "No model preset is selected";
+        if (isPlaceholder) {
+            buttonRow.style.display = "flex";
+            selectedWrap.style.display = "none";
         } else {
+            buttonRow.style.display = "none";
+            selectedWrap.style.display = "flex";
             coverImg.src = `/flakes/preset_cover?name=${encodeURIComponent(val)}`;
-            coverImg.style.display = "block";
+            nameLabel.textContent = val;
+            nameLabel.title = val;
         }
     }
 
     coverImg.addEventListener("error", () => {
         coverImg.style.display = "none";
     });
+    coverImg.addEventListener("load", () => {
+        coverImg.style.display = "block";
+    });
 
     const origOnConfigure = node.onConfigure;
     node.onConfigure = function () {
         const r = origOnConfigure?.apply(this, arguments);
-        updateCover();
+        render();
         return r;
     };
 
-    // Watch for preset changes
     const origSetValue = presetWidget.setValue;
     presetWidget.setValue = function (v) {
         const r = origSetValue?.apply(this, arguments);
-        updateCover();
+        render();
         return r;
     };
 
-    // Poll for direct value changes (ComfyUI combo widgets may not call setValue)
     let lastPresetValue = presetWidget.value;
     const presetPoll = setInterval(() => {
         if (presetWidget.value !== lastPresetValue) {
             lastPresetValue = presetWidget.value;
-            updateCover();
+            render();
         }
     }, 200);
 
-    node.addDOMWidget("preset_cover", "div", coverContainer, { serialize: false });
-    updateCover();
+    node.addDOMWidget("preset_ui", "div", container, { serialize: false });
+    render();
 
     const origOnRemoved = node.onRemoved;
     node.onRemoved = function () {
-        clearInterval(attachInterval);
         clearInterval(presetPoll);
         return origOnRemoved?.apply(this, arguments);
     };
 
-    node._preset_render = () => {};
+    node._preset_render = render;
 }
 
 // ---------- FlakeCombo widget ----------
@@ -3309,6 +3541,13 @@ function setupFlakeModelComboWidget(node) {
     const presetWidget = node.widgets?.find(w => w.name === "preset");
     if (!presetWidget) return;
 
+    // Hide the original ComfyUI combo widget
+    presetWidget.computeSize = () => [0, -4];
+    presetWidget.type = "hidden";
+    presetWidget.hidden = true;
+    if (presetWidget.element) { presetWidget.element.remove(); presetWidget.element = null; }
+    if (presetWidget.inputEl) { presetWidget.inputEl.remove(); presetWidget.inputEl = null; }
+
     if (!node.properties) node.properties = {};
     if (!node.properties._combo_presets) node.properties._combo_presets = [];
     if (node.properties._combo_active_index == null) node.properties._combo_active_index = 0;
@@ -3372,18 +3611,15 @@ function setupFlakeModelComboWidget(node) {
         css(label, "font-size:9px;text-align:center;");
         label.textContent = "Add preset";
         addBtn.appendChild(label);
-        addBtn.addEventListener("click", () => {
-            const current = presetWidget.value;
-            if (!current || current === "Select a preset..." || current === "No model preset is selected") {
-                window.alert("Select a preset from the dropdown first");
-                return;
-            }
+        addBtn.addEventListener("click", async () => {
+            const result = await openPresetPicker();
+            if (!result || !result.name) return;
             const arr = readPresets();
-            if (arr.includes(current)) {
+            if (arr.includes(result.name)) {
                 window.alert("Preset already in combo");
                 return;
             }
-            arr.push(current);
+            arr.push(result.name);
             writePresets(arr);
             render();
         });
