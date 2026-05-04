@@ -43,6 +43,7 @@ export function makeModelComboBlock({ preset, idx, isActive, onActivate, onRemov
 
 export function setupFlakeModelComboWidget(node) {
     const presetWidget = node.widgets?.find(w => w.name === "preset");
+    const familyWidget = node.widgets?.find(w => w.name === "model_family");
     if (!presetWidget) return;
 
     // Hide the original ComfyUI combo widget
@@ -51,6 +52,19 @@ export function setupFlakeModelComboWidget(node) {
     presetWidget.hidden = true;
     if (presetWidget.element) { presetWidget.element.remove(); presetWidget.element = null; }
     if (presetWidget.inputEl) { presetWidget.inputEl.remove(); presetWidget.inputEl = null; }
+
+    // Hide model_family combo widget
+    if (familyWidget) {
+        familyWidget.computeSize = () => [0, -4];
+        familyWidget.type = "hidden";
+        familyWidget.hidden = true;
+        if (familyWidget.element) { familyWidget.element.remove(); familyWidget.element = null; }
+        if (familyWidget.inputEl) { familyWidget.inputEl.remove(); familyWidget.inputEl = null; }
+    }
+
+    function getFamily() {
+        return familyWidget?.value || "SDXL/Base";
+    }
 
     if (!node.properties) node.properties = {};
     if (!node.properties._combo_presets) node.properties._combo_presets = [];
@@ -72,6 +86,31 @@ export function setupFlakeModelComboWidget(node) {
 
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
+
+    // Family dropdown
+    const familyRow = document.createElement("div");
+    css(familyRow, "display:flex;gap:8px;align-items:center;padding:4px 0;");
+    const familyLabel = document.createElement("span");
+    familyLabel.textContent = "Family:";
+    css(familyLabel, "font-size:11px;color:#aaa;white-space:nowrap;");
+    familyRow.appendChild(familyLabel);
+
+    const familySelect = document.createElement("select");
+    const FAMILIES = ["SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "ZImage/Base", "ZImage/Turbo"];
+    for (const f of FAMILIES) {
+        const opt = document.createElement("option");
+        opt.value = f;
+        opt.textContent = f;
+        if (f === getFamily()) opt.selected = true;
+        familySelect.appendChild(opt);
+    }
+    css(familySelect, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:4px 6px;border-radius:4px;font-size:11px;cursor:pointer;outline:none;");
+    familySelect.addEventListener("change", () => {
+        if (familyWidget) familyWidget.value = familySelect.value;
+        render();
+    });
+    familyRow.appendChild(familySelect);
+    container.appendChild(familyRow);
 
     const grid = document.createElement("div");
     css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
@@ -116,7 +155,7 @@ export function setupFlakeModelComboWidget(node) {
         label.textContent = "Add preset";
         addBtn.appendChild(label);
         addBtn.addEventListener("click", async () => {
-            const result = await openPresetPicker();
+            const result = await openPresetPicker({ family: getFamily() });
             if (!result || !result.name) return;
             const arr = readPresets();
             if (arr.includes(result.name)) {

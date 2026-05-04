@@ -101,6 +101,9 @@ def _load_preset_bundle(preset_name: str):
     return model_bundle, generation_data, sampling_preset
 
 
+_MODEL_FAMILIES = ["SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "ZImage/Base", "ZImage/Turbo"]
+
+
 class FlakeModelPreset:
     @classmethod
     def INPUT_TYPES(cls):
@@ -112,6 +115,7 @@ class FlakeModelPreset:
             preset_names = ["No model preset is selected"]
         return {
             "required": {
+                "model_family": (_MODEL_FAMILIES, {"default": "SDXL/Base"}),
                 "preset": (["Select a preset..."] + preset_names,),
             },
         }
@@ -129,7 +133,7 @@ class FlakeModelPreset:
         "Outputs are bundled for wiring into FlakeStack / FlakeCombo nodes."
     )
 
-    def execute(self, preset: str):
+    def execute(self, model_family: str, preset: str):
         preset_name = preset.strip() if preset else ""
         if not preset_name or preset_name in ("Select a preset...", "No model preset is selected"):
             raise ValueError("No model preset is selected — pick one from the dropdown.")
@@ -142,6 +146,7 @@ class FlakeStack:
     def INPUT_TYPES(cls):
         return {
             "required": {
+                "model_family": (_MODEL_FAMILIES, {"default": "SDXL/Base"}),
                 "model_bundle": ("FLAKES_MODEL",),
                 "generation_data": ("FLAKES_COND",),
                 "sampling_preset": ("FLAKES_SAMPLER",),
@@ -167,7 +172,7 @@ class FlakeStack:
         "Outputs updated bundles for chaining into downstream nodes."
     )
 
-    def execute(self, model_bundle, generation_data, sampling_preset, flakes_json: str):
+    def execute(self, model_family: str, model_bundle, generation_data, sampling_preset, flakes_json: str):
         model, clip, vae = model_bundle
         positive_cond, negative_cond, latent, width, height, pos_text, neg_text = generation_data[:7]
         steps, cfg, sampler, scheduler = sampling_preset

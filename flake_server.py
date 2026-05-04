@@ -29,10 +29,11 @@ def _server_error(msg: str) -> web.Response:
 # ---------------------------------------------------------------------------
 
 @routes.get("/flakes/list")
-async def _list_flakes(_request: web.Request) -> web.Response:
+async def _list_flakes(request: web.Request) -> web.Response:
+    family = request.query.get("family", "").strip() or None
     try:
-        names = flake_io.list_flakes()
-        dirs = flake_io.list_dirs()
+        names = flake_io.list_flakes(family=family)
+        dirs = flake_io.list_dirs(family=family)
     except Exception as exc:
         logging.exception("[flakes] failed to list flakes")
         return _server_error(str(exc))
@@ -83,12 +84,13 @@ async def _save_flake(request: web.Request) -> web.Response:
         return _bad_request("body must be a JSON object")
     name = (body.get("name") or "").strip()
     data = body.get("data")
+    family = (body.get("family") or "").strip() or None
     if not name:
         return _bad_request("missing 'name'")
     if not isinstance(data, dict):
         return _bad_request("'data' must be an object")
     try:
-        flake_io.save_flake(name, data)
+        flake_io.save_flake(name, data, family=family)
     except ValueError as exc:
         return _bad_request(str(exc))
     except Exception as exc:
@@ -245,9 +247,10 @@ async def _upload_cover(request: web.Request) -> web.Response:
 # ---------------------------------------------------------------------------
 
 @routes.get("/flakes/presets")
-async def _list_presets(_request: web.Request) -> web.Response:
+async def _list_presets(request: web.Request) -> web.Response:
+    family = request.query.get("family", "").strip() or None
     try:
-        names = flake_io.list_presets()
+        names = flake_io.list_presets(family=family)
     except Exception as exc:
         logging.exception("[flakes] failed to list presets")
         return _server_error(str(exc))
@@ -281,12 +284,13 @@ async def _save_preset(request: web.Request) -> web.Response:
         return _bad_request("body must be a JSON object")
     name = (body.get("name") or "").strip()
     data = body.get("data")
+    family = (body.get("family") or "").strip() or None
     if not name:
         return _bad_request("missing 'name'")
     if not isinstance(data, dict):
         return _bad_request("'data' must be an object")
     try:
-        flake_io.save_preset(name, data)
+        flake_io.save_preset(name, data, family=family)
     except ValueError as exc:
         return _bad_request(str(exc))
     except Exception as exc:

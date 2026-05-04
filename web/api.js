@@ -1,12 +1,15 @@
 // ---------- API ----------
 
 let LIST_PROMISE = null;
+let LIST_FAMILY = null;
 
-export function invalidateList() { LIST_PROMISE = null; }
+export function invalidateList() { LIST_PROMISE = null; LIST_FAMILY = null; }
 
-export async function fetchList() {
-    if (!LIST_PROMISE) {
-        LIST_PROMISE = fetch("/flakes/list").then(r => r.json()).then(d => ({
+export async function fetchList(family = "") {
+    const query = family ? `?family=${encodeURIComponent(family)}` : "";
+    if (!LIST_PROMISE || LIST_FAMILY !== family) {
+        LIST_FAMILY = family;
+        LIST_PROMISE = fetch(`/flakes/list${query}`).then(r => r.json()).then(d => ({
             flakes: Array.isArray(d.flakes) ? d.flakes : [],
             directories: Array.isArray(d.directories) ? d.directories : [],
         }));
@@ -23,11 +26,11 @@ export async function fetchFlake(name) {
     return (await r.json()).data || {};
 }
 
-export async function saveFlakeApi(name, data) {
+export async function saveFlakeApi(name, data, family = "") {
     const r = await fetch("/flakes/save", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, data }),
+        body: JSON.stringify({ name, data, family: family || undefined }),
     });
     if (!r.ok) {
         const err = await r.json().catch(() => ({}));
@@ -97,6 +100,16 @@ export async function fetchPreset(name) {
         throw new Error(err.error || `HTTP ${r.status}`);
     }
     return (await r.json()).data || {};
+}
+
+export async function fetchPresets(family = "") {
+    const query = family ? `?family=${encodeURIComponent(family)}` : "";
+    const r = await fetch(`/flakes/presets${query}`, { cache: "no-store" });
+    if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${r.status}`);
+    }
+    return (await r.json()).presets || [];
 }
 
 // --- Cover ---

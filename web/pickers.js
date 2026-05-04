@@ -2,7 +2,7 @@ import { openOverlay } from "./modal.js";
 import { css, makeButton, makeComfyInput } from "./utils.js";
 import { getCoverUrl, fetchBrowse } from "./api.js";
 
-export async function openFileLoadPicker({ flakes, directories }) {
+export async function openFileLoadPicker({ flakes, directories, family = "" }) {
     // Exclude model_presets from everything
     const allFlakes = flakes.filter(n => {
         const norm = n.replace(/\\/g, "/");
@@ -216,11 +216,12 @@ export async function openFileLoadPicker({ flakes, directories }) {
     });
 }
 
-export async function openPresetPicker({ selected = "" } = {}) {
+export async function openPresetPicker({ selected = "", family = "" } = {}) {
     return new Promise(async (resolve) => {
         let presets = [];
         try {
-            const r = await fetch("/flakes/presets", { cache: "no-store" });
+            const query = family ? `?family=${encodeURIComponent(family)}` : "";
+            const r = await fetch(`/flakes/presets${query}`, { cache: "no-store" });
             const d = await r.json();
             presets = d.presets || [];
         } catch (err) {

@@ -8,7 +8,7 @@ import { fetchPreset, fetchCheckpoints, fetchVaes, fetchEmbeddings } from "./api
 import { openFileBrowser } from "./pickers.js";
 import { app } from "../../scripts/app.js";
 
-export function openPresetEditModal({ mode, name, data }) {
+export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) {
     return new Promise((resolve) => {
         let { content, footer, close, handlers } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
@@ -18,8 +18,22 @@ export function openPresetEditModal({ mode, name, data }) {
         title.textContent = mode === "create" ? "New Model Preset" : `Edit ${name}`;
         content.appendChild(title);
 
+        const FAMILY_OPTIONS = [
+            { value: "SDXL/Base", label: "SDXL/Base" },
+            { value: "SDXL/Illustrious", label: "SDXL/Illustrious" },
+            { value: "SDXL/Pony", label: "SDXL/Pony" },
+            { value: "ZImage/Base", label: "ZImage/Base" },
+            { value: "ZImage/Turbo", label: "ZImage/Turbo" },
+            { value: "Common", label: "Common" },
+        ];
+
         let pathInput = null;
+        let familyDropdown = null;
         if (mode === "create") {
+            content.appendChild(makeComfyLabel("Model family"));
+            familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, family);
+            content.appendChild(familyDropdown.container);
+
             content.appendChild(makeComfyLabel("Preset name"));
             pathInput = makeComfyInput("", "e.g. sdxl-juggernaut");
             content.appendChild(pathInput);
@@ -350,11 +364,12 @@ export function openPresetEditModal({ mode, name, data }) {
             try {
                 const pName = (pathInput.value || "").trim();
                 if (!pName) { window.alert("Preset name is required"); return; }
+                const family = familyDropdown?.element?.value || "";
                 if (mode === "create") {
                     await fetch("/flakes/presets/save", {
                         method: "PUT",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ name: pName, data: ordered }),
+                        body: JSON.stringify({ name: pName, data: ordered, family: family || undefined }),
                     });
                     close({ created: true, name: pName });
                 } else {
@@ -386,16 +401,41 @@ export function openPresetEditModal({ mode, name, data }) {
     });
 }
 
-export async function refreshPresetOptions() {
+export async function refreshPresetOptions(family = "") {
     try {
-        const r = await fetch("/flakes/presets", { cache: "no-store" });
-        const d = await r.json();
-        const names = d.presets || [];
-        const newValues = names.length ? ["Select a preset...", ...names] : ["No model preset is selected"];
+        // Fetch presets for all unique families used by nodes, plus the requested family
+        const familyMap = new Map();
+        for (const n of app.graph.nodes) {
+            if (n.type !== "FlakeModelPreset" && n.type !== "FlakeModelCombo") continue;
+            const fw = n.widgets?.find(w => w.name === "model_family");
+            const nodeFamily = fw?.value || family || "";
+            if (!familyMap.has(nodeFamily)) {
+                const query = nodeFamily ? `?family=${encodeURIComponent(nodeFamily)}` : "";
+                const r = await fetch(`/flakes/presets${query}`, { cache: "no-store" });
+                const d = await r.json();
+                const names = d.presets || [];
+                const newValues = names.length ? ["Select a preset...", ...names] : ["No model preset is selected"];
+                familyMap.set(nodeFamily, newValues);
+            }
+        }
+
+        // Also fetch for the explicitly requested family if no nodes exist yet
+        if (family && !familyMap.has(family)) {
+            const query = `?family=${encodeURIComponent(family)}`;
+            const r = await fetch(`/flakes/presets${query}`, { cache: "no-store" });
+            const d = await r.json();
+            const names = d.presets || [];
+            const newValues = names.length ? ["Select a preset...", ...names] : ["No model preset is selected"];
+            familyMap.set(family, newValues);
+        }
+
         for (const n of app.graph.nodes) {
             if (n.type !== "FlakeModelPreset" && n.type !== "FlakeModelCombo") continue;
             const pw = n.widgets?.find(w => w.name === "preset");
             if (!pw || !pw.options) continue;
+            const fw = n.widgets?.find(w => w.name === "model_family");
+            const nodeFamily = fw?.value || "";
+            const newValues = familyMap.get(nodeFamily) || familyMap.get("") || ["No model preset is selected"];
             pw.options.values = newValues;
 
             // Update the widget value list that ComfyUI/LiteGraph uses internally
@@ -439,6 +479,11 @@ export async function refreshPresetOptions() {
             }
             if (n.setDirtyCanvas) {
                 n.setDirtyCanvas(true, true);
+            }
+
+            // Trigger preset UI re-render if the node has a custom renderer
+            if (n._preset_render) {
+                try { n._preset_render(); } catch { /* ignore */ }
             }
         }
     } catch (err) {
@@ -506,10 +551,14 @@ export function attachPresetButton(node) {
 export async function handlePresetButton(e) {
     if (e) e.stopPropagation();
     let current = "";
+    let currentFamily = "";
     for (const n of app.graph.nodes) {
         if (n.type !== "FlakeModelPreset") continue;
         const pw = n.widgets?.find(w => w.name === "preset");
-        if (pw) { current = pw.value || ""; break; }
+        const fw = n.widgets?.find(w => w.name === "model_family");
+        if (pw) { current = pw.value || ""; }
+        if (fw) { currentFamily = fw.value || ""; }
+        if (pw) break;
     }
     const isPlaceholder = !current || current === "Select a preset..." || current === "No model preset is selected";
 
@@ -531,7 +580,7 @@ export async function handlePresetButton(e) {
                 embeddings: [],
             },
         });
-        if (result) refreshPresetOptions();
+        if (result) refreshPresetOptions(currentFamily);
     } else {
         let data;
         try {
@@ -545,6 +594,6 @@ export async function handlePresetButton(e) {
             name: current,
             data,
         });
-        if (result) refreshPresetOptions();
+        if (result) refreshPresetOptions(currentFamily);
     }
 }

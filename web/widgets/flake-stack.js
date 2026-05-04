@@ -232,6 +232,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
 
 export function setupFlakeWidget(node) {
     const flakesHidden = node.widgets?.find(w => w.name === "flakes_json");
+    const familyWidget = node.widgets?.find(w => w.name === "model_family");
     if (!flakesHidden) return;
 
     // Hide flakes_json STRING widget
@@ -240,6 +241,19 @@ export function setupFlakeWidget(node) {
     flakesHidden.hidden = true;
     if (flakesHidden.element) { flakesHidden.element.remove(); flakesHidden.element = null; }
     if (flakesHidden.inputEl) { flakesHidden.inputEl.remove(); flakesHidden.inputEl = null; }
+
+    // Hide model_family combo widget
+    if (familyWidget) {
+        familyWidget.computeSize = () => [0, -4];
+        familyWidget.type = "hidden";
+        familyWidget.hidden = true;
+        if (familyWidget.element) { familyWidget.element.remove(); familyWidget.element = null; }
+        if (familyWidget.inputEl) { familyWidget.inputEl.remove(); familyWidget.inputEl = null; }
+    }
+
+    function getFamily() {
+        return familyWidget?.value || "SDXL/Base";
+    }
 
     function readEntries() {
         try {
@@ -259,6 +273,31 @@ export function setupFlakeWidget(node) {
     // Custom DOM widget
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
+
+    // Family dropdown
+    const familyRow = document.createElement("div");
+    css(familyRow, "display:flex;gap:8px;align-items:center;padding:4px 0;");
+    const familyLabel = document.createElement("span");
+    familyLabel.textContent = "Family:";
+    css(familyLabel, "font-size:11px;color:#aaa;white-space:nowrap;");
+    familyRow.appendChild(familyLabel);
+
+    const familySelect = document.createElement("select");
+    const FAMILIES = ["SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "ZImage/Base", "ZImage/Turbo"];
+    for (const f of FAMILIES) {
+        const opt = document.createElement("option");
+        opt.value = f;
+        opt.textContent = f;
+        if (f === getFamily()) opt.selected = true;
+        familySelect.appendChild(opt);
+    }
+    css(familySelect, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:4px 6px;border-radius:4px;font-size:11px;cursor:pointer;outline:none;");
+    familySelect.addEventListener("change", () => {
+        if (familyWidget) familyWidget.value = familySelect.value;
+        render();
+    });
+    familyRow.appendChild(familySelect);
+    container.appendChild(familyRow);
 
     // Flakes grid
     const grid = document.createElement("div");
@@ -333,7 +372,7 @@ export function setupFlakeWidget(node) {
             }
         }
 
-        const { directories } = await fetchList();
+        const { directories } = await fetchList(getFamily());
         const result = await openEditModal({
             mode: isDefault ? "default" : "edit",
             name: entry.name,
@@ -390,7 +429,7 @@ export function setupFlakeWidget(node) {
     }
 
     async function handleNew() {
-        const { directories } = await fetchList();
+        const { directories } = await fetchList(getFamily());
         const result = await openEditModal({
             mode: "create",
             data: {},
@@ -426,8 +465,8 @@ export function setupFlakeWidget(node) {
     }
 
     async function handleLoad() {
-        const { flakes, directories } = await fetchList();
-        const result = await openFileLoadPicker({ flakes, directories });
+        const { flakes, directories } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily() });
         if (!result || !result.name) return;
         const arr = readEntries();
         let has_lora = false;

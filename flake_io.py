@@ -12,6 +12,24 @@ import folder_paths
 
 _NAME_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_\- ]+$")
 
+_FAMILY_MAP = {
+    "SDXL/Base": "sdxl",
+    "SDXL/Illustrious": "illustrious",
+    "SDXL/Pony": "pony",
+    "ZImage/Base": "zib",
+    "ZImage/Turbo": "zit",
+    "Common": "common",
+}
+
+_FAMILY_COMPAT = {
+    "SDXL/Base": {"common", "sdxl"},
+    "SDXL/Illustrious": {"common", "sdxl", "illustrious"},
+    "SDXL/Pony": {"common", "sdxl", "pony"},
+    "ZImage/Base": {"common", "zib"},
+    "ZImage/Turbo": {"common", "zit"},
+}
+
+
 # ---------------------------------------------------------------------------
 # Preset dataclass
 # ---------------------------------------------------------------------------
@@ -118,6 +136,39 @@ def _ensure_inside(path: str, root: str) -> None:
     if os.path.commonpath([real_path, real_root]) != real_root:
         raise ValueError("path resolves outside the flakes root")
 
+
+def _family_folder(family: str | None) -> str | None:
+    return _FAMILY_MAP.get(family) if family else None
+
+
+def _is_flake_compatible(path: str, family: str | None) -> bool:
+    if not family:
+        return True
+    compat = _FAMILY_COMPAT.get(family)
+    if not compat:
+        return True
+    parts = path.replace("\\", "/").split("/")
+    if parts[0] != "img":
+        # Legacy paths (no img/ prefix) are compatible with all SDXL families
+        return family.startswith("SDXL")
+    if len(parts) >= 2 and parts[1] in compat:
+        return True
+    return False
+
+
+def _is_preset_compatible(path: str, family: str | None) -> bool:
+    if not family:
+        return True
+    compat = _FAMILY_COMPAT.get(family)
+    if not compat:
+        return True
+    parts = path.replace("\\", "/").split("/")
+    if not parts or parts[0] == "":
+        return True
+    if parts[0] in compat:
+        return True
+    return False
+
 # ---------------------------------------------------------------------------
 # Flake file resolution
 # ---------------------------------------------------------------------------
@@ -133,7 +184,7 @@ def _resolve_file(name: str) -> str:
     raise FileNotFoundError(f"Flake '{name}' not found under any registered flakes/ directory")
 
 
-def list_flakes() -> list[str]:
+def list_flakes(family: str | None = None) -> list[str]:
     names: set[str] = set()
     for root in _flakes_roots():
         if not os.path.isdir(root):
@@ -145,11 +196,16 @@ def list_flakes() -> list[str]:
                     continue
                 rel_dir = os.path.relpath(dirpath, root)
                 rel = stem if rel_dir in ("", ".") else os.path.join(rel_dir, stem)
-                names.add(rel.replace(os.sep, "/"))
+                rel_norm = rel.replace(os.sep, "/")
+                # Exclude model_presets from flake listings
+                if rel_norm.startswith("model_presets/") or rel_norm == "model_presets":
+                    continue
+                if family is None or _is_flake_compatible(rel_norm, family):
+                    names.add(rel_norm)
     return sorted(names)
 
 
-def list_dirs() -> list[str]:
+def list_dirs(family: str | None = None) -> list[str]:
     dirs: set[str] = set()
     for root in _flakes_roots():
         if not os.path.isdir(root):
@@ -158,7 +214,11 @@ def list_dirs() -> list[str]:
             for d in dirnames:
                 full = os.path.join(dirpath, d)
                 rel = os.path.relpath(full, root).replace(os.sep, "/")
-                dirs.add(rel)
+                # Exclude model_presets from flake directory listings
+                if rel.startswith("model_presets/") or rel == "model_presets":
+                    continue
+                if family is None or _is_flake_compatible(rel + "/dummy", family):
+                    dirs.add(rel)
     return sorted(dirs)
 
 # ---------------------------------------------------------------------------
@@ -171,10 +231,14 @@ def read_flake_raw(name: str) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def save_flake(name: str, data: dict[str, Any]) -> None:
+def save_flake(name: str, data: dict[str, Any], family: str | None = None) -> None:
     if not isinstance(data, dict):
         raise ValueError("flake data must be an object")
     _validate_name(name)
+
+    folder = _family_folder(family)
+    if folder:
+        name = f"img/{folder}/{name}"
 
     try:
         path = _resolve_file(name)
@@ -383,7 +447,7 @@ def _resolve_preset_file(name: str) -> str:
     raise FileNotFoundError(f"Preset '{name}' not found under any registered model_presets/ directory")
 
 
-def list_presets() -> list[str]:
+def list_presets(family: str | None = None) -> list[str]:
     names: set[str] = set()
     for root in _presets_roots():
         if not os.path.isdir(root):
@@ -395,7 +459,9 @@ def list_presets() -> list[str]:
                     continue
                 rel_dir = os.path.relpath(dirpath, root)
                 rel = stem if rel_dir in ("", ".") else os.path.join(rel_dir, stem)
-                names.add(rel.replace(os.sep, "/"))
+                rel_norm = rel.replace(os.sep, "/")
+                if family is None or _is_preset_compatible(rel_norm, family):
+                    names.add(rel_norm)
     return sorted(names)
 
 
@@ -405,10 +471,14 @@ def read_preset_raw(name: str) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def save_preset(name: str, data: dict[str, Any]) -> None:
+def save_preset(name: str, data: dict[str, Any], family: str | None = None) -> None:
     if not isinstance(data, dict):
         raise ValueError("preset data must be an object")
     _validate_name(name)
+
+    folder = _family_folder(family)
+    if folder:
+        name = f"{folder}/{name}"
 
     try:
         path = _resolve_preset_file(name)

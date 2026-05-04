@@ -36,7 +36,20 @@ export function openEditModal({ mode, name, data, dirs }) {
         leftCol.appendChild(displayNameInput);
 
         let pathInput = null;
+        let familyDropdown = null;
+        const FAMILY_OPTIONS = [
+            { value: "SDXL/Base", label: "SDXL/Base" },
+            { value: "SDXL/Illustrious", label: "SDXL/Illustrious" },
+            { value: "SDXL/Pony", label: "SDXL/Pony" },
+            { value: "ZImage/Base", label: "ZImage/Base" },
+            { value: "ZImage/Turbo", label: "ZImage/Turbo" },
+            { value: "Common", label: "Common" },
+        ];
         if (mode === "create") {
+            leftCol.appendChild(makeComfyLabel("Model family"));
+            familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, "SDXL/Base");
+            leftCol.appendChild(familyDropdown.container);
+
             leftCol.appendChild(makeComfyLabel("Path"));
             pathInput = makeComfyInput("", "characters/musashi");
             const listId = `flake-dirs-${Math.random().toString(36).slice(2)}`;
@@ -889,7 +902,8 @@ export function openEditModal({ mode, name, data, dirs }) {
                 if (mode === "create") {
                     const targetName = (pathInput.value || "").trim();
                     if (!targetName) { window.alert("Path is required"); return; }
-                    await saveFlakeApi(targetName, ordered);
+                    const family = familyDropdown?.element?.value || "";
+                    await saveFlakeApi(targetName, ordered, family);
                     close({ created: true, name: targetName, data: ordered });
                 } else if (mode === "default") {
                     close({ defaultUpdated: true, data: ordered });
