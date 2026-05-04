@@ -13,6 +13,17 @@ if "flakes" in folder_paths.folder_names_and_paths:
 else:
     folder_paths.folder_names_and_paths["flakes"] = ([FLAKES_DIR], {".yaml", ".yml"})
 
+PRESETS_DIR = os.path.join(FLAKES_DIR, "model_presets")
+os.makedirs(PRESETS_DIR, exist_ok=True)
+
+if "model_presets" in folder_paths.folder_names_and_paths:
+    existing_paths, existing_exts = folder_paths.folder_names_and_paths["model_presets"]
+    if PRESETS_DIR not in existing_paths:
+        existing_paths.append(PRESETS_DIR)
+    existing_exts.update({".yaml", ".yml"})
+else:
+    folder_paths.folder_names_and_paths["model_presets"] = ([PRESETS_DIR], {".yaml", ".yml"})
+
 from .full_flake_node import FlakeModelPreset, FlakeStack, FlakeCombo, FlakeModelCombo  # noqa: E402
 from .flake_unpack_nodes import FlakesModel, FlakesCond, FlakesSampler  # noqa: E402
 from . import flake_server  # noqa: E402,F401 — registers aiohttp routes on import
