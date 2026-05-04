@@ -5,6 +5,7 @@ import { openPresetPicker } from "../pickers.js";
 
 export function setupFlakeModelPresetWidget(node) {
     const presetWidget = node.widgets?.find(w => w.name === "preset");
+    const familyWidget = node.widgets?.find(w => w.name === "model_family");
     if (!presetWidget) return;
 
     // Hide the original ComfyUI combo widget
@@ -14,8 +15,47 @@ export function setupFlakeModelPresetWidget(node) {
     if (presetWidget.element) { presetWidget.element.remove(); presetWidget.element = null; }
     if (presetWidget.inputEl) { presetWidget.inputEl.remove(); presetWidget.inputEl = null; }
 
+    // Hide the original family combo widget
+    if (familyWidget) {
+        familyWidget.computeSize = () => [0, -4];
+        familyWidget.type = "hidden";
+        familyWidget.hidden = true;
+        if (familyWidget.element) { familyWidget.element.remove(); familyWidget.element = null; }
+        if (familyWidget.inputEl) { familyWidget.inputEl.remove(); familyWidget.inputEl = null; }
+    }
+
+    function getFamily() {
+        return familyWidget?.value || "SDXL/Base";
+    }
+
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px;");
+
+    // ---- Family dropdown ----
+    const familyRow = document.createElement("div");
+    css(familyRow, "display:flex;gap:8px;align-items:center;width:100%;");
+    const familyLabel = document.createElement("span");
+    familyLabel.textContent = "Family:";
+    css(familyLabel, "font-size:11px;color:#aaa;white-space:nowrap;");
+    familyRow.appendChild(familyLabel);
+
+    const familySelect = document.createElement("select");
+    const FAMILIES = ["SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "ZImage/Base", "ZImage/Turbo"];
+    for (const f of FAMILIES) {
+        const opt = document.createElement("option");
+        opt.value = f;
+        opt.textContent = f;
+        if (f === getFamily()) opt.selected = true;
+        familySelect.appendChild(opt);
+    }
+    css(familySelect, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:4px 6px;border-radius:4px;font-size:11px;cursor:pointer;outline:none;");
+    familySelect.addEventListener("change", () => {
+        if (familyWidget) familyWidget.value = familySelect.value;
+        refreshPresetOptions(familySelect.value);
+        render();
+    });
+    familyRow.appendChild(familySelect);
+    container.appendChild(familyRow);
 
     // ---- Unselected state: two buttons ----
     const buttonRow = document.createElement("div");
@@ -23,11 +63,11 @@ export function setupFlakeModelPresetWidget(node) {
 
     const selectBtn = document.createElement("button");
     selectBtn.textContent = "Select Preset";
-    css(selectBtn, "padding:6px 14px;cursor:pointer;border-radius:4px;font-size:12px;background:#2a2a2a;color:#ddd;border:1px solid #555;transition:background 0.15s ease;");
+    css(selectBtn, "padding:6px 14px;cursor:pointer;border-radius:4px;font-size:11px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;");
     selectBtn.addEventListener("mouseenter", () => { selectBtn.style.background = "#333"; });
     selectBtn.addEventListener("mouseleave", () => { selectBtn.style.background = "#2a2a2a"; });
     selectBtn.addEventListener("click", async () => {
-        const result = await openPresetPicker({ selected: presetWidget.value });
+        const result = await openPresetPicker({ selected: presetWidget.value, family: getFamily() });
         if (result && result.name) {
             presetWidget.value = result.name;
             render();
@@ -37,12 +77,13 @@ export function setupFlakeModelPresetWidget(node) {
 
     const createBtn = document.createElement("button");
     createBtn.textContent = "Create Preset";
-    css(createBtn, "padding:6px 14px;cursor:pointer;border-radius:4px;font-size:12px;background:#2a2a2a;color:#ddd;border:1px solid #555;transition:background 0.15s ease;");
+    css(createBtn, "padding:6px 14px;cursor:pointer;border-radius:4px;font-size:11px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;");
     createBtn.addEventListener("mouseenter", () => { createBtn.style.background = "#333"; });
     createBtn.addEventListener("mouseleave", () => { createBtn.style.background = "#2a2a2a"; });
     createBtn.addEventListener("click", async () => {
         const result = await openPresetEditModal({
             mode: "create",
+            family: getFamily(),
             data: {
                 checkpoint: "",
                 checkpoint_url: "",
@@ -60,7 +101,7 @@ export function setupFlakeModelPresetWidget(node) {
         });
         if (result && result.name) {
             presetWidget.value = result.name;
-            await refreshPresetOptions();
+            await refreshPresetOptions(getFamily());
             render();
         }
     });
