@@ -123,13 +123,17 @@ export function setupFlakeModelPresetWidget(node) {
 
     // Hover buttons container (top-right)
     const hoverBtns = document.createElement("div");
-    css(hoverBtns, "position:absolute;top:4px;right:4px;display:none;gap:4px;z-index:2;");
+    css(hoverBtns, "position:absolute;top:6px;right:6px;display:none;gap:6px;z-index:2;");
+
+    const HOVER_BTN_STYLE = "width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:6px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.4);transition:transform 0.12s ease, background 0.12s ease;";
 
     // Modify Preset button (edit icon, styled like Load Image edit button)
     const modifyBtn = document.createElement("button");
     modifyBtn.title = "Modify Preset";
-    modifyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
-    css(modifyBtn, "width:24px;height:24px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.9);color:#333;border:none;border-radius:3px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.3);");
+    modifyBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+    css(modifyBtn, HOVER_BTN_STYLE);
+    modifyBtn.addEventListener("mouseenter", () => { modifyBtn.style.background = "#fff"; modifyBtn.style.transform = "scale(1.08)"; });
+    modifyBtn.addEventListener("mouseleave", () => { modifyBtn.style.background = "rgba(255,255,255,0.92)"; modifyBtn.style.transform = "scale(1)"; });
     modifyBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const current = presetWidget.value;
@@ -152,8 +156,10 @@ export function setupFlakeModelPresetWidget(node) {
     // Remove Preset button (X in circle, styled like Load Image remove button)
     const removeBtn = document.createElement("button");
     removeBtn.title = "Remove Preset";
-    removeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>`;
-    css(removeBtn, "width:24px;height:24px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.9);color:#333;border:none;border-radius:3px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.3);");
+    removeBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>`;
+    css(removeBtn, HOVER_BTN_STYLE);
+    removeBtn.addEventListener("mouseenter", () => { removeBtn.style.background = "#fff"; removeBtn.style.transform = "scale(1.08)"; });
+    removeBtn.addEventListener("mouseleave", () => { removeBtn.style.background = "rgba(255,255,255,0.92)"; removeBtn.style.transform = "scale(1)"; });
     removeBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         presetWidget.value = "Select a preset...";
