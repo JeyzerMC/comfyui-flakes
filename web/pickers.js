@@ -1,6 +1,12 @@
 import { openOverlay } from "./modal.js";
-import { css, makeButton, makeComfyInput } from "./utils.js";
+import { css, makeButton, makeComfyInput, familyFolder } from "./utils.js";
 import { getCoverUrl, fetchBrowse } from "./api.js";
+
+const BROWSE_TYPE_LABELS = {
+    checkpoints: "models/checkpoints",
+    loras: "models/loras",
+    flakes: "models/flakes",
+};
 
 export async function openFileLoadPicker({ flakes, directories, family = "" }) {
     // Exclude model_presets from everything
@@ -39,7 +45,11 @@ export async function openFileLoadPicker({ flakes, directories, family = "" }) {
         css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(80px, 1fr));gap:4px;max-height:360px;overflow:auto;");
         content.appendChild(grid);
 
-        let currentFolder = "";
+        const initialFolder = (() => {
+            const folder = familyFolder(family);
+            return folder ? `img/${folder}` : "";
+        })();
+        let currentFolder = initialFolder;
         let selectedName = null;
         let selectedEl = null;
 
@@ -71,11 +81,8 @@ export async function openFileLoadPicker({ flakes, directories, family = "" }) {
         }
 
         function renderBreadcrumb() {
-            if (!currentFolder) {
-                pathBar.textContent = "root /";
-                return;
-            }
-            pathBar.textContent = "root / " + normPath(currentFolder).split("/").join(" / ");
+            const base = "models/flakes/";
+            pathBar.textContent = base + (currentFolder ? normPath(currentFolder) + "/" : "");
         }
 
         function renderGrid(filter = "") {
@@ -86,8 +93,12 @@ export async function openFileLoadPicker({ flakes, directories, family = "" }) {
             renderBreadcrumb();
 
             if (term) {
-                // Search mode: flat grid of all matching flakes
-                const filtered = allFlakes.filter(n => n.toLowerCase().includes(term));
+                // Search mode: scoped to currentFolder so the breadcrumb stays meaningful
+                const prefix = currentFolder ? normPath(currentFolder) + "/" : "";
+                const scoped = prefix
+                    ? allFlakes.filter(n => normPath(n).startsWith(prefix))
+                    : allFlakes;
+                const filtered = scoped.filter(n => normPath(n).slice(prefix.length).toLowerCase().includes(term));
                 if (filtered.length === 0) {
                     const empty = document.createElement("div");
                     empty.textContent = "No flakes found.";
@@ -153,7 +164,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "" }) {
                 grid.appendChild(makeFlakeThumb(name));
             }
 
-            if (subfolders.length === 0 && folderFlakes.length === 0 && !currentFolder) {
+            if (subfolders.length === 0 && folderFlakes.length === 0) {
                 const empty = document.createElement("div");
                 empty.textContent = "No flakes found.";
                 css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;grid-column:1 / -1;");
@@ -416,14 +427,21 @@ export function openFileBrowser({ type, defaultPath = "" }) {
             }
         }
 
+        const baseLabel = BROWSE_TYPE_LABELS[type] || type;
+
+        function fmtPath(rel) {
+            const r = (rel || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+            return r ? `${baseLabel}/${r}/` : `${baseLabel}/`;
+        }
+
         async function loadDir(path) {
-            pathBar.textContent = path || "/";
+            pathBar.textContent = fmtPath(path);
             selectedFile = null;
             searchInput.value = "";
             try {
                 const data = await fetchBrowse(type, path);
                 currentPath = data.path || "";
-                pathBar.textContent = currentPath || "/";
+                pathBar.textContent = fmtPath(currentPath);
                 dirEntries = data.entries || [];
                 renderEntries();
             } catch (err) {
