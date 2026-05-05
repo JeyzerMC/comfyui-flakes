@@ -104,11 +104,13 @@ export function setupFlakeModelComboWidget(node) {
         if (f === getFamily()) opt.selected = true;
         familySelect.appendChild(opt);
     }
-    css(familySelect, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:4px 6px;border-radius:4px;font-size:11px;cursor:pointer;outline:none;");
+    css(familySelect, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #444;padding:6px 10px;border-radius:4px;font-size:13px;line-height:1.4;cursor:pointer;outline:none;min-height:30px;");
     familySelect.addEventListener("change", () => {
         if (familyWidget) familyWidget.value = familySelect.value;
         render();
     });
+    familySelect.addEventListener("mousedown", (e) => e.stopPropagation());
+    familySelect.addEventListener("click", (e) => e.stopPropagation());
     familyRow.appendChild(familySelect);
     container.appendChild(familyRow);
 

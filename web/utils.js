@@ -1,3 +1,18 @@
+// ---------- Model family ----------
+
+export const FAMILY_FOLDERS = {
+    "SDXL/Base": "sdxl",
+    "SDXL/Illustrious": "illustrious",
+    "SDXL/Pony": "pony",
+    "ZImage/Base": "zib",
+    "ZImage/Turbo": "zit",
+    "Common": "common",
+};
+
+export function familyFolder(family) {
+    return FAMILY_FOLDERS[family] || null;
+}
+
 // ---------- Default-flake helpers ----------
 
 export function makeDefaultEntry() {
