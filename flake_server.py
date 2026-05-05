@@ -323,17 +323,13 @@ async def _delete_preset(request: web.Request) -> web.Response:
 _CHECKPOINT_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
 
 
-@routes.get("/flakes/checkpoint_sibling_image")
-async def _get_checkpoint_sibling_image(request: web.Request) -> web.Response:
-    path = request.query.get("path", "").strip()
-    if not path:
-        return _bad_request("missing 'path' query param")
+def _sibling_image_response(folder_type: str, path: str) -> web.Response:
     try:
-        full_path = folder_paths.get_full_path("checkpoints", path)
+        full_path = folder_paths.get_full_path(folder_type, path)
     except Exception:
         full_path = None
     if not full_path or not os.path.isfile(full_path):
-        return _not_found(f"checkpoint not found: {path}")
+        return _not_found(f"{folder_type[:-1]} not found: {path}")
     dir_path = os.path.dirname(full_path)
     basename = os.path.splitext(os.path.basename(full_path))[0]
     mime_map = {
@@ -350,6 +346,22 @@ async def _get_checkpoint_sibling_image(request: web.Request) -> web.Response:
             with open(sibling, "rb") as f:
                 return web.Response(body=f.read(), content_type=mime)
     return _not_found("no sibling image found")
+
+
+@routes.get("/flakes/checkpoint_sibling_image")
+async def _get_checkpoint_sibling_image(request: web.Request) -> web.Response:
+    path = request.query.get("path", "").strip()
+    if not path:
+        return _bad_request("missing 'path' query param")
+    return _sibling_image_response("checkpoints", path)
+
+
+@routes.get("/flakes/lora_sibling_image")
+async def _get_lora_sibling_image(request: web.Request) -> web.Response:
+    path = request.query.get("path", "").strip()
+    if not path:
+        return _bad_request("missing 'path' query param")
+    return _sibling_image_response("loras", path)
 
 
 # ---------------------------------------------------------------------------

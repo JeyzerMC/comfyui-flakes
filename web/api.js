@@ -118,6 +118,20 @@ export function getCoverUrl(name) {
     return `/flakes/cover?name=${encodeURIComponent(name)}`;
 }
 
+export function loraSiblingImageUrl(path) {
+    return `/flakes/lora_sibling_image?path=${encodeURIComponent(path)}`;
+}
+
+export async function fetchLoraSiblingImage(path) {
+    const r = await fetch(loraSiblingImageUrl(path));
+    if (!r.ok) return null;
+    const blob = await r.blob();
+    const ct = r.headers.get("Content-Type") || "image/png";
+    const extMap = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
+    const ext = extMap[ct] || "png";
+    return { blob, ext, mime: ct };
+}
+
 export async function uploadCover(name, file) {
     const form = new FormData();
     form.append("file", file);

@@ -8,6 +8,7 @@ import {
 import {
     getCoverUrl, uploadCover, fetchLoras, fetchCnModels, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
+    fetchLoraSiblingImage,
 } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
 
@@ -68,6 +69,9 @@ export function openEditModal({ mode, name, data, dirs }) {
 
         let coverFile = null;
         let coverImg = null;
+        // Set by the cover-image block; used by the LoRA selectors to default
+        // the cover to the LoRA's sibling image when no cover has been chosen.
+        let setCoverFromLora = null;
         if (mode === "edit" || mode === "create") {
             const coverWrap = document.createElement("div");
             css(coverWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
@@ -115,6 +119,24 @@ export function openEditModal({ mode, name, data, dirs }) {
                     reader.readAsDataURL(file);
                 }
             });
+
+            // Auto-cover from a LoRA's sibling image when no cover has been
+            // explicitly chosen yet. Returns true if a sibling image was set.
+            setCoverFromLora = async (loraPath) => {
+                if (coverFile || !loraPath) return false;
+                try {
+                    const result = await fetchLoraSiblingImage(loraPath);
+                    if (!result || coverFile) return false;
+                    const file = new File([result.blob], `cover.${result.ext}`, { type: result.mime });
+                    coverFile = file;
+                    const reader = new FileReader();
+                    reader.onload = () => updateCoverPreview(reader.result);
+                    reader.readAsDataURL(file);
+                    return true;
+                } catch {
+                    return false;
+                }
+            };
 
             coverWrap.appendChild(coverBox);
             coverWrap.appendChild(coverInput);
@@ -376,6 +398,7 @@ export function openEditModal({ mode, name, data, dirs }) {
                                     pathBox.textContent = lora.path ? lora.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
                                     pathBox.title = lora.path || "";
                                     loraWrap.element.value = lora.path;
+                                    if (i === 0 && setCoverFromLora) setCoverFromLora(lora.path);
                                 }
                             });
 
@@ -395,6 +418,7 @@ export function openEditModal({ mode, name, data, dirs }) {
                                 pathBox.style.display = "block";
                                 pathEditBtn.style.display = "inline-block";
                                 loraWrap.container.style.display = "none";
+                                if (i === 0 && val && setCoverFromLora) setCoverFromLora(val);
                             });
 
                             loraWrap.element.addEventListener("blur", () => {
@@ -406,6 +430,7 @@ export function openEditModal({ mode, name, data, dirs }) {
                                     pathBox.style.display = "block";
                                     pathEditBtn.style.display = "inline-block";
                                     loraWrap.container.style.display = "none";
+                                    if (i === 0 && val && setCoverFromLora) setCoverFromLora(val);
                                 }, 200);
                             });
 
