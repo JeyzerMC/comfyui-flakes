@@ -53,3 +53,4 @@ flakes/
 *.yml.local
 
 tmp/
+docs/plans/
