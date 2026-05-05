@@ -427,6 +427,10 @@ export function openFileBrowser({ type, defaultPath = "" }) {
                 dirEntries = data.entries || [];
                 renderEntries();
             } catch (err) {
+                if (path) {
+                    // Requested directory does not exist — fall back to root
+                    return loadDir("");
+                }
                 dirEntries = [];
                 listBox.replaceChildren();
                 const errEl = document.createElement("div");

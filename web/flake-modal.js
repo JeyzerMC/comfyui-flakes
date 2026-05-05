@@ -4,6 +4,7 @@ import {
     makeComfyDropdown, makePanelDropdown, makeSearchableDropdown,
     makeComfyNumberInput, makeComfyValueSlider, makeSmallValueSlider,
     makeTextarea, makeLabel, makeNumberInput,
+    familyFolder,
 } from "./utils.js";
 import {
     getCoverUrl, uploadCover, fetchLoras, fetchCnModels, fetchInputs,
@@ -72,6 +73,20 @@ export function openEditModal({ mode, name, data, dirs }) {
         // Set by the cover-image block; used by the LoRA selectors to default
         // the cover to the LoRA's sibling image when no cover has been chosen.
         let setCoverFromLora = null;
+
+        function loraBrowserDefaultPath() {
+            // Create mode: use the family dropdown's current value.
+            if (familyDropdown?.element?.value) {
+                const folder = familyFolder(familyDropdown.element.value);
+                return folder ? `img/${folder}` : "";
+            }
+            // Edit mode: derive from the flake's stored name (e.g. img/illustrious/...).
+            if (typeof name === "string") {
+                const m = name.replace(/\\/g, "/").match(/^img\/([^/]+)\//);
+                if (m) return `img/${m[1]}`;
+            }
+            return "";
+        }
         if (mode === "edit" || mode === "create") {
             const coverWrap = document.createElement("div");
             css(coverWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
@@ -392,7 +407,7 @@ export function openEditModal({ mode, name, data, dirs }) {
                             pathEditBtn.title = "Type manually";
 
                             pathBox.addEventListener("click", async () => {
-                                const result = await openFileBrowser({ type: "loras", defaultPath: "" });
+                                const result = await openFileBrowser({ type: "loras", defaultPath: loraBrowserDefaultPath() });
                                 if (result && result.file) {
                                     lora.path = result.file;
                                     pathBox.textContent = lora.path ? lora.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
