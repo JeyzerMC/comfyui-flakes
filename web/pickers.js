@@ -286,7 +286,7 @@ export async function openPresetPicker({ selected = "", family = "" } = {}) {
                 css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.4);pointer-events:none;z-index:0;transition:background 0.15s ease;");
                 thumb.appendChild(overlay);
 
-                const shortName = name.split(/[\/\\ _\-]+/).pop() || name;
+                const shortName = name.replace(/\\/g, "/").split("/").pop() || name;
                 const nameEl = document.createElement("div");
                 nameEl.title = name;
                 css(nameEl, "position:absolute;bottom:0;left:0;right:0;padding:6px 4px;text-align:center;font-size:11px;font-weight:500;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.9);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:1;");
