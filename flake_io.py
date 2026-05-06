@@ -419,6 +419,30 @@ def read_cover(name: str) -> tuple[bytes, str] | None:
     """Return (data, mime_type) or None if no cover exists."""
     path = _cover_path(name)
     if not path:
+        # Fallback: check if flake YAML has cover_image pointing to a LoRA sibling
+        try:
+            raw = read_flake_raw(name)
+            cover_source = raw.get("cover_image")
+            if cover_source:
+                lora_full = folder_paths.get_full_path("loras", cover_source)
+                if lora_full and os.path.isfile(lora_full):
+                    dir_path = os.path.dirname(lora_full)
+                    basename = os.path.splitext(os.path.basename(lora_full))[0]
+                    mime_map = {
+                        ".png": "image/png",
+                        ".jpg": "image/jpeg",
+                        ".jpeg": "image/jpeg",
+                        ".webp": "image/webp",
+                        ".gif": "image/gif",
+                    }
+                    for ext in _COVER_EXTENSIONS:
+                        sibling = os.path.join(dir_path, basename + ext)
+                        if os.path.isfile(sibling):
+                            mime = mime_map.get(ext, "application/octet-stream")
+                            with open(sibling, "rb") as f:
+                                return f.read(), mime
+        except Exception:
+            pass
         return None
     ext = os.path.splitext(path)[1].lower()
     mime_map = {

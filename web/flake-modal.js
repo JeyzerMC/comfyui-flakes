@@ -69,6 +69,7 @@ export function openEditModal({ mode, name, data, dirs }) {
         topSection.appendChild(leftCol);
 
         let coverFile = null;
+        let coverSourcePath = null;
         let coverImg = null;
         // Set by the cover-image block; used by the LoRA selectors to default
         // the cover to the LoRA's sibling image when no cover has been chosen.
@@ -138,16 +139,14 @@ export function openEditModal({ mode, name, data, dirs }) {
             // Auto-cover from a LoRA's sibling image when no cover has been
             // explicitly chosen yet. Returns true if a sibling image was set.
             setCoverFromLora = async (loraPath) => {
-                if (coverFile || !loraPath) return false;
+                if (coverFile || coverSourcePath || !loraPath) return false;
                 try {
-                    const result = await fetchLoraSiblingImage(loraPath);
-                    if (!result || coverFile) return false;
-                    const file = new File([result.blob], `cover.${result.ext}`, { type: result.mime });
-                    coverFile = file;
-                    const reader = new FileReader();
-                    reader.onload = () => updateCoverPreview(reader.result);
-                    reader.readAsDataURL(file);
-                    return true;
+                    const resp = await fetch(loraSiblingImageUrl(loraPath));
+                    if (resp.ok) {
+                        coverSourcePath = loraPath;
+                        updateCoverPreview(loraSiblingImageUrl(loraPath));
+                        return true;
+                    }
                 } catch {
                     return false;
                 }
@@ -936,6 +935,9 @@ export function openEditModal({ mode, name, data, dirs }) {
                 if (ft === "output_stem" && fieldState.output_stem != null) {
                     ordered.output_stem = fieldState.output_stem;
                 }
+            }
+            if (coverSourcePath && !coverFile) {
+                ordered.cover_image = coverSourcePath;
             }
 
             try {
