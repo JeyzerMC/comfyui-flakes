@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
-    makePanelDropdown, makeSmallValueSlider,
+    makePanelDropdown, makeSmallValueSlider, bindSelectZoom,
 } from "../utils.js";
 import { fetchList, fetchFlake, saveFlakeApi, getCoverUrl, fetchFlakeMeta } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
@@ -300,6 +300,8 @@ export function setupFlakeWidget(node) {
     familySelect.addEventListener("click", (e) => e.stopPropagation());
     familyRow.appendChild(familySelect);
     container.appendChild(familyRow);
+
+    bindSelectZoom(node, familySelect);
 
     // Flakes grid
     const grid = document.createElement("div");

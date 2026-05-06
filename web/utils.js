@@ -13,6 +13,20 @@ export function familyFolder(family) {
     return FAMILY_FOLDERS[family] || null;
 }
 
+// ---------- Zoom scaling for native <select> in DOM widgets ----------
+
+export function bindSelectZoom(node, selectEl, baseFontSize = 13, basePaddingH = 6, basePaddingW = 10, baseMinHeight = 30) {
+    const origOnDrawForeground = node.onDrawForeground;
+    node.onDrawForeground = function (ctx) {
+        const r = origOnDrawForeground?.apply(this, arguments);
+        const scale = window.app?.canvas?.ds?.scale ?? 1;
+        selectEl.style.fontSize = `${baseFontSize * scale}px`;
+        selectEl.style.padding = `${basePaddingH * scale}px ${basePaddingW * scale}px`;
+        selectEl.style.minHeight = `${baseMinHeight * scale}px`;
+        return r;
+    };
+}
+
 // ---------- Default-flake helpers ----------
 
 export function makeDefaultEntry() {

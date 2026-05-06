@@ -1,4 +1,4 @@
-import { css } from "../utils.js";
+import { css, bindSelectZoom } from "../utils.js";
 import { openPresetPicker } from "../pickers.js";
 
 export function makeModelComboBlock({ preset, idx, isActive, onActivate, onRemove }) {
@@ -113,6 +113,8 @@ export function setupFlakeModelComboWidget(node) {
     familySelect.addEventListener("click", (e) => e.stopPropagation());
     familyRow.appendChild(familySelect);
     container.appendChild(familyRow);
+
+    bindSelectZoom(node, familySelect);
 
     const grid = document.createElement("div");
     css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");

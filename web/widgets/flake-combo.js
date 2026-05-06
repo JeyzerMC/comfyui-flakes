@@ -1,4 +1,4 @@
-import { css, makeAddBlock } from "../utils.js";
+import { css, makeAddBlock, bindSelectZoom } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
@@ -127,6 +127,8 @@ export function setupFlakeComboWidget(node) {
     familySelect.addEventListener("click", (e) => e.stopPropagation());
     familyRow.appendChild(familySelect);
     container.appendChild(familyRow);
+
+    bindSelectZoom(node, familySelect);
 
     const grid = document.createElement("div");
     css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");

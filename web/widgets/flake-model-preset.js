@@ -1,4 +1,4 @@
-import { css } from "../utils.js";
+import { css, bindSelectZoom } from "../utils.js";
 import { fetchPreset } from "../api.js";
 import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
 import { openPresetPicker } from "../pickers.js";
@@ -58,6 +58,8 @@ export function setupFlakeModelPresetWidget(node) {
     familySelect.addEventListener("click", (e) => e.stopPropagation());
     familyRow.appendChild(familySelect);
     container.appendChild(familyRow);
+
+    bindSelectZoom(node, familySelect);
 
     // ---- Unselected state: two buttons ----
     const buttonRow = document.createElement("div");
