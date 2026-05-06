@@ -1,4 +1,4 @@
-import { css, bindSelectZoom } from "../utils.js";
+import { css } from "../utils.js";
 import { openPresetPicker } from "../pickers.js";
 
 export function makeModelComboBlock({ preset, idx, isActive, onActivate, onRemove }) {
@@ -46,21 +46,17 @@ export function setupFlakeModelComboWidget(node) {
     const familyWidget = node.widgets?.find(w => w.name === "model_family");
     if (!presetWidget) return;
 
-    // Hide the original ComfyUI combo widget
-    presetWidget.computeSize = () => [0, -4];
+    // Move hidden preset widget to end of widgets array
+    const presetIdx = node.widgets.indexOf(presetWidget);
+    if (presetIdx !== -1) {
+        node.widgets.splice(presetIdx, 1);
+        node.widgets.push(presetWidget);
+    }
+    presetWidget.computeSize = () => [0, 0];
     presetWidget.type = "hidden";
     presetWidget.hidden = true;
-    if (presetWidget.element) { presetWidget.element.remove(); presetWidget.element = null; }
-    if (presetWidget.inputEl) { presetWidget.inputEl.remove(); presetWidget.inputEl = null; }
-
-    // Hide model_family combo widget
-    if (familyWidget) {
-        familyWidget.computeSize = () => [0, -4];
-        familyWidget.type = "hidden";
-        familyWidget.hidden = true;
-        if (familyWidget.element) { familyWidget.element.remove(); familyWidget.element = null; }
-        if (familyWidget.inputEl) { familyWidget.inputEl.remove(); familyWidget.inputEl = null; }
-    }
+    if (presetWidget.element) presetWidget.element.style.display = "none";
+    if (presetWidget.inputEl) presetWidget.inputEl.style.display = "none";
 
     function getFamily() {
         return familyWidget?.value || "SDXL/Base";
@@ -86,35 +82,6 @@ export function setupFlakeModelComboWidget(node) {
 
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
-
-    // Family dropdown
-    const familyRow = document.createElement("div");
-    css(familyRow, "display:flex;gap:8px;align-items:center;padding:4px 0;");
-    const familyLabel = document.createElement("span");
-    familyLabel.textContent = "Family:";
-    css(familyLabel, "font-size:11px;color:#aaa;white-space:nowrap;");
-    familyRow.appendChild(familyLabel);
-
-    const familySelect = document.createElement("select");
-    const FAMILIES = ["SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "ZImage/Base", "ZImage/Turbo"];
-    for (const f of FAMILIES) {
-        const opt = document.createElement("option");
-        opt.value = f;
-        opt.textContent = f;
-        if (f === getFamily()) opt.selected = true;
-        familySelect.appendChild(opt);
-    }
-    css(familySelect, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #444;padding:6px 10px;border-radius:4px;font-size:13px;line-height:1.4;cursor:pointer;outline:none;min-height:30px;");
-    familySelect.addEventListener("change", () => {
-        if (familyWidget) familyWidget.value = familySelect.value;
-        render();
-    });
-    familySelect.addEventListener("mousedown", (e) => e.stopPropagation());
-    familySelect.addEventListener("click", (e) => e.stopPropagation());
-    familyRow.appendChild(familySelect);
-    container.appendChild(familyRow);
-
-    bindSelectZoom(node, familySelect);
 
     const grid = document.createElement("div");
     css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
@@ -171,6 +138,16 @@ export function setupFlakeModelComboWidget(node) {
             render();
         });
         grid.appendChild(addBtn);
+    }
+
+    // Hook into native family widget changes
+    if (familyWidget) {
+        const origCallback = familyWidget.callback;
+        familyWidget.callback = function (value) {
+            const r = origCallback?.apply(this, arguments);
+            render();
+            return r;
+        };
     }
 
     node._model_combo_render = render;

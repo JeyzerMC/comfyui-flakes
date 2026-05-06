@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
-    makePanelDropdown, makeSmallValueSlider, bindSelectZoom,
+    makePanelDropdown, makeSmallValueSlider,
 } from "../utils.js";
 import { fetchList, fetchFlake, saveFlakeApi, getCoverUrl, fetchFlakeMeta } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
@@ -235,21 +235,17 @@ export function setupFlakeWidget(node) {
     const familyWidget = node.widgets?.find(w => w.name === "model_family");
     if (!flakesHidden) return;
 
-    // Hide flakes_json STRING widget
-    flakesHidden.computeSize = () => [0, -4];
+    // Move hidden widget to end so it doesn't create gaps
+    const flakeIdx = node.widgets.indexOf(flakesHidden);
+    if (flakeIdx !== -1) {
+        node.widgets.splice(flakeIdx, 1);
+        node.widgets.push(flakesHidden);
+    }
+    flakesHidden.computeSize = () => [0, 0];
     flakesHidden.type = "hidden";
     flakesHidden.hidden = true;
-    if (flakesHidden.element) { flakesHidden.element.remove(); flakesHidden.element = null; }
-    if (flakesHidden.inputEl) { flakesHidden.inputEl.remove(); flakesHidden.inputEl = null; }
-
-    // Hide model_family combo widget
-    if (familyWidget) {
-        familyWidget.computeSize = () => [0, -4];
-        familyWidget.type = "hidden";
-        familyWidget.hidden = true;
-        if (familyWidget.element) { familyWidget.element.remove(); familyWidget.element = null; }
-        if (familyWidget.inputEl) { familyWidget.inputEl.remove(); familyWidget.inputEl = null; }
-    }
+    if (flakesHidden.element) flakesHidden.element.style.display = "none";
+    if (flakesHidden.inputEl) flakesHidden.inputEl.style.display = "none";
 
     function getFamily() {
         return familyWidget?.value || "SDXL/Base";
@@ -270,38 +266,9 @@ export function setupFlakeWidget(node) {
     }
     function writeEntries(entries) { flakesHidden.value = JSON.stringify(entries); }
 
-    // Custom DOM widget
+    // Custom DOM widget (flakes grid only — family is native)
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
-
-    // Family dropdown
-    const familyRow = document.createElement("div");
-    css(familyRow, "display:flex;gap:8px;align-items:center;padding:4px 0;");
-    const familyLabel = document.createElement("span");
-    familyLabel.textContent = "Family:";
-    css(familyLabel, "font-size:11px;color:#aaa;white-space:nowrap;");
-    familyRow.appendChild(familyLabel);
-
-    const familySelect = document.createElement("select");
-    const FAMILIES = ["SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "ZImage/Base", "ZImage/Turbo"];
-    for (const f of FAMILIES) {
-        const opt = document.createElement("option");
-        opt.value = f;
-        opt.textContent = f;
-        if (f === getFamily()) opt.selected = true;
-        familySelect.appendChild(opt);
-    }
-    css(familySelect, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #444;padding:6px 10px;border-radius:4px;font-size:13px;line-height:1.4;cursor:pointer;outline:none;min-height:30px;");
-    familySelect.addEventListener("change", () => {
-        if (familyWidget) familyWidget.value = familySelect.value;
-        render();
-    });
-    familySelect.addEventListener("mousedown", (e) => e.stopPropagation());
-    familySelect.addEventListener("click", (e) => e.stopPropagation());
-    familyRow.appendChild(familySelect);
-    container.appendChild(familyRow);
-
-    bindSelectZoom(node, familySelect);
 
     // Flakes grid
     const grid = document.createElement("div");
@@ -511,6 +478,16 @@ export function setupFlakeWidget(node) {
         dragSrcIdx = null;
         render();
     });
+
+    // Hook into native family widget changes
+    if (familyWidget) {
+        const origCallback = familyWidget.callback;
+        familyWidget.callback = function (value) {
+            const r = origCallback?.apply(this, arguments);
+            render();
+            return r;
+        };
+    }
 
     // ---- Widget registration ----
     node._flakes_render = render;
