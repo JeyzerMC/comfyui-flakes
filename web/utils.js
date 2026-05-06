@@ -18,7 +18,7 @@ export function familyFolder(family) {
 export function makeDefaultEntry() {
     return {
         inline: true,
-        content: { options: {} },
+        content: { prompt: { positive: "" } },
         loras: [],
         strength: 1.0,
         option: {},
