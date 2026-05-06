@@ -54,17 +54,11 @@ export function setupFlakeComboWidget(node) {
     const familyWidget = node.widgets?.find(w => w.name === "model_family");
     if (!flakesHidden) return;
 
-    // Move hidden widget to end so it doesn't create gaps
-    const flakeIdx = node.widgets.indexOf(flakesHidden);
-    if (flakeIdx !== -1) {
-        node.widgets.splice(flakeIdx, 1);
-        node.widgets.push(flakesHidden);
-    }
-    flakesHidden.computeSize = () => [0, 0];
+    flakesHidden.computeSize = () => [0, -4];
     flakesHidden.type = "hidden";
     flakesHidden.hidden = true;
-    if (flakesHidden.element) flakesHidden.element.style.display = "none";
-    if (flakesHidden.inputEl) flakesHidden.inputEl.style.display = "none";
+    if (flakesHidden.element) { flakesHidden.element.remove(); flakesHidden.element = null; }
+    if (flakesHidden.inputEl) { flakesHidden.inputEl.remove(); flakesHidden.inputEl = null; }
 
     function getFamily() {
         return familyWidget?.value || "SDXL/Base";
@@ -191,7 +185,7 @@ export function setupFlakeComboWidget(node) {
 
     grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad });
 
-    // Hook into native family widget changes
+    // React to native family widget changes
     if (familyWidget) {
         const origCallback = familyWidget.callback;
         familyWidget.callback = function (value) {

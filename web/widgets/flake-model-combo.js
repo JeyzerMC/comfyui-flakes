@@ -46,17 +46,12 @@ export function setupFlakeModelComboWidget(node) {
     const familyWidget = node.widgets?.find(w => w.name === "model_family");
     if (!presetWidget) return;
 
-    // Move hidden preset widget to end of widgets array
-    const presetIdx = node.widgets.indexOf(presetWidget);
-    if (presetIdx !== -1) {
-        node.widgets.splice(presetIdx, 1);
-        node.widgets.push(presetWidget);
-    }
-    presetWidget.computeSize = () => [0, 0];
+    // Hide the original ComfyUI combo widget
+    presetWidget.computeSize = () => [0, -4];
     presetWidget.type = "hidden";
     presetWidget.hidden = true;
-    if (presetWidget.element) presetWidget.element.style.display = "none";
-    if (presetWidget.inputEl) presetWidget.inputEl.style.display = "none";
+    if (presetWidget.element) { presetWidget.element.remove(); presetWidget.element = null; }
+    if (presetWidget.inputEl) { presetWidget.inputEl.remove(); presetWidget.inputEl = null; }
 
     function getFamily() {
         return familyWidget?.value || "SDXL/Base";
@@ -140,7 +135,7 @@ export function setupFlakeModelComboWidget(node) {
         grid.appendChild(addBtn);
     }
 
-    // Hook into native family widget changes
+    // React to native family widget changes
     if (familyWidget) {
         const origCallback = familyWidget.callback;
         familyWidget.callback = function (value) {
