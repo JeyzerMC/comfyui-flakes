@@ -13,6 +13,7 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
                 setupFlakeWidget(this);
+                this.inputs = this.inputs.filter(inp => inp.name !== "model_family" && inp.name !== "flakes_json");
                 return r;
             };
 
@@ -28,6 +29,7 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
                 setupFlakeModelPresetWidget(this);
+                this.inputs = this.inputs.filter(inp => inp.name !== "model_family" && inp.name !== "preset");
                 return r;
             };
 
@@ -43,6 +45,7 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
                 setupFlakeComboWidget(this);
+                this.inputs = this.inputs.filter(inp => inp.name !== "model_family" && inp.name !== "flakes_json");
                 return r;
             };
 
@@ -58,6 +61,7 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
                 setupFlakeModelComboWidget(this);
+                this.inputs = this.inputs.filter(inp => inp.name !== "model_family" && inp.name !== "preset");
                 return r;
             };
 
