@@ -5,6 +5,15 @@ import { setupFlakeModelPresetWidget } from "./widgets/flake-model-preset.js";
 import { setupFlakeModelComboWidget } from "./widgets/flake-model-combo.js";
 import "./queue.js";
 
+function removeHiddenInputs(node, names) {
+    for (let i = node.inputs.length - 1; i >= 0; i--) {
+        if (names.includes(node.inputs[i].name)) {
+            node.inputs.splice(i, 1);
+        }
+    }
+    node.setSize(node.computeSize());
+}
+
 app.registerExtension({
     name: "comfyui-flakes.FlakeStack",
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -13,13 +22,14 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
                 setupFlakeWidget(this);
-                this.inputs = this.inputs.filter(inp => inp.name !== "model_family" && inp.name !== "flakes_json");
+                removeHiddenInputs(this, ["model_family", "flakes_json"]);
                 return r;
             };
 
             const origOnConfigure = nodeType.prototype.onConfigure;
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
+                removeHiddenInputs(this, ["model_family", "flakes_json"]);
                 this._flakes_render?.();
                 return r;
             };
@@ -29,13 +39,14 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
                 setupFlakeModelPresetWidget(this);
-                this.inputs = this.inputs.filter(inp => inp.name !== "model_family" && inp.name !== "preset");
+                removeHiddenInputs(this, ["model_family", "preset"]);
                 return r;
             };
 
             const origOnConfigure = nodeType.prototype.onConfigure;
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
+                removeHiddenInputs(this, ["model_family", "preset"]);
                 this._preset_render?.();
                 return r;
             };
@@ -45,13 +56,14 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
                 setupFlakeComboWidget(this);
-                this.inputs = this.inputs.filter(inp => inp.name !== "model_family" && inp.name !== "flakes_json");
+                removeHiddenInputs(this, ["model_family", "flakes_json"]);
                 return r;
             };
 
             const origOnConfigure = nodeType.prototype.onConfigure;
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
+                removeHiddenInputs(this, ["model_family", "flakes_json"]);
                 this._combo_render?.();
                 return r;
             };
@@ -61,13 +73,14 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
                 setupFlakeModelComboWidget(this);
-                this.inputs = this.inputs.filter(inp => inp.name !== "model_family" && inp.name !== "preset");
+                removeHiddenInputs(this, ["model_family", "preset"]);
                 return r;
             };
 
             const origOnConfigure = nodeType.prototype.onConfigure;
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
+                removeHiddenInputs(this, ["model_family", "preset"]);
                 this._model_combo_render?.();
                 return r;
             };
