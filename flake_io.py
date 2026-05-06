@@ -546,6 +546,29 @@ def read_preset_cover(name: str) -> tuple[bytes, str] | None:
     """Return (data, mime_type) or None if no cover exists."""
     path = _preset_cover_path(name)
     if not path:
+        # Fallback: use the sibling image next to the preset's checkpoint
+        try:
+            preset = load_preset(name)
+            if preset.checkpoint:
+                ckpt_path = folder_paths.get_full_path("checkpoints", preset.checkpoint)
+                if ckpt_path and os.path.isfile(ckpt_path):
+                    dir_path = os.path.dirname(ckpt_path)
+                    basename = os.path.splitext(os.path.basename(ckpt_path))[0]
+                    mime_map = {
+                        ".png": "image/png",
+                        ".jpg": "image/jpeg",
+                        ".jpeg": "image/jpeg",
+                        ".webp": "image/webp",
+                        ".gif": "image/gif",
+                    }
+                    for ext in _COVER_EXTENSIONS:
+                        sibling = os.path.join(dir_path, basename + ext)
+                        if os.path.isfile(sibling):
+                            mime = mime_map.get(ext, "application/octet-stream")
+                            with open(sibling, "rb") as f:
+                                return f.read(), mime
+        except Exception:
+            pass
         return None
     ext = os.path.splitext(path)[1].lower()
     mime_map = {
