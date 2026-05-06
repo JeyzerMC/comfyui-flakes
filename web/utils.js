@@ -1,3 +1,5 @@
+import { app } from "../../scripts/app.js";
+
 // ---------- Model family ----------
 
 export const FAMILY_FOLDERS = {
@@ -19,7 +21,7 @@ export function bindSelectZoom(node, selectEl, baseFontSize = 13, basePaddingH =
     const origOnDrawForeground = node.onDrawForeground;
     node.onDrawForeground = function (ctx) {
         const r = origOnDrawForeground?.apply(this, arguments);
-        const scale = window.app?.canvas?.ds?.scale ?? 1;
+        const scale = app?.canvas?.ds?.scale ?? 1;
         selectEl.style.fontSize = `${baseFontSize * scale}px`;
         selectEl.style.padding = `${basePaddingH * scale}px ${basePaddingW * scale}px`;
         selectEl.style.minHeight = `${baseMinHeight * scale}px`;
