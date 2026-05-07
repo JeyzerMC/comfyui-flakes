@@ -787,13 +787,48 @@ export function openEditModal({ mode, name, data, dirs }) {
                             }
 
                             const addChoiceBtn = makeSmallButton("+ choice");
-                            addChoiceBtn.addEventListener("click", () => {
-                                const cn = window.prompt("Choice name:", "");
-                                if (!cn) return;
-                                const trimmed = cn.trim();
-                                if (!trimmed || fieldState.options[groupName][trimmed]) return;
-                                fieldState.options[groupName][trimmed] = {};
-                                renderOpts();
+                            addChoiceBtn.addEventListener("click", (e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const inlineWrap = document.createElement("div");
+                                css(inlineWrap, "display:flex;gap:6px;align-items:center;padding-top:4px;");
+                                const choiceNameInput = makeComfyInput("", "e.g. red dress");
+                                choiceNameInput.style.flex = "1";
+                                const addBtn = makeSmallButton("Add");
+                                const cancelBtn = makeSmallButton("Cancel");
+                                inlineWrap.appendChild(choiceNameInput);
+                                inlineWrap.appendChild(addBtn);
+                                inlineWrap.appendChild(cancelBtn);
+                                addChoiceBtn.replaceWith(inlineWrap);
+                                choiceNameInput.focus();
+
+                                function finish() {
+                                    inlineWrap.replaceWith(addChoiceBtn);
+                                }
+
+                                addBtn.addEventListener("click", () => {
+                                    const trimmed = choiceNameInput.value.trim();
+                                    if (!trimmed) { finish(); return; }
+                                    if (fieldState.options[groupName][trimmed]) {
+                                        window.alert(`Choice '${trimmed}' already exists in this group.`);
+                                        finish();
+                                        return;
+                                    }
+                                    fieldState.options[groupName][trimmed] = {};
+                                    finish();
+                                    renderOpts();
+                                });
+                                cancelBtn.addEventListener("click", finish);
+                                choiceNameInput.addEventListener("keydown", (ev) => {
+                                    if (ev.key === "Enter") {
+                                        ev.preventDefault();
+                                        addBtn.click();
+                                    }
+                                    if (ev.key === "Escape") {
+                                        ev.preventDefault();
+                                        finish();
+                                    }
+                                });
                             });
                             groupCard.appendChild(addChoiceBtn);
                             optsBox.appendChild(groupCard);
@@ -803,12 +838,46 @@ export function openEditModal({ mode, name, data, dirs }) {
                         addGroupBtn.addEventListener("click", (e) => {
                             e.stopPropagation();
                             e.preventDefault();
-                            const gn = window.prompt("Option group name (e.g. outfit):", "");
-                            if (!gn) return;
-                            const trimmed = gn.trim();
-                            if (!trimmed || fieldState.options[trimmed]) return;
-                            fieldState.options[trimmed] = {};
-                            renderOpts();
+                            // Replace the button with an inline input + add/cancel controls
+                            const inlineWrap = document.createElement("div");
+                            css(inlineWrap, "display:flex;gap:6px;align-items:center;");
+                            const groupNameInput = makeComfyInput("", "e.g. outfit");
+                            groupNameInput.style.flex = "1";
+                            const addBtn = makeSmallButton("Add");
+                            const cancelBtn = makeSmallButton("Cancel");
+                            inlineWrap.appendChild(groupNameInput);
+                            inlineWrap.appendChild(addBtn);
+                            inlineWrap.appendChild(cancelBtn);
+                            addGroupBtn.replaceWith(inlineWrap);
+                            groupNameInput.focus();
+
+                            function finish() {
+                                inlineWrap.replaceWith(addGroupBtn);
+                            }
+
+                            addBtn.addEventListener("click", () => {
+                                const trimmed = groupNameInput.value.trim();
+                                if (!trimmed) { finish(); return; }
+                                if (fieldState.options[trimmed]) {
+                                    window.alert(`Option group '${trimmed}' already exists.`);
+                                    finish();
+                                    return;
+                                }
+                                fieldState.options[trimmed] = {};
+                                finish();
+                                renderOpts();
+                            });
+                            cancelBtn.addEventListener("click", finish);
+                            groupNameInput.addEventListener("keydown", (ev) => {
+                                if (ev.key === "Enter") {
+                                    ev.preventDefault();
+                                    addBtn.click();
+                                }
+                                if (ev.key === "Escape") {
+                                    ev.preventDefault();
+                                    finish();
+                                }
+                            });
                         });
                         optsBox.appendChild(addGroupBtn);
                     }
