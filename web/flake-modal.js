@@ -13,7 +13,7 @@ import {
 } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
 
-export function openEditModal({ mode, name, data, dirs }) {
+export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) {
     return new Promise((resolve) => {
         let { content, footer, close, handlers } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
@@ -33,12 +33,16 @@ export function openEditModal({ mode, name, data, dirs }) {
         const leftCol = document.createElement("div");
         css(leftCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
 
-        leftCol.appendChild(makeComfyLabel("Display name"));
-        const displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
-        leftCol.appendChild(displayNameInput);
+        let displayNameInput = null;
+        if (mode !== "default") {
+            leftCol.appendChild(makeComfyLabel("Display name"));
+            displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
+            leftCol.appendChild(displayNameInput);
+        }
 
         let pathInput = null;
         let familyDropdown = null;
+        let selectedType = data.flake_type || "";
         const FAMILY_OPTIONS = [
             { value: "SDXL/Base", label: "SDXL/Base" },
             { value: "SDXL/Illustrious", label: "SDXL/Illustrious" },
@@ -49,8 +53,38 @@ export function openEditModal({ mode, name, data, dirs }) {
         ];
         if (mode === "create") {
             leftCol.appendChild(makeComfyLabel("Model family"));
-            familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, "SDXL/Base");
+            familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, family);
             leftCol.appendChild(familyDropdown.container);
+
+            // ---- Flake Type (mutually exclusive tags) ----
+            leftCol.appendChild(makeComfyLabel("Flake type"));
+            const typeRow = document.createElement("div");
+            css(typeRow, "display:flex;gap:6px;flex-wrap:wrap;");
+            const FLAKE_TYPES = ["Style", "Slider", "Character", "Pose", "Other"];
+            const typeChecks = {};
+            for (const t of FLAKE_TYPES) {
+                const wrap = document.createElement("label");
+                css(wrap, "display:flex;align-items:center;gap:2px;cursor:pointer;font-size:11px;color:#aaa;user-select:none;");
+                const cb = document.createElement("input");
+                cb.type = "checkbox";
+                cb.checked = t === selectedType;
+                css(cb, "cursor:pointer;");
+                cb.addEventListener("change", () => {
+                    if (cb.checked) {
+                        selectedType = t;
+                        for (const other of FLAKE_TYPES) {
+                            if (other !== t && typeChecks[other]) typeChecks[other].checked = false;
+                        }
+                    } else if (selectedType === t) {
+                        selectedType = "";
+                    }
+                });
+                typeChecks[t] = cb;
+                wrap.appendChild(cb);
+                wrap.appendChild(document.createTextNode(t));
+                typeRow.appendChild(wrap);
+            }
+            leftCol.appendChild(typeRow);
 
             leftCol.appendChild(makeComfyLabel("Path"));
             pathInput = makeComfyInput("", "characters/musashi");
@@ -65,6 +99,27 @@ export function openEditModal({ mode, name, data, dirs }) {
             pathInput.setAttribute("list", listId);
             leftCol.appendChild(dlist);
             leftCol.appendChild(pathInput);
+
+            // Auto-fill path from display name + tag
+            let pathManuallyEdited = false;
+            pathInput.addEventListener("input", () => { pathManuallyEdited = true; });
+            function updatePrefillPath() {
+                if (pathManuallyEdited) return;
+                const dn = displayNameInput?.value?.trim() || "";
+                const tag = selectedType;
+                if (!dn && !tag) { pathInput.value = ""; return; }
+                const tagFolder = tag ? tag.toLowerCase() + "s" : "";
+                const formatted = dn.replace(/ /g, "_").toLowerCase();
+                if (tagFolder && formatted) {
+                    pathInput.value = `${tagFolder}/${formatted}`;
+                } else {
+                    pathInput.value = tagFolder || formatted;
+                }
+            }
+            displayNameInput?.addEventListener("input", updatePrefillPath);
+            for (const cb of Object.values(typeChecks)) {
+                cb.addEventListener("change", updatePrefillPath);
+            }
         }
         topSection.appendChild(leftCol);
 
@@ -905,7 +960,7 @@ export function openEditModal({ mode, name, data, dirs }) {
         addFieldRow.appendChild(addFieldBtn);
 
         const fieldMenu = document.createElement("div");
-        css(fieldMenu, "display:none;flex-direction:column;gap:2px;background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:4px;box-shadow:0 4px 12px rgba(0,0,0,0.5);position:absolute;z-index:100;");
+        css(fieldMenu, "display:none;flex-direction:column;gap:2px;background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:4px;box-shadow:0 4px 12px rgba(0,0,0,0.5);position:fixed;z-index:10000;");
         const fieldTypes = [
             { key: "lora", label: "LoRA" },
             { key: "prompt", label: "Prompts" },
@@ -932,22 +987,33 @@ export function openEditModal({ mode, name, data, dirs }) {
             });
             fieldMenu.appendChild(item);
         }
-        addFieldRow.appendChild(fieldMenu);
+        document.body.appendChild(fieldMenu);
 
         addFieldBtn.addEventListener("mousedown", (e) => e.stopPropagation());
         addFieldBtn.addEventListener("dblclick", (e) => e.stopPropagation());
         addFieldBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             e.preventDefault();
-            fieldMenu.style.display = fieldMenu.style.display === "flex" ? "none" : "flex";
+            const showing = fieldMenu.style.display === "flex";
+            if (showing) {
+                fieldMenu.style.display = "none";
+            } else {
+                const rect = addFieldBtn.getBoundingClientRect();
+                fieldMenu.style.left = `${rect.left}px`;
+                fieldMenu.style.top = `${rect.bottom + 4}px`;
+                fieldMenu.style.display = "flex";
+            }
         });
         // Hide menu on click outside
         function onDocClick(e) {
-            if (!addFieldRow.contains(e.target)) fieldMenu.style.display = "none";
+            if (e.target !== addFieldBtn && !fieldMenu.contains(e.target)) {
+                fieldMenu.style.display = "none";
+            }
         }
         document.addEventListener("click", onDocClick);
         handlers.onClose = ((prev) => (v) => {
             document.removeEventListener("click", onDocClick);
+            if (fieldMenu.parentElement) fieldMenu.remove();
             prev?.(v);
         })(handlers.onClose);
         content.appendChild(addFieldRow);
@@ -975,7 +1041,8 @@ export function openEditModal({ mode, name, data, dirs }) {
         const saveBtn = makeButton("Save", true);
         saveBtn.addEventListener("click", async () => {
             const ordered = {};
-            if (displayNameInput.value) ordered.name = displayNameInput.value.trim();
+            if (displayNameInput && displayNameInput.value) ordered.name = displayNameInput.value.trim();
+            if (selectedType) ordered.flake_type = selectedType;
 
             // Save fields in the user-selected order so YAML key order is preserved
             for (const ft of activeFields) {
@@ -1026,12 +1093,12 @@ export function openEditModal({ mode, name, data, dirs }) {
                     if (!targetName) { window.alert("Path is required"); return; }
                     const family = familyDropdown?.element?.value || "";
                     await saveFlakeApi(targetName, ordered, family);
-                    close({ created: true, name: targetName, data: ordered });
+                    await close({ created: true, name: targetName, data: ordered });
                 } else if (mode === "default") {
-                    close({ defaultUpdated: true, data: ordered });
+                    await close({ defaultUpdated: true, data: ordered });
                 } else {
                     await saveFlakeApi(name, ordered);
-                    close({ saved: true, name, data: ordered });
+                    await close({ saved: true, name, data: ordered });
                 }
             } catch (err) {
                 window.alert(`Save failed: ${err.message || err}`);
@@ -1039,6 +1106,6 @@ export function openEditModal({ mode, name, data, dirs }) {
         });
         footer.appendChild(saveBtn);
 
-        setTimeout(() => { (pathInput || displayNameInput).focus(); }, 0);
+        setTimeout(() => { (pathInput || displayNameInput)?.focus(); }, 0);
     });
 }

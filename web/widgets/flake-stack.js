@@ -22,6 +22,19 @@ function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDr
         hasCover ? `background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;` : ""
     }`);
 
+    // Type ribbon (top-left)
+    const TYPE_COLORS = {
+        Style: "#8a6acf", Slider: "#6a9acf", Character: "#6acf8a",
+        Pose: "#cf8a6a", Other: "#cf6a8a",
+    };
+    const typeTag = entry.flake_type || entry._pendingData?.flake_type || null;
+    if (typeTag && TYPE_COLORS[typeTag]) {
+        const ribbon = document.createElement("div");
+        ribbon.textContent = typeTag[0];
+        css(ribbon, `position:absolute;top:0;left:0;width:16px;height:16px;background:${TYPE_COLORS[typeTag]};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:4px 0 4px 0;z-index:3;text-shadow:none;`);
+        block.appendChild(ribbon);
+    }
+
     // Dark overlay for cover readability
     if (hasCover) {
         const overlay = document.createElement("div");
@@ -29,13 +42,13 @@ function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDr
         block.appendChild(overlay);
     }
 
-    // Name
+    // Name — show portion after / with word wrapping
     const fullName = isDefault ? "Default" : (entry.display_name || entry.name || "(missing)");
-    const shortName = fullName.split(/[\/\\ _\-]+/).pop() || fullName;
+    const nameAfterSlash = fullName.includes("/") ? fullName.split("/").pop() : fullName;
     const nameEl = document.createElement("div");
     nameEl.title = fullName;
-    css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:1;");
-    nameEl.textContent = shortName;
+    css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
+    nameEl.textContent = nameAfterSlash;
     block.appendChild(nameEl);
 
     // Drag handle (left edge vertical line)
@@ -400,6 +413,7 @@ export function setupFlakeWidget(node) {
             mode: "create",
             data: {},
             dirs: directories,
+            family: getFamily(),
         });
         if (!result || !result.created) return;
         const arr = readEntries();

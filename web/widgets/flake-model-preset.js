@@ -15,6 +15,28 @@ export function setupFlakeModelPresetWidget(node) {
     if (presetWidget.element) { presetWidget.element.remove(); presetWidget.element = null; }
     if (presetWidget.inputEl) { presetWidget.inputEl.remove(); presetWidget.inputEl = null; }
 
+    // Also aggressively hide any native widget container that might overlay our custom buttons
+    setTimeout(() => {
+        const widgetEl = node.widgets?.find(w => w.name === "preset")?.element;
+        if (widgetEl && widgetEl.parentElement) {
+            widgetEl.parentElement.style.display = "none";
+            widgetEl.parentElement.style.pointerEvents = "none";
+        }
+        const allSelects = container.parentElement?.querySelectorAll?.("select") || [];
+        for (const sel of allSelects) {
+            const firstOpt = sel.options[0];
+            const text = firstOpt?.text || firstOpt?.label || firstOpt?.value || "";
+            if (text.includes("Select a preset") || text.includes("No model preset")) {
+                sel.style.display = "none";
+                sel.style.pointerEvents = "none";
+                if (sel.parentElement) {
+                    sel.parentElement.style.display = "none";
+                    sel.parentElement.style.pointerEvents = "none";
+                }
+            }
+        }
+    }, 0);
+
     function getFamily() {
         return familyWidget?.value || "SDXL/Base";
     }

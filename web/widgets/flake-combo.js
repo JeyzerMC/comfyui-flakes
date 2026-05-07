@@ -133,6 +133,7 @@ export function setupFlakeComboWidget(node) {
             mode: "create",
             data: {},
             dirs: directories,
+            family: getFamily(),
         });
         if (!result || !result.created) return;
         const arr = readAllFlakes();
