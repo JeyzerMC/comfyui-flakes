@@ -28,46 +28,58 @@ export function setupFlakeModelPresetWidget(node) {
 
     const selectBtn = document.createElement("button");
     selectBtn.textContent = "Select Preset";
-    css(selectBtn, "padding:10px 20px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;min-width:120px;");
+    css(selectBtn, "flex:1;height:80px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;user-select:none;box-sizing:border-box;");
     selectBtn.addEventListener("mouseenter", () => { selectBtn.style.background = "#333"; });
     selectBtn.addEventListener("mouseleave", () => { selectBtn.style.background = "#2a2a2a"; });
-    selectBtn.addEventListener("click", async () => {
-        const result = await openPresetPicker({ selected: presetWidget.value, family: getFamily() });
-        if (result && result.name) {
-            presetWidget.value = result.name;
-            render();
+    selectBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        try {
+            const result = await openPresetPicker({ selected: presetWidget.value, family: getFamily() });
+            if (result && result.name) {
+                presetWidget.value = result.name;
+                render();
+            }
+        } catch (err) {
+            console.error("[flakes] failed to open preset picker:", err);
         }
     });
     buttonRow.appendChild(selectBtn);
 
     const createBtn = document.createElement("button");
     createBtn.textContent = "Create Preset";
-    css(createBtn, "padding:10px 20px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;min-width:120px;");
+    css(createBtn, "flex:1;height:80px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;user-select:none;box-sizing:border-box;");
     createBtn.addEventListener("mouseenter", () => { createBtn.style.background = "#333"; });
     createBtn.addEventListener("mouseleave", () => { createBtn.style.background = "#2a2a2a"; });
-    createBtn.addEventListener("click", async () => {
-        const result = await openPresetEditModal({
-            mode: "create",
-            family: getFamily(),
-            data: {
-                checkpoint: "",
-                checkpoint_url: "",
-                clip_skip: -2,
-                vae: "",
-                steps: 20,
-                cfg: 4.0,
-                sampler: "dpmpp_2m",
-                scheduler: "karras",
-                width: 832,
-                height: 1216,
-                prompt: { positive: "", negative: "" },
-                embeddings: [],
-            },
-        });
-        if (result && result.name) {
-            presetWidget.value = result.name;
-            await refreshPresetOptions(getFamily());
-            render();
+    createBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        try {
+            const result = await openPresetEditModal({
+                mode: "create",
+                family: getFamily(),
+                data: {
+                    checkpoint: "",
+                    checkpoint_url: "",
+                    clip_skip: -2,
+                    vae: "",
+                    steps: 20,
+                    cfg: 4.0,
+                    sampler: "dpmpp_2m",
+                    scheduler: "karras",
+                    width: 832,
+                    height: 1216,
+                    prompt: { positive: "", negative: "" },
+                    embeddings: [],
+                },
+            });
+            if (result && result.name) {
+                presetWidget.value = result.name;
+                await refreshPresetOptions(getFamily());
+                render();
+            }
+        } catch (err) {
+            console.error("[flakes] failed to open preset edit modal:", err);
         }
     });
     buttonRow.appendChild(createBtn);

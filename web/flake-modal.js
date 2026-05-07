@@ -9,7 +9,7 @@ import {
 import {
     getCoverUrl, uploadCover, fetchLoras, fetchCnModels, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
-    fetchLoraSiblingImage,
+    fetchLoraSiblingImage, loraSiblingImageUrl,
 } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
 
@@ -800,7 +800,9 @@ export function openEditModal({ mode, name, data, dirs }) {
                         }
 
                         const addGroupBtn = makeSmallButton("+ option group");
-                        addGroupBtn.addEventListener("click", () => {
+                        addGroupBtn.addEventListener("click", (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
                             const gn = window.prompt("Option group name (e.g. outfit):", "");
                             if (!gn) return;
                             const trimmed = gn.trim();
