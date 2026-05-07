@@ -934,13 +934,22 @@ export function openEditModal({ mode, name, data, dirs }) {
         }
         addFieldRow.appendChild(fieldMenu);
 
-        addFieldBtn.addEventListener("click", () => {
+        addFieldBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+        addFieldBtn.addEventListener("dblclick", (e) => e.stopPropagation());
+        addFieldBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            e.preventDefault();
             fieldMenu.style.display = fieldMenu.style.display === "flex" ? "none" : "flex";
         });
         // Hide menu on click outside
-        document.addEventListener("click", (e) => {
+        function onDocClick(e) {
             if (!addFieldRow.contains(e.target)) fieldMenu.style.display = "none";
-        });
+        }
+        document.addEventListener("click", onDocClick);
+        handlers.onClose = ((prev) => (v) => {
+            document.removeEventListener("click", onDocClick);
+            prev?.(v);
+        })(handlers.onClose);
         content.appendChild(addFieldRow);
 
         // ---- Footer ----
