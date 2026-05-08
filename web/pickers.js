@@ -180,11 +180,11 @@ export async function openFileLoadPicker({ flakes, directories, family = "" }) {
             css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;");
             thumb.appendChild(overlay);
 
-            const shortName = name.split(/[\/\\ _\-]+/).pop() || name;
+            const nameAfterSlash = name.includes("/") ? name.split("/").pop() : name;
             const nameEl = document.createElement("div");
             nameEl.title = name;
-            css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:1;");
-            nameEl.textContent = shortName;
+            css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
+            nameEl.textContent = nameAfterSlash;
             thumb.appendChild(nameEl);
 
             thumb.addEventListener("click", () => {
@@ -286,11 +286,11 @@ export async function openPresetPicker({ selected = "", family = "" } = {}) {
                 css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.4);pointer-events:none;z-index:0;transition:background 0.15s ease;");
                 thumb.appendChild(overlay);
 
-                const shortName = name.replace(/\\/g, "/").split("/").pop() || name;
+                const nameAfterSlash = name.replace(/\\/g, "/").split("/").pop() || name;
                 const nameEl = document.createElement("div");
                 nameEl.title = name;
-                css(nameEl, "position:absolute;bottom:0;left:0;right:0;padding:6px 4px;text-align:center;font-size:11px;font-weight:500;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.9);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;z-index:1;");
-                nameEl.textContent = shortName;
+                css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.9);padding:6px 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
+                nameEl.textContent = nameAfterSlash;
                 thumb.appendChild(nameEl);
 
                 thumb.addEventListener("mouseenter", () => {

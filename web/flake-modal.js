@@ -43,6 +43,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         let pathInput = null;
         let familyDropdown = null;
         let selectedType = data.flake_type || "";
+        let typeChecks = null;
         const FAMILY_OPTIONS = [
             { value: "SDXL/Base", label: "SDXL/Base" },
             { value: "SDXL/Illustrious", label: "SDXL/Illustrious" },
@@ -55,13 +56,15 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             leftCol.appendChild(makeComfyLabel("Model family"));
             familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, family);
             leftCol.appendChild(familyDropdown.container);
+        }
 
-            // ---- Flake Type (mutually exclusive tags) ----
+        // ---- Flake Type (mutually exclusive tags) — available in create and edit ----
+        if (mode !== "default") {
             leftCol.appendChild(makeComfyLabel("Flake type"));
             const typeRow = document.createElement("div");
             css(typeRow, "display:flex;gap:6px;flex-wrap:wrap;");
             const FLAKE_TYPES = ["Style", "Slider", "Character", "Pose", "Other"];
-            const typeChecks = {};
+            typeChecks = {};
             for (const t of FLAKE_TYPES) {
                 const wrap = document.createElement("label");
                 css(wrap, "display:flex;align-items:center;gap:2px;cursor:pointer;font-size:11px;color:#aaa;user-select:none;");
@@ -85,7 +88,9 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 typeRow.appendChild(wrap);
             }
             leftCol.appendChild(typeRow);
+        }
 
+        if (mode === "create") {
             leftCol.appendChild(makeComfyLabel("Path"));
             pathInput = makeComfyInput("", "characters/musashi");
             const listId = `flake-dirs-${Math.random().toString(36).slice(2)}`;
@@ -117,8 +122,10 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 }
             }
             displayNameInput?.addEventListener("input", updatePrefillPath);
-            for (const cb of Object.values(typeChecks)) {
-                cb.addEventListener("change", updatePrefillPath);
+            if (typeChecks) {
+                for (const cb of Object.values(typeChecks)) {
+                    cb.addEventListener("change", updatePrefillPath);
+                }
             }
         }
         topSection.appendChild(leftCol);

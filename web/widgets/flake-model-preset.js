@@ -16,33 +16,42 @@ export function setupFlakeModelPresetWidget(node) {
     if (presetWidget.inputEl) { presetWidget.inputEl.remove(); presetWidget.inputEl = null; }
 
     // Also aggressively hide any native widget container that might overlay our custom buttons
-    setTimeout(() => {
+    function hideNativePresetWidget() {
         const widgetEl = node.widgets?.find(w => w.name === "preset")?.element;
         if (widgetEl && widgetEl.parentElement) {
             widgetEl.parentElement.style.display = "none";
             widgetEl.parentElement.style.pointerEvents = "none";
         }
-        const allSelects = container.parentElement?.querySelectorAll?.("select") || [];
-        for (const sel of allSelects) {
-            const firstOpt = sel.options[0];
-            const text = firstOpt?.text || firstOpt?.label || firstOpt?.value || "";
-            if (text.includes("Select a preset") || text.includes("No model preset")) {
-                sel.style.display = "none";
-                sel.style.pointerEvents = "none";
-                if (sel.parentElement) {
-                    sel.parentElement.style.display = "none";
-                    sel.parentElement.style.pointerEvents = "none";
+        // Walk up the LiteGraph widget DOM to find and hide the native select wrapper
+        const nodeEl = node.htmlEl || node.element;
+        if (nodeEl) {
+            const allSelects = nodeEl.querySelectorAll("select");
+            for (const sel of allSelects) {
+                const firstOpt = sel.options[0];
+                const text = firstOpt?.text || firstOpt?.label || firstOpt?.value || "";
+                if (text.includes("Select a preset") || text.includes("No model preset")) {
+                    sel.style.display = "none";
+                    sel.style.pointerEvents = "none";
+                    let p = sel.parentElement;
+                    while (p && p !== nodeEl) {
+                        p.style.display = "none";
+                        p.style.pointerEvents = "none";
+                        p = p.parentElement;
+                    }
                 }
             }
         }
-    }, 0);
+    }
+    // Run after DOM attachment and again after a short delay
+    setTimeout(hideNativePresetWidget, 0);
+    setTimeout(hideNativePresetWidget, 100);
 
     function getFamily() {
         return familyWidget?.value || "SDXL/Base";
     }
 
     const container = document.createElement("div");
-    css(container, "display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px;");
+    css(container, "display:flex;flex-direction:column;align-items:center;gap:8px;padding:6px;margin-top:28px;position:relative;z-index:10;");
 
     // ---- Unselected state: two buttons ----
     const buttonRow = document.createElement("div");
