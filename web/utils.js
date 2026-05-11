@@ -520,7 +520,7 @@ export function makeAddBlock({ onNew, onLoad }) {
     newBtn.textContent = "+ New flake";
     css(newBtn, "width:100%;padding:6px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;text-align:left;margin-bottom:2px;");
     const loadBtn = document.createElement("button");
-    loadBtn.textContent = "\u2191 Load existing";
+    loadBtn.textContent = "\u2191 Load flake";
     css(loadBtn, "width:100%;padding:6px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;text-align:left;");
 
     menu.appendChild(newBtn);
