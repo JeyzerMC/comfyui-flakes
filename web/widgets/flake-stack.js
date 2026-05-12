@@ -364,6 +364,7 @@ export function setupFlakeWidget(node) {
         if (result.defaultUpdated) {
             const arr = readEntries();
             arr[idx].content = result.data;
+            arr[idx]._edited_at = Date.now();
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
             writeEntries(arr);
             render();
@@ -374,6 +375,7 @@ export function setupFlakeWidget(node) {
         } else if (result.saved) {
             const arr = readEntries();
             arr[idx]._pendingData = result.data;
+            arr[idx]._edited_at = Date.now();
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
             writeEntries(arr);
             render();
