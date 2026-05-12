@@ -22,16 +22,19 @@ function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDr
         hasCover ? `background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;` : ""
     }`);
 
-    // Type ribbon (top-left)
+    // Type ribbon (top-left) — always visible on non-default entries,
+    // defaulting to "Other" when the flake has no explicit flake_type set.
     const TYPE_COLORS = {
         Style: "#8a6acf", Slider: "#6a9acf", Character: "#6acf8a",
         Pose: "#cf8a6a", Other: "#cf6a8a",
     };
-    const typeTag = entry.flake_type || entry._pendingData?.flake_type || null;
-    if (typeTag && TYPE_COLORS[typeTag]) {
+    if (!isDefault) {
+        const typeTag = entry._pendingData?.flake_type || entry.flake_type || "Other";
+        const color = TYPE_COLORS[typeTag] || TYPE_COLORS.Other;
         const ribbon = document.createElement("div");
         ribbon.textContent = typeTag[0];
-        css(ribbon, `position:absolute;top:0;left:0;width:16px;height:16px;background:${TYPE_COLORS[typeTag]};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:4px 0 4px 0;z-index:3;text-shadow:none;`);
+        ribbon.title = typeTag;
+        css(ribbon, `position:absolute;top:0;left:0;width:16px;height:16px;background:${color};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:4px 0 4px 0;z-index:3;text-shadow:none;`);
         block.appendChild(ribbon);
     }
 
@@ -376,6 +379,7 @@ export function setupFlakeWidget(node) {
             const arr = readEntries();
             arr[idx]._pendingData = result.data;
             arr[idx]._edited_at = Date.now();
+            arr[idx].flake_type = result.data?.flake_type || null;
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
             // Clear per-instance overrides so the grid item reflects the new
             // defaults instead of masking them with stale values.
@@ -434,13 +438,14 @@ export function setupFlakeWidget(node) {
         let has_lora = false;
         let display_name = null;
         let loras = [];
+        let flake_type = result.data?.flake_type || null;
         if (result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0))) has_lora = true;
         else if (result.name) {
-            try { const d = await fetchFlake(result.name); has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0))); } catch {}
+            try { const d = await fetchFlake(result.name); has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0))); flake_type = flake_type || d.flake_type || null; } catch {}
         }
         if (result.data && result.data.name) display_name = result.data.name;
         else if (result.name) {
-            try { const d = await fetchFlake(result.name); display_name = d.name || null; } catch {}
+            try { const d = await fetchFlake(result.name); display_name = d.name || null; flake_type = flake_type || d.flake_type || null; } catch {}
         }
         if (result.data && result.data.loras) {
             loras = result.data.loras.map(l => l.strength ?? 1.0);
@@ -451,9 +456,10 @@ export function setupFlakeWidget(node) {
                 const d = await fetchFlake(result.name);
                 if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
                 else if (d.path) loras = [d.strength ?? 1.0];
+                flake_type = flake_type || d.flake_type || null;
             } catch {}
         }
-        arr.push({ name: result.name, loras, option: {}, has_lora, display_name });
+        arr.push({ name: result.name, loras, option: {}, has_lora, display_name, flake_type });
         writeEntries(arr);
         render();
     }
@@ -465,15 +471,17 @@ export function setupFlakeWidget(node) {
         const arr = readEntries();
         let has_lora = false;
         let display_name = null;
+        let flake_type = null;
         let loras = [];
         try {
             const d = await fetchFlake(result.name);
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
             display_name = d.name || null;
+            flake_type = d.flake_type || null;
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr.push({ name: result.name, loras, option: {}, has_lora, display_name });
+        arr.push({ name: result.name, loras, option: {}, has_lora, display_name, flake_type });
         writeEntries(arr);
         render();
     }
