@@ -15,8 +15,19 @@ import { openFileBrowser } from "./pickers.js";
 
 export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) {
     return new Promise((resolve) => {
-        let { content, footer, close, handlers } = openOverlay();
+        let { content, footer, close, handlers, panel } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
+
+        // Dirty-state tracking — flipped on the first interaction inside the
+        // modal so a stray outside-click can't silently lose progress.
+        let dirty = false;
+        const markDirty = () => { dirty = true; };
+        panel.addEventListener("input", markDirty, true);
+        panel.addEventListener("change", markDirty, true);
+        handlers.confirmCancel = async () => {
+            if (!dirty) return true;
+            return window.confirm("Are you sure you want to cancel? Unsaved changes will be lost.");
+        };
 
         const title = document.createElement("h3");
         css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
@@ -1092,7 +1103,10 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         }
 
         const cancelBtn = makeButton("Cancel");
-        cancelBtn.addEventListener("click", () => close(undefined));
+        cancelBtn.addEventListener("click", async () => {
+            if (dirty && !window.confirm("Are you sure you want to cancel? Unsaved changes will be lost.")) return;
+            close(undefined);
+        });
         footer.appendChild(cancelBtn);
 
         const saveBtn = makeButton("Save", true);

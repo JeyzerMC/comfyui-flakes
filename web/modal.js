@@ -16,15 +16,25 @@ export function openOverlay() {
     panel.appendChild(footer);
     overlay.appendChild(panel);
 
-    const handlers = { onClose: null };
+    // handlers.onClose runs once on final close.
+    // handlers.confirmCancel, if set, is consulted on Esc / outside-click and
+    // can return false (or a Promise resolving to false) to veto the close.
+    const handlers = { onClose: null, confirmCancel: null };
     function close(value) {
         document.body.removeChild(overlay);
         document.removeEventListener("keydown", onKey);
         handlers.onClose?.(value);
     }
-    function onKey(e) { if (e.key === "Escape") close(undefined); }
+    async function tryDismiss() {
+        if (handlers.confirmCancel) {
+            const ok = await handlers.confirmCancel();
+            if (!ok) return;
+        }
+        close(undefined);
+    }
+    function onKey(e) { if (e.key === "Escape") { e.preventDefault(); tryDismiss(); } }
     document.addEventListener("keydown", onKey);
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(undefined); });
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) tryDismiss(); });
 
     document.body.appendChild(overlay);
     return { overlay, panel, content, footer, close, handlers };
