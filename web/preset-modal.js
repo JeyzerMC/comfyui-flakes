@@ -59,7 +59,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         css(presetCoverWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;margin:8px 0;");
 
         const presetCoverBox = document.createElement("div");
-        css(presetCoverBox, "width:120px;height:120px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
+        css(presetCoverBox, "width:100px;height:100px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex-shrink:0;");
 
         presetCoverImg = document.createElement("img");
         css(presetCoverImg, "width:100%;height:100%;object-fit:cover;display:none;");
@@ -118,7 +118,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
 
         presetCoverWrap.appendChild(presetCoverBox);
         presetCoverWrap.appendChild(presetCoverInput);
-        content.appendChild(presetCoverWrap);
+        // presetCoverWrap is appended below alongside the Checkpoint column.
 
         // Update close handler to upload cover
         const origPresetClose = close;
@@ -132,6 +132,16 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
             }
             origPresetClose(value);
         };
+
+        // Two-column row: Checkpoint (and its URL toggle) on the left,
+        // Cover Image preview on the right.
+        const ckptCoverRow = document.createElement("div");
+        css(ckptCoverRow, "display:flex;gap:12px;align-items:flex-start;margin-top:8px;");
+        const ckptCol = document.createElement("div");
+        css(ckptCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        ckptCoverRow.appendChild(ckptCol);
+        ckptCoverRow.appendChild(presetCoverWrap);
+        content.appendChild(ckptCoverRow);
 
         const ckptUrlInput = makeComfyInput(data.checkpoint_url || "", "https://civitai.com/models/...");
         ckptUrlInput.style.display = "none";
@@ -161,14 +171,14 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
             ckptUrlToggle.innerHTML = showing ? "&#9662;" : "&#9652;";
         });
         ckptLabelRow.appendChild(ckptUrlToggle);
-        content.appendChild(ckptLabelRow);
+        ckptCol.appendChild(ckptLabelRow);
 
-        content.appendChild(ckptUrlInput);
+        ckptCol.appendChild(ckptUrlInput);
 
         const ckptWrap = makeSearchableDropdown([], data.checkpoint || "", "Select checkpoint...");
 
         const ckptBox = document.createElement("div");
-        css(ckptBox, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
+        css(ckptBox, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;");
         ckptBox.textContent = data.checkpoint ? data.checkpoint.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select Checkpoint";
 
         const ckptRow = document.createElement("div");
@@ -177,8 +187,8 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         const ckptEditBtn = makeSmallButton("...");
         ckptEditBtn.title = "Type manually";
         ckptRow.appendChild(ckptEditBtn);
-        content.appendChild(ckptRow);
-        content.appendChild(ckptWrap.container);
+        ckptCol.appendChild(ckptRow);
+        ckptCol.appendChild(ckptWrap.container);
         ckptWrap.container.style.display = "none";
         (async () => {
             try {
