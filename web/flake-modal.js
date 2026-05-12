@@ -1092,8 +1092,8 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     const targetName = (pathInput.value || "").trim();
                     if (!targetName) { window.alert("Path is required"); return; }
                     const family = familyDropdown?.element?.value || "";
-                    await saveFlakeApi(targetName, ordered, family);
-                    await close({ created: true, name: targetName, data: ordered });
+                    const savedName = await saveFlakeApi(targetName, ordered, family);
+                    await close({ created: true, name: savedName, data: ordered });
                 } else if (mode === "default") {
                     await close({ defaultUpdated: true, data: ordered });
                 } else {

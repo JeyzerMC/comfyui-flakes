@@ -37,6 +37,8 @@ export async function saveFlakeApi(name, data, family = "") {
         throw new Error(err.error || `HTTP ${r.status}`);
     }
     invalidateList();
+    const body = await r.json().catch(() => ({}));
+    return body.name || name;
 }
 
 export async function deleteFlakeApi(name) {

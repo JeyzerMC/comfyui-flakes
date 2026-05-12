@@ -90,13 +90,13 @@ async def _save_flake(request: web.Request) -> web.Response:
     if not isinstance(data, dict):
         return _bad_request("'data' must be an object")
     try:
-        flake_io.save_flake(name, data, family=family)
+        saved_name = flake_io.save_flake(name, data, family=family)
     except ValueError as exc:
         return _bad_request(str(exc))
     except Exception as exc:
         logging.exception("[flakes] failed to save %s", name)
         return _server_error(str(exc))
-    return web.json_response({"ok": True, "name": name})
+    return web.json_response({"ok": True, "name": saved_name})
 
 
 @routes.delete("/flakes/delete")

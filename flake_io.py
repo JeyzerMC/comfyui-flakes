@@ -237,7 +237,10 @@ def read_flake_raw(name: str) -> dict[str, Any]:
     return data
 
 
-def save_flake(name: str, data: dict[str, Any], family: str | None = None) -> None:
+def save_flake(name: str, data: dict[str, Any], family: str | None = None) -> str:
+    """Persist ``data`` to ``<root>/<name>.yaml`` and return the resolved name
+    that callers should use to reference the flake (including any
+    ``img/<family>/`` prefix applied here)."""
     if not isinstance(data, dict):
         raise ValueError("flake data must be an object")
     _validate_name(name)
@@ -249,7 +252,7 @@ def save_flake(name: str, data: dict[str, Any], family: str | None = None) -> No
         data.pop("strength", None)
 
     folder = _family_folder(family)
-    if folder:
+    if folder and not name.replace("\\", "/").startswith(f"img/{folder}/"):
         name = f"img/{folder}/{name}"
 
     try:
@@ -262,6 +265,7 @@ def save_flake(name: str, data: dict[str, Any], family: str | None = None) -> No
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+    return name
 
 
 def delete_flake(name: str) -> None:
