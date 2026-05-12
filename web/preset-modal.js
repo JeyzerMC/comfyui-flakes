@@ -38,19 +38,90 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
 
         let pathInput = null;
         let familyDropdown = null;
+        let nameInput = null;
+        let baseRootDropdown = null;
+        let availableRoots = [];
         if (mode === "create") {
             content.appendChild(makeComfyLabel("Model family"));
             familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, family);
             content.appendChild(familyDropdown.container);
 
             content.appendChild(makeComfyLabel("Preset name"));
-            pathInput = makeComfyInput("", "e.g. sdxl-juggernaut");
-            content.appendChild(pathInput);
+            nameInput = makeComfyInput("", "e.g. WAI Illustrious V17");
+            content.appendChild(nameInput);
         } else {
             content.appendChild(makeComfyLabel("Preset name"));
-            pathInput = makeComfyInput(name, "");
-            content.appendChild(pathInput);
+            nameInput = makeComfyInput(data?.display_name || name, "");
+            content.appendChild(nameInput);
         }
+
+        // Base path + output path (works in both create and edit). The
+        // dropdown is filled asynchronously from /flakes/roots.
+        content.appendChild(makeComfyLabel("Output base path"));
+        const baseRootSelect = document.createElement("select");
+        css(baseRootSelect, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;");
+        content.appendChild(baseRootSelect);
+
+        content.appendChild(makeComfyLabel("Output path"));
+        pathInput = makeComfyInput("", "illustrious/wai_illustrious_v17");
+        content.appendChild(pathInput);
+
+        // pathManuallyEdited: once true, stop auto-syncing from name/family.
+        let pathManuallyEdited = mode !== "create";
+        pathInput.addEventListener("input", () => { pathManuallyEdited = true; });
+
+        function familyFolderLocal(fam) {
+            const map = {
+                "SDXL/Base": "sdxl",
+                "SDXL/Illustrious": "illustrious",
+                "SDXL/Pony": "pony",
+                "ZImage/Base": "zib",
+                "ZImage/Turbo": "zit",
+                "Common": "common",
+            };
+            return map[fam] || "";
+        }
+
+        function snake(s) {
+            return (s || "").trim().replace(/[\s/]+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase();
+        }
+
+        function syncOutputPath() {
+            if (pathManuallyEdited) return;
+            const folder = familyFolderLocal(familyDropdown?.element?.value || family);
+            const stem = snake(nameInput.value);
+            if (!folder && !stem) { pathInput.value = ""; return; }
+            pathInput.value = folder && stem ? `${folder}/${stem}` : (folder || stem);
+        }
+        nameInput.addEventListener("input", syncOutputPath);
+        if (familyDropdown) familyDropdown.element.addEventListener("change", syncOutputPath);
+
+        // Seed output path from the existing preset name in edit mode.
+        if (mode !== "create" && name) {
+            pathInput.value = name;
+        }
+
+        (async () => {
+            try {
+                const r = await fetch("/flakes/roots?type=model_presets");
+                const d = await r.json();
+                availableRoots = d.roots || [];
+                baseRootSelect.replaceChildren();
+                for (const root of availableRoots) {
+                    const opt = document.createElement("option");
+                    opt.value = String(root.index);
+                    opt.textContent = `${root.label}: ${root.path}`;
+                    baseRootSelect.appendChild(opt);
+                }
+                if (!availableRoots.length) {
+                    const opt = document.createElement("option");
+                    opt.textContent = "(no roots configured)";
+                    opt.value = "0";
+                    baseRootSelect.appendChild(opt);
+                }
+                if (mode === "create" && !pathManuallyEdited) syncOutputPath();
+            } catch { /* ignore */ }
+        })();
 
         // Cover image
         let presetCoverFile = null;
@@ -364,6 +435,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         const saveBtn = makeButton("Save", true);
         saveBtn.addEventListener("click", async () => {
             const ordered = {
+                display_name: (nameInput.value || "").trim() || undefined,
                 checkpoint: ckptWrap.element.value,
                 checkpoint_url: ckptUrlInput.value || "",
                 clip_skip: -Math.abs(csSlider.getValue()),
@@ -380,36 +452,36 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
                     negative: negEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),
                 },
             };
+            // Drop undefined keys so the YAML stays clean
+            for (const k of Object.keys(ordered)) if (ordered[k] === undefined) delete ordered[k];
 
             try {
-                const pName = (pathInput.value || "").trim();
-                if (!pName) { window.alert("Preset name is required"); return; }
+                const outputPath = (pathInput.value || "").trim();
+                if (!outputPath) { window.alert("Output path is required"); return; }
                 const family = familyDropdown?.element?.value || "";
+                const baseRootIndex = parseInt(baseRootSelect.value, 10);
+                const body = {
+                    name: outputPath,
+                    data: ordered,
+                    family: family || undefined,
+                    base_root_index: Number.isFinite(baseRootIndex) ? baseRootIndex : 0,
+                    output_path: outputPath,
+                };
+                if (mode !== "create") body.old_name = name;
+                const r = await fetch("/flakes/presets/save", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                });
+                if (!r.ok) {
+                    const err = await r.json().catch(() => ({}));
+                    throw new Error(err.error || `HTTP ${r.status}`);
+                }
+                const savedName = (await r.json()).name || outputPath;
                 if (mode === "create") {
-                    await fetch("/flakes/presets/save", {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ name: pName, data: ordered, family: family || undefined }),
-                    });
-                    close({ created: true, name: pName });
+                    close({ created: true, name: savedName });
                 } else {
-                    if (pName !== name) {
-                        // Rename: save under new name, delete old
-                        await fetch("/flakes/presets/save", {
-                            method: "PUT",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ name: pName, data: ordered }),
-                        });
-                        await fetch(`/flakes/presets/delete?name=${encodeURIComponent(name)}`, { method: "DELETE" });
-                        close({ saved: true, name: pName, oldName: name });
-                    } else {
-                        await fetch("/flakes/presets/save", {
-                            method: "PUT",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ name, data: ordered }),
-                        });
-                        close({ saved: true, name });
-                    }
+                    close({ saved: true, name: savedName, oldName: name !== savedName ? name : undefined });
                 }
             } catch (err) {
                 window.alert(`Save failed: ${err.message || err}`);

@@ -37,6 +37,7 @@ _FAMILY_COMPAT = {
 @dataclass
 class ModelPreset:
     name: str
+    display_name: str = ""
     checkpoint: str = ""
     checkpoint_url: str = ""
     clip_skip: int = -2
@@ -535,25 +536,84 @@ def read_preset_raw(name: str) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def save_preset(name: str, data: dict[str, Any], family: str | None = None) -> None:
+def save_preset(
+    name: str,
+    data: dict[str, Any],
+    family: str | None = None,
+    base_root_index: int | None = None,
+    output_path: str | None = None,
+    old_name: str | None = None,
+) -> str:
+    """Persist a model preset to disk and return the canonical name the
+    caller should now use.
+
+    Parameters
+    ----------
+    name
+        Display-only fallback; ignored when ``output_path`` is provided.
+    data
+        Preset payload (YAML keys).
+    family
+        Used to prefix the output path with the family folder when
+        ``output_path`` is not given.
+    base_root_index
+        Index into the registered ``model_presets`` roots. When set, the
+        preset is written under that specific root rather than the primary.
+    output_path
+        Path relative to the chosen root (without the ``.yaml`` extension).
+        Takes precedence over ``name`` / ``family`` prefixing.
+    old_name
+        When editing, the previously-stored canonical name. If the new
+        location differs, the old YAML (and its cover) are moved to the
+        new destination.
+    """
     if not isinstance(data, dict):
         raise ValueError("preset data must be an object")
-    _validate_name(name)
 
-    folder = _family_folder(family)
-    if folder:
-        name = f"{folder}/{name}"
-
-    try:
-        path = _resolve_preset_file(name)
-    except FileNotFoundError:
+    roots = _presets_roots()
+    if base_root_index is not None:
+        if base_root_index < 0 or base_root_index >= len(roots):
+            raise ValueError(f"invalid base_root_index: {base_root_index}")
+        root = roots[base_root_index]
+    else:
         root = _primary_presets_root()
-        path = os.path.join(root, f"{name}.yaml")
-        _ensure_inside(path, root)
 
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    if output_path:
+        canonical = output_path.replace("\\", "/").strip("/")
+        _validate_name(canonical)
+    else:
+        _validate_name(name)
+        folder = _family_folder(family)
+        canonical = f"{folder}/{name}" if folder else name
+
+    target = os.path.join(root, f"{canonical}.yaml")
+    _ensure_inside(target, root)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+
+    # Move existing files if the location changed
+    if old_name and old_name != canonical:
+        try:
+            old_yaml = _resolve_preset_file(old_name)
+        except (FileNotFoundError, ValueError):
+            old_yaml = None
+        if old_yaml and os.path.realpath(old_yaml) != os.path.realpath(target):
+            try:
+                os.remove(old_yaml)
+            except OSError:
+                pass
+            old_cover = _preset_cover_path(old_name)
+            if old_cover:
+                cover_ext = os.path.splitext(old_cover)[1].lower()
+                new_cover_dir = os.path.dirname(target)
+                new_cover = os.path.join(new_cover_dir, f"{os.path.basename(canonical)}{cover_ext}")
+                try:
+                    os.replace(old_cover, new_cover)
+                except OSError:
+                    pass
+
+    with open(target, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+    return canonical
 
 
 def delete_preset(name: str) -> None:
@@ -638,6 +698,7 @@ def load_preset(name: str) -> ModelPreset:
     prompt = raw.get("prompt") or {}
     return ModelPreset(
         name=name,
+        display_name=str(raw.get("display_name", "") or ""),
         checkpoint=str(raw.get("checkpoint", "")),
         checkpoint_url=str(raw.get("checkpoint_url", "")),
         clip_skip=int(raw.get("clip_skip", -2)),

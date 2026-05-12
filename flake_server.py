@@ -287,18 +287,32 @@ async def _save_preset(request: web.Request) -> web.Response:
     name = (body.get("name") or "").strip()
     data = body.get("data")
     family = (body.get("family") or "").strip() or None
-    if not name:
-        return _bad_request("missing 'name'")
+    base_root_index = body.get("base_root_index")
+    if base_root_index is not None:
+        try:
+            base_root_index = int(base_root_index)
+        except (TypeError, ValueError):
+            return _bad_request("base_root_index must be an integer")
+    output_path = (body.get("output_path") or "").strip() or None
+    old_name = (body.get("old_name") or "").strip() or None
+    if not name and not output_path:
+        return _bad_request("missing 'name' or 'output_path'")
     if not isinstance(data, dict):
         return _bad_request("'data' must be an object")
     try:
-        flake_io.save_preset(name, data, family=family)
+        saved_name = flake_io.save_preset(
+            name, data,
+            family=family,
+            base_root_index=base_root_index,
+            output_path=output_path,
+            old_name=old_name,
+        )
     except ValueError as exc:
         return _bad_request(str(exc))
     except Exception as exc:
         logging.exception("[flakes] failed to save preset %s", name)
         return _server_error(str(exc))
-    return web.json_response({"ok": True, "name": name})
+    return web.json_response({"ok": True, "name": saved_name})
 
 
 @routes.delete("/flakes/presets/delete")
@@ -378,6 +392,38 @@ def _resolve_sibling_image_relpath(folder_type: str, path: str) -> str | None:
                     return rel.replace(os.sep, "/")
             return os.path.basename(sibling)
     return None
+
+
+# ---------------------------------------------------------------------------
+# Registered roots (so the UI can offer a base-path dropdown)
+# ---------------------------------------------------------------------------
+
+
+@routes.get("/flakes/roots")
+async def _list_roots(request: web.Request) -> web.Response:
+    """List the active base paths for either ``flakes`` or ``model_presets``.
+
+    The first entry is the default ComfyUI install path; subsequent entries
+    come from ``extra_model_paths.yaml``. Labels are derived from the parent
+    directory name so the user can distinguish e.g. ``Default: C:\\...`` from
+    ``Extra: D:\\...``.
+    """
+    kind = request.query.get("type", "").strip()
+    if kind not in ("flakes", "model_presets"):
+        return _bad_request("type must be 'flakes' or 'model_presets'")
+    try:
+        roots = folder_paths.get_folder_paths(kind)
+    except Exception:
+        roots = []
+    if isinstance(roots, str):
+        roots = [roots]
+    entries = []
+    for i, root in enumerate(roots):
+        if not root or not isinstance(root, str):
+            continue
+        label = "Default" if i == 0 else f"Extra {i}"
+        entries.append({"index": i, "path": root, "label": label})
+    return web.json_response({"roots": entries})
 
 
 @routes.get("/flakes/lora_sibling_image_path")
