@@ -207,6 +207,26 @@ export function setupFlakeModelPresetWidget(node) {
     imgWrap.addEventListener("mouseenter", () => { hoverBtns.style.display = "flex"; });
     imgWrap.addEventListener("mouseleave", () => { hoverBtns.style.display = "none"; });
 
+    // Double-click the cover image to open the edit overlay (same path as
+    // clicking the Modify button).
+    imgWrap.addEventListener("dblclick", async (e) => {
+        e.stopPropagation();
+        const current = presetWidget.value;
+        if (!current) return;
+        let data;
+        try {
+            data = await fetchPreset(current);
+        } catch (err) {
+            window.alert(`Failed to load preset '${current}': ${err.message || err}`);
+            return;
+        }
+        const result = await openPresetEditModal({ mode: "edit", name: current, data });
+        if (result) {
+            await refreshPresetOptions();
+            render();
+        }
+    });
+
     selectedWrap.appendChild(imgWrap);
 
     const nameLabel = document.createElement("div");
