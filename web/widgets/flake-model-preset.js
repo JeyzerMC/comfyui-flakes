@@ -133,6 +133,34 @@ export function setupFlakeModelPresetWidget(node) {
 
     const HOVER_BTN_STYLE = "width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:6px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.4);transition:transform 0.12s ease, background 0.12s ease;";
 
+    // Replace Preset button (swap arrows) — added next to the Modify button.
+    function svgIcon(d, w = 20) {
+        const tpl = document.createElement("template");
+        tpl.innerHTML = `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+        return tpl.content.firstChild;
+    }
+    const replacePresetBtn = document.createElement("button");
+    replacePresetBtn.title = "Replace Preset";
+    replacePresetBtn.appendChild(svgIcon(
+        `<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`
+    ));
+    css(replacePresetBtn, HOVER_BTN_STYLE);
+    replacePresetBtn.addEventListener("mouseenter", () => { replacePresetBtn.style.background = "#fff"; replacePresetBtn.style.transform = "scale(1.08)"; });
+    replacePresetBtn.addEventListener("mouseleave", () => { replacePresetBtn.style.background = "rgba(255,255,255,0.92)"; replacePresetBtn.style.transform = "scale(1)"; });
+    replacePresetBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        try {
+            const result = await openPresetPicker({ selected: presetWidget.value, family: getFamily() });
+            if (result && result.name) {
+                presetWidget.value = result.name;
+                render();
+            }
+        } catch (err) {
+            console.error("[flakes] failed to open preset picker:", err);
+        }
+    });
+    hoverBtns.appendChild(replacePresetBtn);
+
     // Modify Preset button (edit icon, styled like Load Image edit button)
     const modifyBtn = document.createElement("button");
     modifyBtn.title = "Modify Preset";
