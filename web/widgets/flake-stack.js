@@ -7,7 +7,7 @@ import { fetchList, fetchFlake, saveFlakeApi, getCoverUrl, fetchFlakeMeta } from
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 
-function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const isDefault = !!entry.inline;
     const hasCover = !isDefault && entry.name;
     const block = document.createElement("div");
@@ -64,24 +64,46 @@ function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDr
         block.appendChild(dragHandle);
     }
 
-    // Override button
+    // Override button (always pinned top-right, even when not hovered)
     if (!isDefault && entry._pendingData) {
         const ov = document.createElement("button");
         ov.textContent = "\uD83D\uDCBE";
         ov.title = "Save changes to disk";
-        css(ov, "position:absolute;top:2px;right:20px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(0,0,0,0.5);color:#ddd;border:1px solid #555;border-radius:2px;cursor:pointer;padding:0;z-index:2;");
+        css(ov, "position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(0,0,0,0.5);color:#ddd;border:1px solid #555;border-radius:2px;cursor:pointer;padding:0;z-index:4;");
         ov.addEventListener("click", (e) => { e.stopPropagation(); onOverride(idx); });
         block.appendChild(ov);
     }
 
-    // Remove button
+    // Hover button group: Replace / Edit / Remove (only visible on hover)
     if (!isDefault) {
-        const rm = document.createElement("button");
-        rm.textContent = "\u2715";
-        rm.title = "Remove from stack";
-        css(rm, "position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(0,0,0,0.5);color:#ddd;border:1px solid #555;border-radius:2px;cursor:pointer;padding:0;z-index:2;");
-        rm.addEventListener("click", (e) => { e.stopPropagation(); onRemove(idx); });
-        block.appendChild(rm);
+        const hoverWrap = document.createElement("div");
+        css(hoverWrap, "position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:6px;z-index:3;background:rgba(0,0,0,0.35);");
+        const HOVER_BTN = "width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);font-size:13px;line-height:1;";
+
+        const replaceBtn = document.createElement("button");
+        replaceBtn.title = "Replace Flake";
+        replaceBtn.textContent = "\u21C4";
+        css(replaceBtn, HOVER_BTN);
+        replaceBtn.addEventListener("click", (e) => { e.stopPropagation(); onReplace(idx); });
+        hoverWrap.appendChild(replaceBtn);
+
+        const editBtn = document.createElement("button");
+        editBtn.title = "Edit Flake";
+        editBtn.textContent = "\u270E";
+        css(editBtn, HOVER_BTN);
+        editBtn.addEventListener("click", (e) => { e.stopPropagation(); onEdit(idx); });
+        hoverWrap.appendChild(editBtn);
+
+        const removeBtn = document.createElement("button");
+        removeBtn.title = "Remove Flake";
+        removeBtn.textContent = "\u2715";
+        css(removeBtn, HOVER_BTN);
+        removeBtn.addEventListener("click", (e) => { e.stopPropagation(); onRemove(idx); });
+        hoverWrap.appendChild(removeBtn);
+
+        block.appendChild(hoverWrap);
+        block.addEventListener("mouseenter", () => { hoverWrap.style.display = "flex"; });
+        block.addEventListener("mouseleave", () => { hoverWrap.style.display = "none"; });
     }
 
     // Triangle button (bottom center) for variants / LoRA
@@ -300,6 +322,7 @@ export function setupFlakeWidget(node) {
                 idx: i,
                 onEdit: handleEdit,
                 onRemove: handleRemove,
+                onReplace: handleReplace,
                 onOverride: handleOverride,
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
@@ -402,6 +425,29 @@ export function setupFlakeWidget(node) {
         if (idx === 0) return;
         const arr = readEntries();
         arr.splice(idx, 1);
+        writeEntries(arr);
+        render();
+    }
+
+    async function handleReplace(idx) {
+        if (idx === 0) return;
+        const { flakes, directories } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily() });
+        if (!result || !result.name) return;
+        const arr = readEntries();
+        let has_lora = false;
+        let display_name = null;
+        let flake_type = null;
+        let loras = [];
+        try {
+            const d = await fetchFlake(result.name);
+            has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
+            display_name = d.name || null;
+            flake_type = d.flake_type || null;
+            if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
+            else if (d.path) loras = [d.strength ?? 1.0];
+        } catch {}
+        arr[idx] = { name: result.name, loras, variant: {}, has_lora, display_name, flake_type };
         writeEntries(arr);
         render();
     }
