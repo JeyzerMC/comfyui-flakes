@@ -412,6 +412,9 @@ export function setupFlakeWidget(node) {
             render();
         } else if (result.saved) {
             const arr = readEntries();
+            // If the flake was moved on disk, update the entry's name to point
+            // at the new location.
+            if (result.name && result.name !== arr[idx].name) arr[idx].name = result.name;
             arr[idx]._pendingData = result.data;
             arr[idx]._edited_at = Date.now();
             arr[idx].flake_type = result.data?.flake_type || null;

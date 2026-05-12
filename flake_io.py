@@ -238,13 +238,22 @@ def read_flake_raw(name: str) -> dict[str, Any]:
     return data
 
 
-def save_flake(name: str, data: dict[str, Any], family: str | None = None) -> str:
+def save_flake(
+    name: str,
+    data: dict[str, Any],
+    family: str | None = None,
+    base_root_index: int | None = None,
+    output_path: str | None = None,
+    old_name: str | None = None,
+) -> str:
     """Persist ``data`` to ``<root>/<name>.yaml`` and return the resolved name
-    that callers should use to reference the flake (including any
-    ``img/<family>/`` prefix applied here)."""
+    that callers should use to reference the flake.
+
+    See :func:`save_preset` for the role of ``base_root_index`` /
+    ``output_path`` / ``old_name``.
+    """
     if not isinstance(data, dict):
         raise ValueError("flake data must be an object")
-    _validate_name(name)
 
     # Drop stray top-level `path` / `strength` keys that leaked from a previous
     # single-LoRA representation. They are redundant with `loras[].path/strength`.
@@ -257,21 +266,53 @@ def save_flake(name: str, data: dict[str, Any], family: str | None = None) -> st
     if "options" in data and "variants" not in data:
         data["variants"] = data.pop("options")
 
-    folder = _family_folder(family)
-    if folder and not name.replace("\\", "/").startswith(f"img/{folder}/"):
-        name = f"img/{folder}/{name}"
-
-    try:
-        path = _resolve_file(name)
-    except FileNotFoundError:
+    roots = _flakes_roots()
+    if base_root_index is not None:
+        if base_root_index < 0 or base_root_index >= len(roots):
+            raise ValueError(f"invalid base_root_index: {base_root_index}")
+        root = roots[base_root_index]
+    else:
         root = _primary_root()
-        path = os.path.join(root, f"{name}.yaml")
-        _ensure_inside(path, root)
 
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    if output_path:
+        canonical = output_path.replace("\\", "/").strip("/")
+        _validate_name(canonical)
+    else:
+        _validate_name(name)
+        folder = _family_folder(family)
+        if folder and not name.replace("\\", "/").startswith(f"img/{folder}/"):
+            canonical = f"img/{folder}/{name}"
+        else:
+            canonical = name
+
+    target = os.path.join(root, f"{canonical}.yaml")
+    _ensure_inside(target, root)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+
+    # Move existing files if the location changed
+    if old_name and old_name != canonical:
+        try:
+            old_yaml = _resolve_file(old_name)
+        except (FileNotFoundError, ValueError):
+            old_yaml = None
+        if old_yaml and os.path.realpath(old_yaml) != os.path.realpath(target):
+            try:
+                os.remove(old_yaml)
+            except OSError:
+                pass
+            old_cover = _cover_path(old_name)
+            if old_cover:
+                cover_ext = os.path.splitext(old_cover)[1].lower()
+                new_cover_dir = os.path.dirname(target)
+                new_cover = os.path.join(new_cover_dir, f"{os.path.basename(canonical)}{cover_ext}")
+                try:
+                    os.replace(old_cover, new_cover)
+                except OSError:
+                    pass
+
+    with open(target, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
-    return name
+    return canonical
 
 
 def delete_flake(name: str) -> None:

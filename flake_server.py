@@ -87,12 +87,26 @@ async def _save_flake(request: web.Request) -> web.Response:
     name = (body.get("name") or "").strip()
     data = body.get("data")
     family = (body.get("family") or "").strip() or None
-    if not name:
-        return _bad_request("missing 'name'")
+    base_root_index = body.get("base_root_index")
+    if base_root_index is not None:
+        try:
+            base_root_index = int(base_root_index)
+        except (TypeError, ValueError):
+            return _bad_request("base_root_index must be an integer")
+    output_path = (body.get("output_path") or "").strip() or None
+    old_name = (body.get("old_name") or "").strip() or None
+    if not name and not output_path:
+        return _bad_request("missing 'name' or 'output_path'")
     if not isinstance(data, dict):
         return _bad_request("'data' must be an object")
     try:
-        saved_name = flake_io.save_flake(name, data, family=family)
+        saved_name = flake_io.save_flake(
+            name, data,
+            family=family,
+            base_root_index=base_root_index,
+            output_path=output_path,
+            old_name=old_name,
+        )
     except ValueError as exc:
         return _bad_request(str(exc))
     except Exception as exc:

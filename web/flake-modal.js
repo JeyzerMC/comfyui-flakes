@@ -101,13 +101,39 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             leftCol.appendChild(typeRow);
         }
 
-        if (mode === "create") {
-            leftCol.appendChild(makeComfyLabel("Path"));
-            pathInput = makeComfyInput("", "characters/musashi");
+        let baseRootSelect = null;
+        if (mode !== "default") {
+            leftCol.appendChild(makeComfyLabel("Output base path"));
+            baseRootSelect = document.createElement("select");
+            css(baseRootSelect, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;");
+            leftCol.appendChild(baseRootSelect);
+            (async () => {
+                try {
+                    const r = await fetch("/flakes/roots?type=flakes");
+                    const d = await r.json();
+                    const roots = d.roots || [];
+                    baseRootSelect.replaceChildren();
+                    for (const root of roots) {
+                        const opt = document.createElement("option");
+                        opt.value = String(root.index);
+                        opt.textContent = `${root.label}: ${root.path}`;
+                        baseRootSelect.appendChild(opt);
+                    }
+                    if (!roots.length) {
+                        const opt = document.createElement("option");
+                        opt.textContent = "(no roots configured)";
+                        opt.value = "0";
+                        baseRootSelect.appendChild(opt);
+                    }
+                } catch { /* ignore */ }
+            })();
+
+            leftCol.appendChild(makeComfyLabel(mode === "create" ? "Path" : "Output path"));
+            pathInput = makeComfyInput(mode === "create" ? "" : (name || ""), "characters/musashi");
             const listId = `flake-dirs-${Math.random().toString(36).slice(2)}`;
             const dlist = document.createElement("datalist");
             dlist.id = listId;
-            for (const d of dirs) {
+            for (const d of dirs || []) {
                 const o = document.createElement("option");
                 o.value = `${d}/`;
                 dlist.appendChild(o);
@@ -116,8 +142,8 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             leftCol.appendChild(dlist);
             leftCol.appendChild(pathInput);
 
-            // Auto-fill path from display name + tag
-            let pathManuallyEdited = false;
+            // Auto-fill path from display name + tag (create mode only)
+            let pathManuallyEdited = mode !== "create";
             pathInput.addEventListener("input", () => { pathManuallyEdited = true; });
             function updatePrefillPath() {
                 if (pathManuallyEdited) return;
@@ -1151,17 +1177,36 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             }
 
             try {
-                if (mode === "create") {
-                    const targetName = (pathInput.value || "").trim();
-                    if (!targetName) { window.alert("Path is required"); return; }
-                    const family = familyDropdown?.element?.value || "";
-                    const savedName = await saveFlakeApi(targetName, ordered, family);
-                    await close({ created: true, name: savedName, data: ordered });
-                } else if (mode === "default") {
+                if (mode === "default") {
                     await close({ defaultUpdated: true, data: ordered });
+                    return;
+                }
+                const outputPath = (pathInput?.value || "").trim();
+                if (!outputPath) { window.alert("Path is required"); return; }
+                const family = familyDropdown?.element?.value || "";
+                const baseRootIndex = baseRootSelect ? parseInt(baseRootSelect.value, 10) : 0;
+                const body = {
+                    name: outputPath,
+                    data: ordered,
+                    family: family || undefined,
+                    base_root_index: Number.isFinite(baseRootIndex) ? baseRootIndex : 0,
+                    output_path: outputPath,
+                };
+                if (mode !== "create") body.old_name = name;
+                const r = await fetch("/flakes/save", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                });
+                if (!r.ok) {
+                    const err = await r.json().catch(() => ({}));
+                    throw new Error(err.error || `HTTP ${r.status}`);
+                }
+                const savedName = (await r.json()).name || outputPath;
+                if (mode === "create") {
+                    await close({ created: true, name: savedName, data: ordered });
                 } else {
-                    await saveFlakeApi(name, ordered);
-                    await close({ saved: true, name, data: ordered });
+                    await close({ saved: true, name: savedName, data: ordered, oldName: name !== savedName ? name : undefined });
                 }
             } catch (err) {
                 window.alert(`Save failed: ${err.message || err}`);
