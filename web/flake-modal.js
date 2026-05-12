@@ -131,7 +131,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         topSection.appendChild(leftCol);
 
         let coverFile = null;
-        let coverSourcePath = null;
+        let coverSourcePath = data?.cover_image || null;
         let coverImg = null;
         // Set by the cover-image block; used by the LoRA selectors to default
         // the cover to the LoRA's sibling image when no cover has been chosen.
