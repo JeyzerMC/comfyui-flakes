@@ -228,13 +228,25 @@ def list_dirs(family: str | None = None) -> list[str]:
 def read_flake_raw(name: str) -> dict[str, Any]:
     path = _resolve_file(name)
     with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        data = yaml.safe_load(f) or {}
+    # Hide stray top-level `path` / `strength` from callers when the modern
+    # `loras:` list is present; they are leftover from an old save bug.
+    if isinstance(data, dict) and "loras" in data:
+        data.pop("path", None)
+        data.pop("strength", None)
+    return data
 
 
 def save_flake(name: str, data: dict[str, Any], family: str | None = None) -> None:
     if not isinstance(data, dict):
         raise ValueError("flake data must be an object")
     _validate_name(name)
+
+    # Drop stray top-level `path` / `strength` keys that leaked from a previous
+    # single-LoRA representation. They are redundant with `loras[].path/strength`.
+    if "loras" in data:
+        data.pop("path", None)
+        data.pop("strength", None)
 
     folder = _family_folder(family)
     if folder:
@@ -365,6 +377,40 @@ def flake_options(name: str) -> dict[str, list[str]]:
 
 _COVER_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
 
+_COVER_MIME_MAP = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
+
+
+def _resolve_cover_source(cover_source: str) -> tuple[bytes, str] | None:
+    """Resolve a ``cover_image`` string from a flake/preset YAML to raw bytes.
+
+    The value can either be a direct image path under the LoRA tree
+    (preferred) or — for legacy flakes — a ``.safetensors`` path whose
+    sibling image we fall back to.
+    """
+    direct = folder_paths.get_full_path("loras", cover_source)
+    if direct and os.path.isfile(direct):
+        ext = os.path.splitext(direct)[1].lower()
+        if ext in _COVER_MIME_MAP:
+            mime = _COVER_MIME_MAP[ext]
+            with open(direct, "rb") as f:
+                return f.read(), mime
+        # Legacy: path points at the weight file; find a sibling image.
+        dir_path = os.path.dirname(direct)
+        basename = os.path.splitext(os.path.basename(direct))[0]
+        for ext in _COVER_EXTENSIONS:
+            sibling = os.path.join(dir_path, basename + ext)
+            if os.path.isfile(sibling):
+                mime = _COVER_MIME_MAP.get(ext, "application/octet-stream")
+                with open(sibling, "rb") as f:
+                    return f.read(), mime
+    return None
+
 
 def _cover_path(name: str, ext: str | None = None) -> str | None:
     """Find the cover file for a given flake name. If *ext* is given, return
@@ -419,40 +465,21 @@ def read_cover(name: str) -> tuple[bytes, str] | None:
     """Return (data, mime_type) or None if no cover exists."""
     path = _cover_path(name)
     if not path:
-        # Fallback: check if flake YAML has cover_image pointing to a LoRA sibling
+        # Fallback: check if flake YAML has cover_image referencing an image
+        # under the LoRA tree (path may end with .png/.jpg/etc., or with
+        # .safetensors for legacy flakes — in which case we look for a sibling).
         try:
             raw = read_flake_raw(name)
             cover_source = raw.get("cover_image")
             if cover_source:
-                lora_full = folder_paths.get_full_path("loras", cover_source)
-                if lora_full and os.path.isfile(lora_full):
-                    dir_path = os.path.dirname(lora_full)
-                    basename = os.path.splitext(os.path.basename(lora_full))[0]
-                    mime_map = {
-                        ".png": "image/png",
-                        ".jpg": "image/jpeg",
-                        ".jpeg": "image/jpeg",
-                        ".webp": "image/webp",
-                        ".gif": "image/gif",
-                    }
-                    for ext in _COVER_EXTENSIONS:
-                        sibling = os.path.join(dir_path, basename + ext)
-                        if os.path.isfile(sibling):
-                            mime = mime_map.get(ext, "application/octet-stream")
-                            with open(sibling, "rb") as f:
-                                return f.read(), mime
+                resolved = _resolve_cover_source(cover_source)
+                if resolved:
+                    return resolved
         except Exception:
             pass
         return None
     ext = os.path.splitext(path)[1].lower()
-    mime_map = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".webp": "image/webp",
-        ".gif": "image/gif",
-    }
-    mime = mime_map.get(ext, "application/octet-stream")
+    mime = _COVER_MIME_MAP.get(ext, "application/octet-stream")
     with open(path, "rb") as f:
         return f.read(), mime
 
@@ -578,31 +605,17 @@ def read_preset_cover(name: str) -> tuple[bytes, str] | None:
                 if ckpt_path and os.path.isfile(ckpt_path):
                     dir_path = os.path.dirname(ckpt_path)
                     basename = os.path.splitext(os.path.basename(ckpt_path))[0]
-                    mime_map = {
-                        ".png": "image/png",
-                        ".jpg": "image/jpeg",
-                        ".jpeg": "image/jpeg",
-                        ".webp": "image/webp",
-                        ".gif": "image/gif",
-                    }
                     for ext in _COVER_EXTENSIONS:
                         sibling = os.path.join(dir_path, basename + ext)
                         if os.path.isfile(sibling):
-                            mime = mime_map.get(ext, "application/octet-stream")
+                            mime = _COVER_MIME_MAP.get(ext, "application/octet-stream")
                             with open(sibling, "rb") as f:
                                 return f.read(), mime
         except Exception:
             pass
         return None
     ext = os.path.splitext(path)[1].lower()
-    mime_map = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".webp": "image/webp",
-        ".gif": "image/gif",
-    }
-    mime = mime_map.get(ext, "application/octet-stream")
+    mime = _COVER_MIME_MAP.get(ext, "application/octet-stream")
     with open(path, "rb") as f:
         return f.read(), mime
 

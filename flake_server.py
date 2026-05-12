@@ -348,6 +348,47 @@ def _sibling_image_response(folder_type: str, path: str) -> web.Response:
     return _not_found("no sibling image found")
 
 
+def _resolve_sibling_image_relpath(folder_type: str, path: str) -> str | None:
+    """Return the relative path (under the folder_type tree) of the sibling
+    image for the given weight file, or None if no sibling exists."""
+    try:
+        full_path = folder_paths.get_full_path(folder_type, path)
+    except Exception:
+        full_path = None
+    if not full_path or not os.path.isfile(full_path):
+        return None
+    dir_path = os.path.dirname(full_path)
+    basename = os.path.splitext(os.path.basename(full_path))[0]
+    for ext in _CHECKPOINT_IMAGE_EXTS:
+        sibling = os.path.join(dir_path, basename + ext)
+        if os.path.isfile(sibling):
+            # Return path relative to the same folder_type tree the input came from
+            try:
+                roots = folder_paths.get_folder_paths(folder_type)
+            except Exception:
+                roots = []
+            for root in roots:
+                try:
+                    rel = os.path.relpath(sibling, root)
+                except ValueError:
+                    continue
+                if not rel.startswith(".."):
+                    return rel.replace(os.sep, "/")
+            return os.path.basename(sibling)
+    return None
+
+
+@routes.get("/flakes/lora_sibling_image_path")
+async def _get_lora_sibling_image_path(request: web.Request) -> web.Response:
+    path = request.query.get("path", "").strip()
+    if not path:
+        return _bad_request("missing 'path' query param")
+    rel = _resolve_sibling_image_relpath("loras", path)
+    if rel is None:
+        return _not_found("no sibling image found")
+    return web.json_response({"path": rel})
+
+
 @routes.get("/flakes/checkpoint_sibling_image")
 async def _get_checkpoint_sibling_image(request: web.Request) -> web.Response:
     path = request.query.get("path", "").strip()

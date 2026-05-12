@@ -9,7 +9,7 @@ import {
 import {
     getCoverUrl, uploadCover, fetchLoras, fetchCnModels, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
-    fetchLoraSiblingImage, loraSiblingImageUrl,
+    fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
 } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
 
@@ -199,13 +199,14 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             });
 
             // Auto-cover from a LoRA's sibling image when no cover has been
-            // explicitly chosen yet. Returns true if a sibling image was set.
+            // explicitly chosen yet. Stores the resolved image path (e.g. .png)
+            // so the saved YAML never references a .safetensors file.
             setCoverFromLora = async (loraPath) => {
                 if (coverFile || coverSourcePath || !loraPath) return false;
                 try {
-                    const resp = await fetch(loraSiblingImageUrl(loraPath));
-                    if (resp.ok) {
-                        coverSourcePath = loraPath;
+                    const imagePath = await fetchLoraSiblingImagePath(loraPath);
+                    if (imagePath) {
+                        coverSourcePath = imagePath;
                         updateCoverPreview(loraSiblingImageUrl(loraPath));
                         return true;
                     }
@@ -1060,14 +1061,6 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                         path: l.path || "",
                         strength: l.strength ?? 1.0,
                     }));
-                    // Backward compatibility: single unnamed LoRA
-                    if (fieldState.loras.length === 1) {
-                        const l = fieldState.loras[0];
-                        if (!l.name && !l.url && l.path) {
-                            ordered.path = l.path;
-                            ordered.strength = l.strength ?? 1.0;
-                        }
-                    }
                 }
                 if (ft === "prompt" && fieldState.prompt) {
                     ordered.prompt = {};
