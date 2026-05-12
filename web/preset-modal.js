@@ -243,7 +243,10 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         const csWrap = document.createElement("div");
         css(csWrap, "flex:1;min-width:0;");
         csWrap.appendChild(makeComfyLabel("Clip Skip"));
-        const csSlider = makeComfyValueSlider(data.clip_skip ?? -2, -24, -1, 1);
+        // Display Clip Skip as a positive value (CivitAI convention). The
+        // underlying ComfyUI CLIPSetLastLayer uses negative indices, so we
+        // negate when reading from / writing to the preset payload.
+        const csSlider = makeComfyValueSlider(Math.abs(data.clip_skip ?? -2), 1, 24, 1);
         csWrap.appendChild(csSlider);
         sliderRow.appendChild(csWrap);
         const stepsWrap = document.createElement("div");
@@ -363,7 +366,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
             const ordered = {
                 checkpoint: ckptWrap.element.value,
                 checkpoint_url: ckptUrlInput.value || "",
-                clip_skip: csSlider.getValue(),
+                clip_skip: -Math.abs(csSlider.getValue()),
                 vae: vaeWrap.element.value || null,
                 steps: stepsSlider.getValue(),
                 cfg: cfgSlider.getValue(),
