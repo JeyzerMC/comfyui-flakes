@@ -178,8 +178,15 @@ class FlakeStack:
         steps, cfg, sampler, scheduler = sampling_preset
 
         # --- Filename prefix state ----------------------------------------------
-        if len(generation_data) > 7:
-            filename_state = generation_data[7]
+        # Always start with a fresh stems list so we don't accumulate them
+        # across cached executions — ComfyUI may hand us back the same
+        # generation_data tuple from a previous run, and mutating its dict
+        # in place would compound the output_stem path on every queue.
+        if len(generation_data) > 7 and isinstance(generation_data[7], dict):
+            filename_state = {
+                "preset": generation_data[7].get("preset", ""),
+                "stems": [],
+            }
         else:
             filename_state = {"preset": "", "stems": []}
 
