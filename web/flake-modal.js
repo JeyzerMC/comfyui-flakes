@@ -322,6 +322,42 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 css(fieldTitle, "flex:1;font-size:12px;font-weight:500;color:#aaa;");
                 header.appendChild(fieldTitle);
 
+                const moveUpBtn = makeSmallButton("\u2191");
+                moveUpBtn.title = "Move field up";
+                if (fi === 0) {
+                    moveUpBtn.disabled = true;
+                    moveUpBtn.style.opacity = "0.35";
+                    moveUpBtn.style.cursor = "default";
+                }
+                moveUpBtn.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (fi === 0) return;
+                    const tmp = activeFields[fi - 1];
+                    activeFields[fi - 1] = activeFields[fi];
+                    activeFields[fi] = tmp;
+                    renderFields();
+                });
+                header.appendChild(moveUpBtn);
+
+                const moveDownBtn = makeSmallButton("\u2193");
+                moveDownBtn.title = "Move field down";
+                if (fi === activeFields.length - 1) {
+                    moveDownBtn.disabled = true;
+                    moveDownBtn.style.opacity = "0.35";
+                    moveDownBtn.style.cursor = "default";
+                }
+                moveDownBtn.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (fi === activeFields.length - 1) return;
+                    const tmp = activeFields[fi + 1];
+                    activeFields[fi + 1] = activeFields[fi];
+                    activeFields[fi] = tmp;
+                    renderFields();
+                });
+                header.appendChild(moveDownBtn);
+
                 const delFieldBtn = makeSmallButton("\u2715");
                 delFieldBtn.addEventListener("click", () => {
                     const idx = activeFields.indexOf(fieldType);
@@ -343,19 +379,29 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     if (dragFieldIdx === null || dragFieldIdx === fi) return;
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "move";
-                    let indicator = optionalBox.querySelector(".field-drop-indicator");
-                    if (!indicator) {
-                        indicator = document.createElement("div");
-                        indicator.className = "field-drop-indicator";
-                        css(indicator, "height:2px;background:#2a6acf;border-radius:1px;margin:2px 0;");
-                    }
-                    if (optionalBox.children[fi] !== indicator) {
-                        optionalBox.insertBefore(indicator, optionalBox.children[fi]);
-                    }
-                });
-                fieldWrap.addEventListener("dragleave", () => {
                     for (const ind of optionalBox.querySelectorAll(".field-drop-indicator")) {
                         ind.remove();
+                    }
+                    const indicator = document.createElement("div");
+                    indicator.className = "field-drop-indicator";
+                    css(indicator, "height:2px;background:#2a6acf;border-radius:1px;margin:2px 0;");
+                    const rect = fieldWrap.getBoundingClientRect();
+                    const above = (e.clientY - rect.top) < rect.height / 2;
+                    fieldWrap.parentNode.insertBefore(
+                        indicator,
+                        above ? fieldWrap : fieldWrap.nextSibling,
+                    );
+                });
+                fieldWrap.addEventListener("dragleave", (e) => {
+                    // Only clear if leaving the field bounds entirely
+                    const rect = fieldWrap.getBoundingClientRect();
+                    if (
+                        e.clientX < rect.left || e.clientX > rect.right ||
+                        e.clientY < rect.top || e.clientY > rect.bottom
+                    ) {
+                        for (const ind of optionalBox.querySelectorAll(".field-drop-indicator")) {
+                            ind.remove();
+                        }
                     }
                 });
                 fieldWrap.addEventListener("drop", (e) => {
@@ -364,9 +410,12 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                         ind.remove();
                     }
                     if (dragFieldIdx === null || dragFieldIdx === fi) return;
+                    const rect = fieldWrap.getBoundingClientRect();
+                    const above = (e.clientY - rect.top) < rect.height / 2;
                     const [movedField] = activeFields.splice(dragFieldIdx, 1);
                     let insertIdx = fi;
                     if (dragFieldIdx < fi) insertIdx--;
+                    if (!above) insertIdx++;
                     activeFields.splice(insertIdx, 0, movedField);
                     dragFieldIdx = null;
                     renderFields();
