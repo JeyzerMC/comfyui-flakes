@@ -258,7 +258,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 : null,
             resolution: data.resolution ? [...data.resolution] : null,
             controlnets: JSON.parse(JSON.stringify(data.controlnets || [])),
-            options: JSON.parse(JSON.stringify(data.options || {})),
+            variants: JSON.parse(JSON.stringify(data.variants || data.options || {})),
             output_stem: data.output_stem ?? null,
         };
         if (!Array.isArray(fieldState.controlnets._)) {
@@ -268,7 +268,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
 
         // Derive field order from YAML key order (Python preserves insertion order)
         const activeFields = [];
-        const knownFieldKeys = { loras: "lora", path: "lora", prompt: "prompt", resolution: "resolution", controlnets: "controlnets", options: "options", output_stem: "output_stem" };
+        const knownFieldKeys = { loras: "lora", path: "lora", prompt: "prompt", resolution: "resolution", controlnets: "controlnets", variants: "variants", options: "variants", output_stem: "output_stem" };
         for (const key of Object.keys(data)) {
             const ft = knownFieldKeys[key];
             if (ft && !activeFields.includes(ft)) activeFields.push(ft);
@@ -278,7 +278,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         if (!activeFields.includes("prompt") && fieldState.prompt) activeFields.push("prompt");
         if (!activeFields.includes("resolution") && fieldState.resolution) activeFields.push("resolution");
         if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0) activeFields.push("controlnets");
-        if (!activeFields.includes("options") && Object.keys(fieldState.options).length > 0) activeFields.push("options");
+        if (!activeFields.includes("variants") && Object.keys(fieldState.variants).length > 0) activeFields.push("variants");
         if (!activeFields.includes("output_stem") && fieldState.output_stem != null) activeFields.push("output_stem");
 
         const optionalBox = document.createElement("div");
@@ -366,8 +366,8 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     if (fieldType === "prompt") fieldState.prompt = null;
                     if (fieldType === "resolution") fieldState.resolution = null;
                     if (fieldType === "controlnets") fieldState.controlnets._ = [];
-                    if (fieldType === "options") {
-                        for (const k of Object.keys(fieldState.options)) delete fieldState.options[k];
+                    if (fieldType === "variants") {
+                        for (const k of Object.keys(fieldState.variants)) delete fieldState.variants[k];
                     }
                     if (fieldType === "output_stem") fieldState.output_stem = null;
                     renderFields();
@@ -765,14 +765,14 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     renderCNs();
                 }
 
-                if (fieldType === "options") {
+                if (fieldType === "variants") {
                     const optsBox = document.createElement("div");
                     css(optsBox, "display:flex;flex-direction:column;gap:8px;");
                     fieldWrap.appendChild(optsBox);
 
                     function renderOpts() {
                         optsBox.replaceChildren();
-                        for (const groupName of Object.keys(fieldState.options)) {
+                        for (const groupName of Object.keys(fieldState.variants)) {
                             const groupCard = document.createElement("div");
                             css(groupCard, "background:#252525;padding:10px;border-radius:6px;display:flex;flex-direction:column;gap:6px;border:1px solid #333;");
 
@@ -784,20 +784,20 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                             groupNameInput.addEventListener("change", () => {
                                 const newName = groupNameInput.value.trim();
                                 if (!newName || newName === groupName) return;
-                                if (fieldState.options[newName]) { groupNameInput.value = groupName; return; }
-                                fieldState.options[newName] = fieldState.options[groupName];
-                                delete fieldState.options[groupName];
+                                if (fieldState.variants[newName]) { groupNameInput.value = groupName; return; }
+                                fieldState.variants[newName] = fieldState.variants[groupName];
+                                delete fieldState.variants[groupName];
                                 renderOpts();
                             });
                             removeGroupBtn.addEventListener("click", () => {
-                                delete fieldState.options[groupName];
+                                delete fieldState.variants[groupName];
                                 renderOpts();
                             });
                             headerRow.appendChild(groupNameInput);
                             headerRow.appendChild(removeGroupBtn);
                             groupCard.appendChild(headerRow);
 
-                            for (const choiceName of Object.keys(fieldState.options[groupName] || {})) {
+                            for (const choiceName of Object.keys(fieldState.variants[groupName] || {})) {
                                 const choiceCard = document.createElement("div");
                                 css(choiceCard, "background:#1a1a1a;padding:8px;border-radius:4px;display:flex;flex-direction:column;gap:4px;");
 
@@ -809,20 +809,20 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                                 cNameInput.addEventListener("change", () => {
                                     const newCName = cNameInput.value.trim();
                                     if (!newCName || newCName === choiceName) return;
-                                    if (fieldState.options[groupName][newCName]) { cNameInput.value = choiceName; return; }
-                                    fieldState.options[groupName][newCName] = fieldState.options[groupName][choiceName];
-                                    delete fieldState.options[groupName][choiceName];
+                                    if (fieldState.variants[groupName][newCName]) { cNameInput.value = choiceName; return; }
+                                    fieldState.variants[groupName][newCName] = fieldState.variants[groupName][choiceName];
+                                    delete fieldState.variants[groupName][choiceName];
                                     renderOpts();
                                 });
                                 removeChoiceBtn.addEventListener("click", () => {
-                                    delete fieldState.options[groupName][choiceName];
+                                    delete fieldState.variants[groupName][choiceName];
                                     renderOpts();
                                 });
                                 cRow.appendChild(cNameInput);
                                 cRow.appendChild(removeChoiceBtn);
                                 choiceCard.appendChild(cRow);
 
-                                const choice = fieldState.options[groupName][choiceName] || {};
+                                const choice = fieldState.variants[groupName][choiceName] || {};
 
                                 const choiceBtnRow = document.createElement("div");
                                 css(choiceBtnRow, "display:flex;gap:8px;align-items:center;");
@@ -843,15 +843,15 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                                         const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
                                         css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                                         cPos.addEventListener("change", () => {
-                                            fieldState.options[groupName][choiceName] = fieldState.options[groupName][choiceName] || {};
-                                            fieldState.options[groupName][choiceName].positive = cPos.value;
+                                            fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                            fieldState.variants[groupName][choiceName].positive = cPos.value;
                                         });
                                         const rmPos = makeSmallButton("\u2715");
                                         rmPos.addEventListener("click", () => {
                                             if (choice.negative == null) {
-                                                fieldState.options[groupName][choiceName] = {};
+                                                fieldState.variants[groupName][choiceName] = {};
                                             } else {
-                                                delete fieldState.options[groupName][choiceName].positive;
+                                                delete fieldState.variants[groupName][choiceName].positive;
                                             }
                                             renderChoicePrompts();
                                         });
@@ -865,15 +865,15 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                                         const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
                                         css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                                         cNeg.addEventListener("change", () => {
-                                            fieldState.options[groupName][choiceName] = fieldState.options[groupName][choiceName] || {};
-                                            fieldState.options[groupName][choiceName].negative = cNeg.value;
+                                            fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                            fieldState.variants[groupName][choiceName].negative = cNeg.value;
                                         });
                                         const rmNeg = makeSmallButton("\u2715");
                                         rmNeg.addEventListener("click", () => {
                                             if (choice.positive == null) {
-                                                fieldState.options[groupName][choiceName] = {};
+                                                fieldState.variants[groupName][choiceName] = {};
                                             } else {
-                                                delete fieldState.options[groupName][choiceName].negative;
+                                                delete fieldState.variants[groupName][choiceName].negative;
                                             }
                                             renderChoicePrompts();
                                         });
@@ -885,13 +885,13 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                                 renderChoicePrompts();
 
                                 choicePosBtn.addEventListener("click", () => {
-                                    fieldState.options[groupName][choiceName] = fieldState.options[groupName][choiceName] || {};
-                                    fieldState.options[groupName][choiceName].positive = fieldState.options[groupName][choiceName].positive ?? "";
+                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                    fieldState.variants[groupName][choiceName].positive = fieldState.variants[groupName][choiceName].positive ?? "";
                                     renderChoicePrompts();
                                 });
                                 choiceNegBtn.addEventListener("click", () => {
-                                    fieldState.options[groupName][choiceName] = fieldState.options[groupName][choiceName] || {};
-                                    fieldState.options[groupName][choiceName].negative = fieldState.options[groupName][choiceName].negative ?? "";
+                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                    fieldState.variants[groupName][choiceName].negative = fieldState.variants[groupName][choiceName].negative ?? "";
                                     renderChoicePrompts();
                                 });
 
@@ -921,12 +921,12 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                                 addBtn.addEventListener("click", () => {
                                     const trimmed = choiceNameInput.value.trim();
                                     if (!trimmed) { finish(); return; }
-                                    if (fieldState.options[groupName][trimmed]) {
+                                    if (fieldState.variants[groupName][trimmed]) {
                                         window.alert(`Choice '${trimmed}' already exists in this group.`);
                                         finish();
                                         return;
                                     }
-                                    fieldState.options[groupName][trimmed] = {};
+                                    fieldState.variants[groupName][trimmed] = {};
                                     finish();
                                     renderOpts();
                                 });
@@ -946,7 +946,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                             optsBox.appendChild(groupCard);
                         }
 
-                        const addGroupBtn = makeSmallButton("+ option group");
+                        const addGroupBtn = makeSmallButton("+ variant group");
                         addGroupBtn.addEventListener("click", (e) => {
                             e.stopPropagation();
                             e.preventDefault();
@@ -970,12 +970,12 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                             addBtn.addEventListener("click", () => {
                                 const trimmed = groupNameInput.value.trim();
                                 if (!trimmed) { finish(); return; }
-                                if (fieldState.options[trimmed]) {
-                                    window.alert(`Option group '${trimmed}' already exists.`);
+                                if (fieldState.variants[trimmed]) {
+                                    window.alert(`Variant group '${trimmed}' already exists.`);
                                     finish();
                                     return;
                                 }
-                                fieldState.options[trimmed] = {};
+                                fieldState.variants[trimmed] = {};
                                 finish();
                                 renderOpts();
                             });
@@ -1023,7 +1023,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             { key: "prompt", label: "Prompts" },
             { key: "resolution", label: "Resolution override" },
             { key: "controlnets", label: "ControlNets" },
-            { key: "options", label: "Options" },
+            { key: "variants", label: "Variants" },
             { key: "output_stem", label: "Output Filename Stem" },
         ];
         for (const ft of fieldTypes) {
@@ -1038,7 +1038,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 if (ft.key === "prompt") fieldState.prompt = {};
                 if (ft.key === "resolution") fieldState.resolution = [1024, 1024];
                 if (ft.key === "controlnets") fieldState.controlnets._ = [];
-                if (ft.key === "options") fieldState.options = {};
+                if (ft.key === "variants") fieldState.variants = {};
                 if (ft.key === "output_stem") fieldState.output_stem = "";
                 renderFields();
             });
@@ -1125,8 +1125,8 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     const cnArr = fieldState.controlnets._ || [];
                     if (cnArr.length > 0) ordered.controlnets = cnArr;
                 }
-                if (ft === "options" && Object.keys(fieldState.options).length > 0) {
-                    ordered.options = fieldState.options;
+                if (ft === "variants" && Object.keys(fieldState.variants).length > 0) {
+                    ordered.variants = fieldState.variants;
                 }
                 if (ft === "output_stem" && fieldState.output_stem != null) {
                     ordered.output_stem = fieldState.output_stem;

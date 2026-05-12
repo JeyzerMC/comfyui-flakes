@@ -162,7 +162,7 @@ export async function fetchFlakeMeta(name) {
     const r = await fetch(`/flakes/meta?name=${encodeURIComponent(name)}`);
     if (!r.ok) return {};
     const d = await r.json();
-    META_CACHE[name] = d.options || {};
+    META_CACHE[name] = d.variants || d.options || {};
     return META_CACHE[name];
 }
 

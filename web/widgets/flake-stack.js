@@ -84,7 +84,7 @@ function makeBlock({ entry, idx, onEdit, onRemove, onOverride, onDragStart, onDr
         block.appendChild(rm);
     }
 
-    // Triangle button (bottom center) for options / LoRA
+    // Triangle button (bottom center) for variants / LoRA
     let triangleBtn = null;
     if (!isDefault && entry.name) {
         triangleBtn = document.createElement("button");
@@ -162,7 +162,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
             if (!hasLoras) {
                 const empty = document.createElement("div");
                 css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
-                empty.textContent = "no options";
+                empty.textContent = "no variants";
                 panel.appendChild(empty);
             }
         } else {
@@ -178,13 +178,13 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
                 for (const ch of hasOptions[group]) {
                     ddOptions.push({ value: ch, label: ch });
                 }
-                const dd = makePanelDropdown(ddOptions, (entry.option || {})[group] || "");
+                const dd = makePanelDropdown(ddOptions, (entry.variant || {})[group] || "");
                 dd.element.addEventListener("change", () => {
                     if (dd.element.value) {
-                        entry.option = entry.option || {};
-                        entry.option[group] = dd.element.value;
+                        entry.variant = entry.variant || {};
+                        entry.variant[group] = dd.element.value;
                     } else {
-                        if (entry.option) delete entry.option[group];
+                        if (entry.variant) delete entry.variant[group];
                     }
                     onChanged();
                 });
@@ -197,9 +197,9 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
     async function loadOptions() {
         if (optionsLoaded || !entry.name) return;
         try {
-            const [options, fdata] = await Promise.all([fetchFlakeMeta(entry.name), fetchFlake(entry.name)]);
+            const [variants, fdata] = await Promise.all([fetchFlakeMeta(entry.name), fetchFlake(entry.name)]);
             optionsLoaded = true;
-            hasOptions = options;
+            hasOptions = variants;
             flakeData = fdata;
             rebuildPanel();
         } catch { /* ignore */ }
@@ -387,10 +387,10 @@ export function setupFlakeWidget(node) {
                 ? result.data.loras.map(l => l?.strength ?? 1.0)
                 : (result.data?.path ? [result.data.strength ?? 1.0] : []);
             arr[idx].loras = newLoras;
-            if (arr[idx].option) {
-                const validGroups = new Set(Object.keys(result.data?.options || {}));
-                for (const g of Object.keys(arr[idx].option)) {
-                    if (!validGroups.has(g)) delete arr[idx].option[g];
+            if (arr[idx].variant) {
+                const validGroups = new Set(Object.keys(result.data?.variants || result.data?.options || {}));
+                for (const g of Object.keys(arr[idx].variant)) {
+                    if (!validGroups.has(g)) delete arr[idx].variant[g];
                 }
             }
             writeEntries(arr);
@@ -459,7 +459,7 @@ export function setupFlakeWidget(node) {
                 flake_type = flake_type || d.flake_type || null;
             } catch {}
         }
-        arr.push({ name: result.name, loras, option: {}, has_lora, display_name, flake_type });
+        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type });
         writeEntries(arr);
         render();
     }
@@ -481,7 +481,7 @@ export function setupFlakeWidget(node) {
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr.push({ name: result.name, loras, option: {}, has_lora, display_name, flake_type });
+        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type });
         writeEntries(arr);
         render();
     }

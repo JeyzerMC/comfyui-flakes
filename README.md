@@ -1,6 +1,6 @@
 # ComfyUI Flakes
 
-A single ComfyUI node — **Flake Stack** — that inserts an ordered list of reusable presets ("flakes") between a checkpoint loader and a sampler. Each flake bundles a prompt fragment, optional LoRA, optional target resolution, optional ControlNets, and optional named option groups (e.g. `outfit: winter | summer`).
+A single ComfyUI node — **Flake Stack** — that inserts an ordered list of reusable presets ("flakes") between a checkpoint loader and a sampler. Each flake bundles a prompt fragment, optional LoRA, optional target resolution, optional ControlNets, and optional named variant groups (e.g. `outfit: winter | summer`).
 
 The goal: keep your day-to-day workflow graphs unchanged while swapping characters, poses, and styles by editing a small list instead of rewiring nodes.
 
@@ -58,8 +58,9 @@ prompt:
 # Optional fixed resolution (first flake with one wins)
 resolution: [832, 1216]
 
-# Optional named option groups; pick one variant per group from the UI
-options:
+# Optional named variant groups; pick one variant per group from the UI
+# (`options:` is also accepted as a legacy alias).
+variants:
   outfit:
     ronin:
       positive: "tattered kimono, frayed hakama, travelling cloak, dusty road"
@@ -83,9 +84,9 @@ All keys are optional except a flake must contain *something* useful. A pure-pro
 ### Joining behaviour
 
 - **Between flakes** in the stack: positives are joined with ` BREAK `, negatives with `, `.
-- **Within a flake** (option group additions to the base flake): joined with `, `.
+- **Within a flake** (variant group additions to the base flake): joined with `, `.
 
-This separation lets each flake act like an independent CLIP region while options layer modifiers onto a single flake.
+This separation lets each flake act like an independent CLIP region while variants layer modifiers onto a single flake.
 
 ## Folder layout example
 
@@ -99,7 +100,7 @@ ComfyUI/models/flakes/
     └── standing.yaml
 ```
 
-In the node UI, click **+ Add flake**, pick `styles/quality_base`, then `characters/musashi`, then `poses/standing`. Reorder with ↑/↓, set per-entry strength, and pick option variants from the dropdowns.
+In the node UI, click **+ Add flake**, pick `styles/quality_base`, then `characters/musashi`, then `poses/standing`. Reorder with ↑/↓, set per-entry strength, and pick variants from the dropdowns.
 
 ## License
 

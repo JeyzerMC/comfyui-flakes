@@ -83,7 +83,7 @@ class Flake:
     strength: float = 1.0  # legacy single LoRA strength
     resolution: tuple[int, int] | None = None
     controlnets: list[ControlNetEntry] = field(default_factory=list)
-    options: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
+    variants: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
     output_stem: str | None = None
 
 # ---------------------------------------------------------------------------
@@ -251,6 +251,11 @@ def save_flake(name: str, data: dict[str, Any], family: str | None = None) -> st
         data.pop("path", None)
         data.pop("strength", None)
 
+    # Migrate legacy `options:` key to `variants:` (one-way; reads remain
+    # backwards compatible via _flake_from_raw).
+    if "options" in data and "variants" not in data:
+        data["variants"] = data.pop("options")
+
     folder = _family_folder(family)
     if folder and not name.replace("\\", "/").startswith(f"img/{folder}/"):
         name = f"img/{folder}/{name}"
@@ -325,7 +330,7 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
         strength=float(raw.get("strength", 1.0)),
         resolution=resolution,
         controlnets=cns,
-        options=raw.get("options") or {},
+        variants=raw.get("variants") or raw.get("options") or {},
         output_stem=raw.get("output_stem") or None,
     )
 
@@ -356,9 +361,9 @@ def resolve(entry: dict[str, Any]) -> Flake:
             if i < len(flake.loras) and override is not None:
                 flake.loras[i].strength = float(override)
 
-    selected = entry.get("option") or {}
+    selected = entry.get("variant") or entry.get("option") or {}
     for group, choice in selected.items():
-        variant = flake.options.get(group, {}).get(choice)
+        variant = flake.variants.get(group, {}).get(choice)
         if not variant:
             continue
         extra_pos = str(variant.get("positive", "") or "")
@@ -371,9 +376,13 @@ def resolve(entry: dict[str, Any]) -> Flake:
     return flake
 
 
-def flake_options(name: str) -> dict[str, list[str]]:
+def flake_variants(name: str) -> dict[str, list[str]]:
     flake = load_flake(name)
-    return {group: list(choices.keys()) for group, choices in flake.options.items()}
+    return {group: list(choices.keys()) for group, choices in flake.variants.items()}
+
+
+# Backwards-compatible alias
+flake_options = flake_variants
 
 # ---------------------------------------------------------------------------
 # Cover image helpers

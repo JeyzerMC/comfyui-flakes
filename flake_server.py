@@ -46,7 +46,7 @@ async def _flake_meta(request: web.Request) -> web.Response:
     if not name:
         return _bad_request("missing 'name' query param")
     try:
-        options = flake_io.flake_options(name)
+        variants = flake_io.flake_variants(name)
     except FileNotFoundError as exc:
         return _not_found(str(exc))
     except ValueError as exc:
@@ -54,7 +54,9 @@ async def _flake_meta(request: web.Request) -> web.Response:
     except Exception as exc:
         logging.exception("[flakes] failed to read meta for %s", name)
         return _server_error(str(exc))
-    return web.json_response({"name": name, "options": options})
+    # Return both keys for a transitional window; clients should prefer
+    # `variants`.
+    return web.json_response({"name": name, "variants": variants, "options": variants})
 
 
 @routes.get("/flakes/get")
