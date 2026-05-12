@@ -377,6 +377,18 @@ export function setupFlakeWidget(node) {
             arr[idx]._pendingData = result.data;
             arr[idx]._edited_at = Date.now();
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
+            // Clear per-instance overrides so the grid item reflects the new
+            // defaults instead of masking them with stale values.
+            const newLoras = Array.isArray(result.data?.loras)
+                ? result.data.loras.map(l => l?.strength ?? 1.0)
+                : (result.data?.path ? [result.data.strength ?? 1.0] : []);
+            arr[idx].loras = newLoras;
+            if (arr[idx].option) {
+                const validGroups = new Set(Object.keys(result.data?.options || {}));
+                for (const g of Object.keys(arr[idx].option)) {
+                    if (!validGroups.has(g)) delete arr[idx].option[g];
+                }
+            }
             writeEntries(arr);
             render();
         }
