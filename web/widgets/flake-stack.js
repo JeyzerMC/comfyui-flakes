@@ -54,14 +54,26 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onDrag
     nameEl.textContent = nameAfterSlash;
     block.appendChild(nameEl);
 
-    // Drag handle (left edge vertical line)
+    // Whole block is draggable for reorder. The browser only initiates a
+    // drag after the cursor moves a few pixels with the button held, so
+    // single clicks (Edit / Remove / Replace buttons) and double-clicks
+    // still register normally.
     if (!isDefault) {
-        const dragHandle = document.createElement("div");
-        css(dragHandle, "position:absolute;left:0;top:20%;bottom:20%;width:3px;background:#555;border-radius:2px;cursor:grab;z-index:2;");
-        dragHandle.draggable = true;
-        dragHandle.addEventListener("dragstart", (e) => { onDragStart(e, idx, block); });
-        dragHandle.addEventListener("dragend", () => { onDragEnd(block); });
-        block.appendChild(dragHandle);
+        block.draggable = true;
+        block.style.cursor = "grab";
+        block.addEventListener("dragstart", (e) => {
+            // Don't start a drag when the user clicks one of the hover buttons
+            if (e.target && e.target !== block && e.target.tagName === "BUTTON") {
+                e.preventDefault();
+                return;
+            }
+            block.style.cursor = "grabbing";
+            onDragStart(e, idx, block);
+        });
+        block.addEventListener("dragend", () => {
+            block.style.cursor = "grab";
+            onDragEnd(block);
+        });
     }
 
     // Override button (always pinned top-right, even when not hovered)
