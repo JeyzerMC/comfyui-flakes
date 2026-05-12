@@ -59,7 +59,7 @@ export function setupFlakeModelPresetWidget(node) {
 
     const selectBtn = document.createElement("button");
     selectBtn.textContent = "Select Preset";
-    css(selectBtn, "flex:1;height:80px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;user-select:none;box-sizing:border-box;");
+    css(selectBtn, "flex:1;height:80px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;gap:3px;user-select:none;box-sizing:border-box;white-space:nowrap;padding:0 6px;");
     selectBtn.addEventListener("mouseenter", () => { selectBtn.style.background = "#333"; });
     selectBtn.addEventListener("mouseleave", () => { selectBtn.style.background = "#2a2a2a"; });
     selectBtn.addEventListener("click", async (e) => {
@@ -79,7 +79,7 @@ export function setupFlakeModelPresetWidget(node) {
 
     const createBtn = document.createElement("button");
     createBtn.textContent = "Create Preset";
-    css(createBtn, "flex:1;height:80px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;user-select:none;box-sizing:border-box;");
+    css(createBtn, "flex:1;height:80px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;gap:3px;user-select:none;box-sizing:border-box;white-space:nowrap;padding:0 6px;");
     createBtn.addEventListener("mouseenter", () => { createBtn.style.background = "#333"; });
     createBtn.addEventListener("mouseleave", () => { createBtn.style.background = "#2a2a2a"; });
     createBtn.addEventListener("click", async (e) => {
