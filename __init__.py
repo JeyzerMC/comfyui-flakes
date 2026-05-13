@@ -25,7 +25,7 @@ else:
     folder_paths.folder_names_and_paths["model_presets"] = ([PRESETS_DIR], {".yaml", ".yml"})
 
 from .full_flake_node import FlakeModelPreset, FlakeStack, FlakeCombo, FlakeModelCombo  # noqa: E402
-from .flake_data_nodes import FlakeDataSplitAll, FlakeDataSplitSelect, IntoFlakeDataAll, IntoFlakeDataSelect  # noqa: E402
+from .flake_data_nodes import FlakeDataSplitAll, FlakeDataSplitSelect, IntoFlakeDataAll, IntoFlakeDataSelect, PreviewFlakeData  # noqa: E402
 from . import flake_server  # noqa: E402,F401 — registers aiohttp routes on import
 
 NODE_CLASS_MAPPINGS = {
@@ -37,7 +37,9 @@ NODE_CLASS_MAPPINGS = {
     "FlakeDataSplitSelect": FlakeDataSplitSelect,
     "IntoFlakeDataAll": IntoFlakeDataAll,
     "IntoFlakeDataSelect": IntoFlakeDataSelect,
+"PreviewFlakeData": PreviewFlakeData,
 }
+
 NODE_DISPLAY_NAME_MAPPINGS = {
     "FlakeModelPreset": "Flake Model Preset",
     "FlakeStack": "Flake Stack",
@@ -47,6 +49,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "FlakeDataSplitSelect": "Flake Data Split (Select)",
     "IntoFlakeDataAll": "Into Flake Data (All)",
     "IntoFlakeDataSelect": "Into Flake Data (Select)",
+    "PreviewFlakeData": "Preview Flake Data",
 }
 WEB_DIRECTORY = "./web"
 

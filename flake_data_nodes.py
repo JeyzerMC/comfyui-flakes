@@ -235,3 +235,27 @@ class IntoFlakeDataSelect:
         new_sampling_preset = (new_steps, new_cfg, new_sampler, new_scheduler)
 
         return ((new_model_bundle, new_generation_data, new_sampling_preset),)
+
+
+class PreviewFlakeData:
+    """Pass-through node that displays a preview of the data in a FLAKE_DATA pin.
+    Shows Models, Prompts, Parameters, and Metadata in a grid overlay.
+    The FLAKE_DATA passes through unchanged."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "flake_data": ("FLAKE_DATA",),
+            },
+        }
+
+    RETURN_TYPES = ("FLAKE_DATA",)
+    RETURN_NAMES = ("flake_data",)
+    FUNCTION = "execute"
+    CATEGORY = "flakes"
+    DESCRIPTION = "Preview the contents of a FLAKE_DATA pin. Shows Models, Prompts, Parameters, and Metadata. The data passes through unchanged."
+    OUTPUT_NODE = True
+
+    def execute(self, flake_data):
+        return (flake_data,)
