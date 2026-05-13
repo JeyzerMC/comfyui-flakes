@@ -135,17 +135,13 @@ class FlakeModelPreset:
             },
         }
 
-    RETURN_TYPES = (
-        "FLAKES_MODEL", "FLAKES_COND", "FLAKES_SAMPLER",
-    )
-    RETURN_NAMES = (
-        "model_bundle", "generation_data", "sampling_preset",
-    )
+    RETURN_TYPES = ("FLAKE_DATA",)
+    RETURN_NAMES = ("flake_data",)
     FUNCTION = "execute"
     CATEGORY = "flakes"
     DESCRIPTION = (
         "Load a model preset (checkpoint, VAE, prompts, resolution, sampler settings). "
-        "Outputs are bundled for wiring into FlakeStack / FlakeCombo nodes."
+        "Outputs a single bundled flake_data pin for wiring into FlakeStack / FlakeCombo nodes."
     )
 
     def execute(self, model_family: str, preset: str):
@@ -153,7 +149,8 @@ class FlakeModelPreset:
         if not preset_name or preset_name in ("Select a preset...", "No model preset is selected"):
             raise ValueError("No model preset is selected — pick one from the dropdown.")
 
-        return _load_preset_bundle(preset_name)
+        model_bundle, generation_data, sampling_preset = _load_preset_bundle(preset_name)
+        return ((model_bundle, generation_data, sampling_preset),)
 
 
 class FlakeStack:
@@ -162,9 +159,7 @@ class FlakeStack:
         return {
             "required": {
                 "model_family": (_MODEL_FAMILIES, {"default": "SDXL/Base"}),
-                "model_bundle": ("FLAKES_MODEL",),
-                "generation_data": ("FLAKES_COND",),
-                "sampling_preset": ("FLAKES_SAMPLER",),
+                "flake_data": ("FLAKE_DATA",),
                 "flakes_json": ("STRING", {
                     "multiline": True,
                     "default": "[]",
@@ -173,21 +168,18 @@ class FlakeStack:
             },
         }
 
-    RETURN_TYPES = (
-        "FLAKES_MODEL", "FLAKES_COND", "FLAKES_SAMPLER",
-    )
-    RETURN_NAMES = (
-        "model_bundle", "generation_data", "sampling_preset",
-    )
+    RETURN_TYPES = ("FLAKE_DATA",)
+    RETURN_NAMES = ("flake_data",)
     FUNCTION = "execute"
     CATEGORY = "flakes"
     DESCRIPTION = (
-        "Compose flakes on top of an incoming model/generation/sampler bundle. "
+        "Compose flakes on top of an incoming flake_data bundle. "
         "Applies LoRAs, merges prompts, resolution overrides and ControlNets. "
-        "Outputs updated bundles for chaining into downstream nodes."
+        "Outputs updated flake_data for chaining into downstream nodes."
     )
 
-    def execute(self, model_family: str, model_bundle, generation_data, sampling_preset, flakes_json: str):
+    def execute(self, model_family: str, flake_data, flakes_json: str):
+        model_bundle, generation_data, sampling_preset = flake_data
         model, clip, vae = model_bundle
         positive_cond, negative_cond, latent, width, height, pos_text, neg_text = generation_data[:7]
         steps, cfg, sampler, scheduler = sampling_preset
@@ -308,7 +300,7 @@ class FlakeStack:
         out_sampling_preset = (steps, cfg, sampler, scheduler)
 
         return (
-            out_model_bundle, out_generation_data, out_sampling_preset,
+            (out_model_bundle, out_generation_data, out_sampling_preset),
         )
 
 

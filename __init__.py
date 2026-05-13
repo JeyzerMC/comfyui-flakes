@@ -25,7 +25,6 @@ else:
     folder_paths.folder_names_and_paths["model_presets"] = ([PRESETS_DIR], {".yaml", ".yml"})
 
 from .full_flake_node import FlakeModelPreset, FlakeStack, FlakeCombo, FlakeModelCombo  # noqa: E402
-from .flake_unpack_nodes import FlakesModel, FlakesCond, FlakesSampler  # noqa: E402
 from .flake_data_nodes import FlakeDataSplitAll, FlakeDataSplitSelect, IntoFlakeDataAll, IntoFlakeDataSelect  # noqa: E402
 from . import flake_server  # noqa: E402,F401 — registers aiohttp routes on import
 
@@ -34,9 +33,6 @@ NODE_CLASS_MAPPINGS = {
     "FlakeStack": FlakeStack,
     "FlakeCombo": FlakeCombo,
     "FlakeModelCombo": FlakeModelCombo,
-    "FlakesModel": FlakesModel,
-    "FlakesCond": FlakesCond,
-    "FlakesSampler": FlakesSampler,
     "FlakeDataSplitAll": FlakeDataSplitAll,
     "FlakeDataSplitSelect": FlakeDataSplitSelect,
     "IntoFlakeDataAll": IntoFlakeDataAll,
@@ -47,9 +43,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "FlakeStack": "Flake Stack",
     "FlakeCombo": "Flake Combo",
     "FlakeModelCombo": "Flake Model Combo",
-    "FlakesModel": "Flake Model Split",
-    "FlakesCond": "Flake Generation Data",
-    "FlakesSampler": "Flake Sampling Values",
     "FlakeDataSplitAll": "Flake Data Split (All)",
     "FlakeDataSplitSelect": "Flake Data Split (Select)",
     "IntoFlakeDataAll": "Into Flake Data (All)",
