@@ -354,27 +354,39 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
             } catch { /* ignore */ }
         })();
 
-        const sliderRow = document.createElement("div");
-        css(sliderRow, "display:flex;gap:8px;align-items:flex-start;");
+const numRow = document.createElement("div");
+        css(numRow, "display:flex;gap:8px;align-items:flex-start;");
+        const wWrap = document.createElement("div");
+        css(wWrap, "flex:1;min-width:0;");
+        wWrap.appendChild(makeComfyLabel("Width"));
+        const wInput = makeComfyNumberInput(data.width ?? 1024, "1024", 64);
+        wWrap.appendChild(wInput);
+        numRow.appendChild(wWrap);
+        const hWrap = document.createElement("div");
+        css(hWrap, "flex:1;min-width:0;");
+        hWrap.appendChild(makeComfyLabel("Height"));
+        const hInput = makeComfyNumberInput(data.height ?? 1024, "1024", 64);
+        hWrap.appendChild(hInput);
+        numRow.appendChild(hWrap);
         const csWrap = document.createElement("div");
         css(csWrap, "flex:1;min-width:0;");
         csWrap.appendChild(makeComfyLabel("Clip Skip"));
         const csSlider = makeComfyValueSlider(Math.abs(data.clip_skip ?? -2), 1, 24, 1);
         csWrap.appendChild(csSlider);
-        sliderRow.appendChild(csWrap);
+        numRow.appendChild(csWrap);
         const stepsWrap = document.createElement("div");
         css(stepsWrap, "flex:1;min-width:0;");
         stepsWrap.appendChild(makeComfyLabel("Steps"));
         const stepsSlider = makeComfyValueSlider(data.steps ?? 20, 1, 150, 1);
         stepsWrap.appendChild(stepsSlider);
-        sliderRow.appendChild(stepsWrap);
+        numRow.appendChild(stepsWrap);
         const cfgWrap = document.createElement("div");
         css(cfgWrap, "flex:1;min-width:0;");
         cfgWrap.appendChild(makeComfyLabel("CFG"));
         const cfgSlider = makeComfyValueSlider(data.cfg ?? 7.0, 1, 30, 0.5);
         cfgWrap.appendChild(cfgSlider);
-        sliderRow.appendChild(cfgWrap);
-        content.appendChild(sliderRow);
+        numRow.appendChild(cfgWrap);
+        content.appendChild(numRow);
 
         const sampSchedRow = document.createElement("div");
         css(sampSchedRow, "display:flex;gap:8px;align-items:flex-start;");
@@ -393,19 +405,6 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         schedWrap.appendChild(schedDD.container);
         sampSchedRow.appendChild(schedWrap);
         content.appendChild(sampSchedRow);
-
-        content.appendChild(makeComfyLabel("Resolution"));
-        const resRow = document.createElement("div");
-        css(resRow, "display:flex;gap:8px;align-items:center;");
-        const wInput = makeComfyNumberInput(data.width ?? 1024, "1024", 64);
-        const rLabel = document.createElement("span");
-        rLabel.textContent = "\u00d7";
-        css(rLabel, "color:#888;font-size:13px;");
-        const hInput = makeComfyNumberInput(data.height ?? 1024, "1024", 64);
-        resRow.appendChild(wInput);
-        resRow.appendChild(rLabel);
-        resRow.appendChild(hInput);
-        content.appendChild(resRow);
 
         content.appendChild(makeComfyLabel("Positive embeddings"));
         const posEmbWrap = makeSearchableDropdown([], (data.embeddings?.positive || []).join(", "), "embedding1, embedding2...");
