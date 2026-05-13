@@ -1,6 +1,6 @@
 import { openOverlay } from "./modal.js";
 import {
-    css, makeButton, makeSmallButton, makeComfyLabel, makeComfyInput,
+    css, makeButton, makeComfyLabel, makeComfyInput,
     makeComfyDropdown, makeSearchableDropdown, makeComfySlider,
     makeTextarea,
 } from "./utils.js";
@@ -235,13 +235,14 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         ckptUrlInput.style.display = "none";
 
         const ckptLabelRow = document.createElement("div");
-        css(ckptLabelRow, "display:flex;gap:6px;align-items:center;");
+        css(ckptLabelRow, "display:flex;gap:2px;align-items:center;");
         const ckptLabel = makeComfyLabel("Checkpoint");
+        css(ckptLabel, "margin:0;");
         ckptLabelRow.appendChild(ckptLabel);
 
         const ckptLinkIcon = document.createElement("a");
         ckptLinkIcon.textContent = "\uD83D\uDD17";
-        css(ckptLinkIcon, "font-size:12px;text-decoration:none;cursor:pointer;display:none;color:#4a9eff;");
+        css(ckptLinkIcon, "font-size:12px;text-decoration:none;cursor:pointer;display:none;color:#4a9eff;align-items:center;vertical-align:middle;");
         ckptLinkIcon.addEventListener("click", (e) => {
             e.stopPropagation();
             const url = ckptUrlInput.value;
@@ -251,7 +252,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
 
         const ckptUrlToggle = document.createElement("button");
         ckptUrlToggle.innerHTML = "&#9662;";
-        css(ckptUrlToggle, "background:transparent;color:#888;border:none;padding:0;font-size:14px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;height:20px;width:20px;");
+        css(ckptUrlToggle, "background:transparent;color:#888;border:none;padding:0;font-size:12px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;height:16px;width:16px;");
         ckptUrlToggle.addEventListener("click", (e) => {
             e.stopPropagation();
             const showing = ckptUrlInput.style.display !== "none";
@@ -269,13 +270,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         css(ckptBox, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;");
         ckptBox.textContent = data.checkpoint ? data.checkpoint.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select Checkpoint";
 
-        const ckptRow = document.createElement("div");
-        css(ckptRow, "display:flex;gap:4px;align-items:center;");
-        ckptRow.appendChild(ckptBox);
-        const ckptEditBtn = makeSmallButton("...");
-        ckptEditBtn.title = "Type manually";
-        ckptRow.appendChild(ckptEditBtn);
-        ckptCol.appendChild(ckptRow);
+        ckptCol.appendChild(ckptBox);
         ckptCol.appendChild(ckptWrap.container);
         ckptWrap.container.style.display = "none";
         (async () => {
@@ -292,18 +287,9 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
                 ckptWrap.element.dispatchEvent(new Event("change"));
             }
         });
-        ckptEditBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            ckptBox.style.display = "none";
-            ckptEditBtn.style.display = "none";
-            ckptWrap.container.style.display = "block";
-            ckptWrap.element.focus();
-        });
         ckptWrap.element.addEventListener("change", () => {
             const val = ckptWrap.element.value;
             ckptBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select Checkpoint";
-            ckptBox.style.display = "block";
-            ckptEditBtn.style.display = "inline-block";
             ckptWrap.container.style.display = "none";
             tryAutoCover(val);
         });
@@ -311,8 +297,6 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
             setTimeout(() => {
                 const val = ckptWrap.element.value;
                 ckptBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select Checkpoint";
-                ckptBox.style.display = "block";
-                ckptEditBtn.style.display = "inline-block";
                 ckptWrap.container.style.display = "none";
                 tryAutoCover(val);
             }, 200);
@@ -320,27 +304,44 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
 
         function updateCkptUrlVisibility() {
             const hasUrl = !!ckptUrlInput.value;
-            ckptLinkIcon.style.display = hasUrl ? "inline" : "none";
+            ckptLinkIcon.style.display = hasUrl ? "inline-flex" : "none";
         }
         ckptUrlInput.addEventListener("change", updateCkptUrlVisibility);
         ckptUrlInput.addEventListener("input", updateCkptUrlVisibility);
         updateCkptUrlVisibility();
 
-        const vaeTeRow = document.createElement("div");
-        css(vaeTeRow, "display:flex;gap:8px;align-items:flex-start;");
+        const vaeSampRow = document.createElement("div");
+        css(vaeSampRow, "display:flex;gap:8px;align-items:flex-start;");
         const vaeColWrap = document.createElement("div");
         css(vaeColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
         vaeColWrap.appendChild(makeComfyLabel("VAE (optional)"));
         const vaeWrap = makeSearchableDropdown([], data.vae || "", "Select VAE...");
         vaeColWrap.appendChild(vaeWrap.container);
-        vaeTeRow.appendChild(vaeColWrap);
+        vaeSampRow.appendChild(vaeColWrap);
+        const sampColWrap = document.createElement("div");
+        css(sampColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        sampColWrap.appendChild(makeComfyLabel("Sampler"));
+        const samplerOpts = ["euler", "euler_ancestral", "heun", "heunpp2", "dpm_2", "dpm_2_ancestral", "lms", "dpm_fast", "dpm_adaptive", "dpmpp_2s_ancestral", "dpmpp_sde", "dpmpp_sde_gpu", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_2m_sde_gpu", "dpmpp_3m_sde", "dpmpp_3m_sde_gpu", "ddpm", "lcm", "ipndm", "ipndm_v", "deis", "res_multistep", "res_multistep_cfg", "res_multistep_turbo", "uni_pc", "uni_pc_bh2"].map(s => ({ value: s, label: s }));
+        const samplerDD = makeComfyDropdown(samplerOpts, data.sampler || "euler");
+        sampColWrap.appendChild(samplerDD.container);
+        vaeSampRow.appendChild(sampColWrap);
+        ckptCol.appendChild(vaeSampRow);
+        const teSchedRow = document.createElement("div");
+        css(teSchedRow, "display:flex;gap:8px;align-items:flex-start;");
         const teColWrap = document.createElement("div");
         css(teColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
         teColWrap.appendChild(makeComfyLabel("Text Encoder (optional)"));
         const teWrap = makeSearchableDropdown([], data.text_encoder || "", "Select text encoder...");
         teColWrap.appendChild(teWrap.container);
-        vaeTeRow.appendChild(teColWrap);
-        ckptCol.appendChild(vaeTeRow);
+        teSchedRow.appendChild(teColWrap);
+        const schedColWrap = document.createElement("div");
+        css(schedColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        schedColWrap.appendChild(makeComfyLabel("Scheduler"));
+        const schedOpts = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform"].map(s => ({ value: s, label: s }));
+        const schedDD = makeComfyDropdown(schedOpts, data.scheduler || "karras");
+        schedColWrap.appendChild(schedDD.container);
+        teSchedRow.appendChild(schedColWrap);
+        ckptCol.appendChild(teSchedRow);
         (async () => {
             try {
                 const vaes = await fetchVaes();
@@ -354,7 +355,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
             } catch { /* ignore */ }
         })();
 
-const numRow = document.createElement("div");
+        const numRow = document.createElement("div");
         css(numRow, "display:flex;gap:8px;align-items:flex-start;");
         const wWrap = document.createElement("div");
         css(wWrap, "flex:1;min-width:0;");
@@ -387,24 +388,6 @@ const numRow = document.createElement("div");
         cfgWrap.appendChild(cfgSlider);
         numRow.appendChild(cfgWrap);
         content.appendChild(numRow);
-
-        const sampSchedRow = document.createElement("div");
-        css(sampSchedRow, "display:flex;gap:8px;align-items:flex-start;");
-        const sampWrap = document.createElement("div");
-        css(sampWrap, "flex:1;min-width:0;max-width:160px;");
-        sampWrap.appendChild(makeComfyLabel("Sampler"));
-        const samplerOpts = ["euler", "euler_ancestral", "heun", "heunpp2", "dpm_2", "dpm_2_ancestral", "lms", "dpm_fast", "dpm_adaptive", "dpmpp_2s_ancestral", "dpmpp_sde", "dpmpp_sde_gpu", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_2m_sde_gpu", "dpmpp_3m_sde", "dpmpp_3m_sde_gpu", "ddpm", "lcm", "ipndm", "ipndm_v", "deis", "res_multistep", "res_multistep_cfg", "res_multistep_turbo", "uni_pc", "uni_pc_bh2"].map(s => ({ value: s, label: s }));
-        const samplerDD = makeComfyDropdown(samplerOpts, data.sampler || "euler");
-        sampWrap.appendChild(samplerDD.container);
-        sampSchedRow.appendChild(sampWrap);
-        const schedWrap = document.createElement("div");
-        css(schedWrap, "flex:1;min-width:0;max-width:120px;");
-        schedWrap.appendChild(makeComfyLabel("Scheduler"));
-        const schedOpts = ["normal", "karras", "exponential", "sgm_uniform", "simple", "ddim_uniform"].map(s => ({ value: s, label: s }));
-        const schedDD = makeComfyDropdown(schedOpts, data.scheduler || "karras");
-        schedWrap.appendChild(schedDD.container);
-        sampSchedRow.appendChild(schedWrap);
-        ckptCol.appendChild(sampSchedRow);
 
         const embRow = document.createElement("div");
         css(embRow, "display:flex;gap:8px;align-items:flex-start;");
