@@ -103,32 +103,18 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
 
         let baseRootSelect = null;
         if (mode !== "default") {
-            leftCol.appendChild(makeComfyLabel("Output base path"));
+            const basePathRow = document.createElement("div");
+            css(basePathRow, "display:flex;gap:8px;align-items:flex-start;");
+            const baseWrap = document.createElement("div");
+            css(baseWrap, "flex:0 0 auto;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            baseWrap.appendChild(makeComfyLabel("Base"));
             baseRootSelect = document.createElement("select");
-            css(baseRootSelect, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;");
-            leftCol.appendChild(baseRootSelect);
-            (async () => {
-                try {
-                    const r = await fetch("/flakes/roots?type=flakes");
-                    const d = await r.json();
-                    const roots = d.roots || [];
-                    baseRootSelect.replaceChildren();
-                    for (const root of roots) {
-                        const opt = document.createElement("option");
-                        opt.value = String(root.index);
-                        opt.textContent = `${root.label}: ${root.path}`;
-                        baseRootSelect.appendChild(opt);
-                    }
-                    if (!roots.length) {
-                        const opt = document.createElement("option");
-                        opt.textContent = "(no roots configured)";
-                        opt.value = "0";
-                        baseRootSelect.appendChild(opt);
-                    }
-                } catch { /* ignore */ }
-            })();
-
-            leftCol.appendChild(makeComfyLabel(mode === "create" ? "Path" : "Output path"));
+            css(baseRootSelect, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;box-sizing:border-box;");
+            baseWrap.appendChild(baseRootSelect);
+            basePathRow.appendChild(baseWrap);
+            const pathWrap = document.createElement("div");
+            css(pathWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            pathWrap.appendChild(makeComfyLabel(mode === "create" ? "Path" : "Output path"));
             pathInput = makeComfyInput(mode === "create" ? "" : (name || ""), "characters/musashi");
             const listId = `flake-dirs-${Math.random().toString(36).slice(2)}`;
             const dlist = document.createElement("datalist");
@@ -139,8 +125,32 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 dlist.appendChild(o);
             }
             pathInput.setAttribute("list", listId);
-            leftCol.appendChild(dlist);
-            leftCol.appendChild(pathInput);
+            pathWrap.appendChild(dlist);
+            pathWrap.appendChild(pathInput);
+            basePathRow.appendChild(pathWrap);
+            leftCol.appendChild(basePathRow);
+            (async () => {
+                try {
+                    const r = await fetch("/flakes/roots?type=flakes");
+                    const d = await r.json();
+                    const roots = d.roots || [];
+                    baseRootSelect.replaceChildren();
+                    for (const root of roots) {
+                        const opt = document.createElement("option");
+                        opt.value = String(root.index);
+                        const driveLetter = (root.path || "").replace(/\\/g, "/").match(/^\/?([A-Za-z]:)/)?.[1] || "";
+                        opt.textContent = driveLetter ? `${root.label} (${driveLetter})` : root.label;
+                        opt.title = `${root.label}: ${root.path}`;
+                        baseRootSelect.appendChild(opt);
+                    }
+                    if (!roots.length) {
+                        const opt = document.createElement("option");
+                        opt.textContent = "(no roots configured)";
+                        opt.value = "0";
+                        baseRootSelect.appendChild(opt);
+                    }
+                } catch { /* ignore */ }
+            })();
 
             // Auto-fill path from display name + tag (create mode only)
             let pathManuallyEdited = mode !== "create";
