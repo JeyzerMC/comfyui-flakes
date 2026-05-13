@@ -114,18 +114,8 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             basePathRow.appendChild(baseWrap);
             const pathWrap = document.createElement("div");
             css(pathWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            pathWrap.appendChild(makeComfyLabel(mode === "create" ? "Path" : "Output path"));
+            pathWrap.appendChild(makeComfyLabel("Output path"));
             pathInput = makeComfyInput(mode === "create" ? "" : (name || ""), "characters/musashi");
-            const listId = `flake-dirs-${Math.random().toString(36).slice(2)}`;
-            const dlist = document.createElement("datalist");
-            dlist.id = listId;
-            for (const d of dirs || []) {
-                const o = document.createElement("option");
-                o.value = `${d}/`;
-                dlist.appendChild(o);
-            }
-            pathInput.setAttribute("list", listId);
-            pathWrap.appendChild(dlist);
             pathWrap.appendChild(pathInput);
             basePathRow.appendChild(pathWrap);
             leftCol.appendChild(basePathRow);
