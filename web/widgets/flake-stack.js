@@ -87,28 +87,34 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onDrag
     }
 
     // Hover button group: Replace / Edit / Remove (only visible on hover)
+    function svgIcon(d, w = 14) {
+        const tpl = document.createElement("template");
+        tpl.innerHTML = `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+        return tpl.content.firstChild;
+    }
+
     if (!isDefault) {
         const hoverWrap = document.createElement("div");
         css(hoverWrap, "position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:6px;z-index:3;background:rgba(0,0,0,0.35);");
-        const HOVER_BTN = "width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);font-size:13px;line-height:1;";
+        const HOVER_BTN = "width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);";
 
         const replaceBtn = document.createElement("button");
         replaceBtn.title = "Replace Flake";
-        replaceBtn.textContent = "\u21C4";
+        replaceBtn.appendChild(svgIcon(`<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`));
         css(replaceBtn, HOVER_BTN);
         replaceBtn.addEventListener("click", (e) => { e.stopPropagation(); onReplace(idx); });
         hoverWrap.appendChild(replaceBtn);
 
         const editBtn = document.createElement("button");
         editBtn.title = "Edit Flake";
-        editBtn.textContent = "\u270E";
+        editBtn.appendChild(svgIcon(`<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`));
         css(editBtn, HOVER_BTN);
         editBtn.addEventListener("click", (e) => { e.stopPropagation(); onEdit(idx); });
         hoverWrap.appendChild(editBtn);
 
         const removeBtn = document.createElement("button");
         removeBtn.title = "Remove Flake";
-        removeBtn.textContent = "\u2715";
+        removeBtn.appendChild(svgIcon(`<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>`));
         css(removeBtn, HOVER_BTN);
         removeBtn.addEventListener("click", (e) => { e.stopPropagation(); onRemove(idx); });
         hoverWrap.appendChild(removeBtn);
