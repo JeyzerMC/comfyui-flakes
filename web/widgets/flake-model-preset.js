@@ -235,7 +235,7 @@ export function setupFlakeModelPresetWidget(node) {
 
     container.appendChild(selectedWrap);
 
-    function render() {
+    async function render() {
         const val = presetWidget.value || "";
         const isPlaceholder = !val || val === "Select a preset..." || val === "No model preset is selected";
         if (isPlaceholder) {
@@ -245,8 +245,14 @@ export function setupFlakeModelPresetWidget(node) {
             buttonRow.style.display = "none";
             selectedWrap.style.display = "flex";
             coverImg.src = `/flakes/preset_cover?name=${encodeURIComponent(val)}`;
-            nameLabel.textContent = val;
+            nameLabel.textContent = val.replace(/\\/g, "/").split("/").pop();
             nameLabel.title = val;
+            try {
+                const data = await fetchPreset(val);
+                if (data.display_name) {
+                    nameLabel.textContent = data.display_name;
+                }
+            } catch { /* fall back to path segment */ }
         }
     }
 
