@@ -356,7 +356,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         })();
 
         const numRow = document.createElement("div");
-        css(numRow, "display:flex;gap:8px;align-items:flex-start;");
+        css(numRow, "display:flex;gap:8px;align-items:flex-start;margin-top:-6px;");
         const wWrap = document.createElement("div");
         css(wWrap, "flex:1;min-width:0;");
         wWrap.appendChild(makeComfyLabel("Width"));

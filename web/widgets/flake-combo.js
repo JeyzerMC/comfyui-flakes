@@ -19,13 +19,9 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onO
     block.dataset.idx = String(idx);
     block.dataset.flakeBlock = "1";
 
-    const activeBorder = isActive && !isBypassed ? "border-top:2px solid #5a8acf;" : "border-top:2px solid transparent;";
-
     css(block, `position:relative;height:80px;background:${
         isBypassed ? "#1a1a1a" : "#2a2a2a"
-    };border:1px solid ${
-        isActive && !isBypassed ? "#5a8acf" : "#444"
-    };${activeBorder}border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;${
+    };border:1px solid #444;border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;${
         hasCover ? `background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;` : ""
     }${isBypassed ? "opacity:0.45;" : ""}`);
 
@@ -55,7 +51,7 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onO
     // Dark overlay for cover readability
     if (hasCover) {
         const overlay = document.createElement("div");
-        css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;");
+        css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;border-radius:3px;");
         block.appendChild(overlay);
     }
 
@@ -63,7 +59,7 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onO
     const fullName = entry.display_name || entry.name || "(missing)";
     const nameEl = document.createElement("div");
     nameEl.title = fullName;
-    css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
+    css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;border-radius:3px;");
     nameEl.textContent = fullName;
     block.appendChild(nameEl);
 
@@ -101,7 +97,7 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onO
     }
 
     const hoverWrap = document.createElement("div");
-    css(hoverWrap, "position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:6px;z-index:3;background:rgba(0,0,0,0.35);");
+    css(hoverWrap, "position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:6px;z-index:3;background:rgba(0,0,0,0.35);border-radius:3px;");
 
     const HOVER_BTN = "width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);";
 

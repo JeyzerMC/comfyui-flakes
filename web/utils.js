@@ -300,7 +300,7 @@ export function makeComfySlider(value, min, max, step) {
 
     const minusBtn = document.createElement("button");
     minusBtn.textContent = "\u2212";
-    css(minusBtn, "width:28px;height:32px;padding:0;background:transparent;color:#888;border:none;border-right:1px solid #333;cursor:pointer;font-size:14px;line-height:1;flex-shrink:0;transition:background 0.1s;");
+    css(minusBtn, "width:22px;height:32px;padding:0;background:transparent;color:#888;border:none;border-right:1px solid #333;cursor:pointer;font-size:14px;line-height:1;flex-shrink:0;transition:background 0.1s;");
     minusBtn.addEventListener("mouseenter", () => minusBtn.style.background = "#252525");
     minusBtn.addEventListener("mouseleave", () => minusBtn.style.background = "transparent");
 
@@ -310,7 +310,7 @@ export function makeComfySlider(value, min, max, step) {
 
     const plusBtn = document.createElement("button");
     plusBtn.textContent = "+";
-    css(plusBtn, "width:28px;height:32px;padding:0;background:transparent;color:#888;border:none;border-left:1px solid #333;cursor:pointer;font-size:14px;line-height:1;flex-shrink:0;transition:background 0.1s;");
+    css(plusBtn, "width:22px;height:32px;padding:0;background:transparent;color:#888;border:none;border-left:1px solid #333;cursor:pointer;font-size:14px;line-height:1;flex-shrink:0;transition:background 0.1s;");
     plusBtn.addEventListener("mouseenter", () => plusBtn.style.background = "#252525");
     plusBtn.addEventListener("mouseleave", () => plusBtn.style.background = "transparent");
 
@@ -322,24 +322,39 @@ export function makeComfySlider(value, min, max, step) {
     minusBtn.addEventListener("click", () => update(current - step));
     plusBtn.addEventListener("click", () => update(current + step));
 
-    valSpan.addEventListener("click", (e) => {
+    let didDrag = false;
+    valSpan.addEventListener("dblclick", (e) => {
         e.stopPropagation();
-        const input = document.createElement("input");
-        input.type = "number";
-        input.value = String(current);
-        input.step = String(step);
-        css(input, "flex:1;text-align:center;font-size:13px;color:#ddd;background:transparent;border:none;outline:none;height:32px;");
-        valSpan.replaceWith(input);
-        input.focus();
-        input.select();
-        function commit() {
-            const v = parseFloat(input.value);
-            if (!isNaN(v)) update(v);
-            input.replaceWith(valSpan);
+        if (valSpan.contentEditable === "true") return;
+        valSpan.contentEditable = "true";
+        valSpan.style.userSelect = "text";
+        valSpan.style.cursor = "text";
+        valSpan.focus();
+        const range = document.createRange();
+        range.selectNodeContents(valSpan);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+    });
+    function exitEdit() {
+        valSpan.contentEditable = "false";
+        valSpan.style.userSelect = "none";
+        valSpan.style.cursor = "ew-resize";
+        const v = parseFloat(valSpan.textContent);
+        if (!isNaN(v)) update(v);
+        valSpan.textContent = format(current);
+    }
+    valSpan.addEventListener("blur", exitEdit);
+    valSpan.addEventListener("keydown", (e) => {
+        if (valSpan.contentEditable !== "true") return;
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); valSpan.blur(); }
+        if (e.key === "Escape") {
+            valSpan.contentEditable = "false";
+            valSpan.style.userSelect = "none";
+            valSpan.style.cursor = "ew-resize";
             valSpan.textContent = format(current);
         }
-        input.addEventListener("blur", commit);
-        input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") { input.replaceWith(valSpan); valSpan.textContent = format(current); } });
     });
 
     let dragging = false;
@@ -348,9 +363,11 @@ export function makeComfySlider(value, min, max, step) {
     const pxPerStep = 4;
 
     valSpan.addEventListener("mousedown", (e) => {
+        if (valSpan.contentEditable === "true") return;
         e.preventDefault();
         e.stopPropagation();
         dragging = true;
+        didDrag = false;
         startX = e.clientX;
         startVal = current;
         valSpan.style.cursor = "grabbing";
@@ -359,6 +376,7 @@ export function makeComfySlider(value, min, max, step) {
     window.addEventListener("mousemove", (e) => {
         if (!dragging) return;
         const deltaPx = e.clientX - startX;
+        if (Math.abs(deltaPx) > 2) didDrag = true;
         const deltaSteps = Math.round(deltaPx / pxPerStep);
         const newVal = clamp(startVal + deltaSteps * step);
         if (newVal !== current) {
