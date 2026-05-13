@@ -42,13 +42,21 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         let baseRootDropdown = null;
         let availableRoots = [];
         if (mode === "create") {
-            content.appendChild(makeComfyLabel("Model family"));
+            const nameFamilyRow = document.createElement("div");
+            css(nameFamilyRow, "display:flex;gap:8px;align-items:flex-start;");
+            const familyWrap = document.createElement("div");
+            css(familyWrap, "flex:0 0 auto;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            familyWrap.appendChild(makeComfyLabel("Model family"));
             familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, family);
-            content.appendChild(familyDropdown.container);
-
-            content.appendChild(makeComfyLabel("Preset name"));
+            familyWrap.appendChild(familyDropdown.container);
+            nameFamilyRow.appendChild(familyWrap);
+            const nameWrap = document.createElement("div");
+            css(nameWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            nameWrap.appendChild(makeComfyLabel("Preset name"));
             nameInput = makeComfyInput("", "e.g. WAI Illustrious V17");
-            content.appendChild(nameInput);
+            nameWrap.appendChild(nameInput);
+            nameFamilyRow.appendChild(nameWrap);
+            content.appendChild(nameFamilyRow);
         } else {
             content.appendChild(makeComfyLabel("Preset name"));
             nameInput = makeComfyInput(data?.display_name || name, "");
