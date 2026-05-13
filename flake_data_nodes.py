@@ -166,7 +166,7 @@ class IntoFlakeDataSelect:
         return {
             "required": {
                 "flake_data": ("FLAKE_DATA",),
-                "active_pins": ("STRING", {"multiline": False, "default": '[]'}),
+                "active_pins": ("STRING", {"multiline": False, "default": '["model"]'}),
             },
             "optional": {
                 "model": ("MODEL",),
@@ -191,7 +191,7 @@ class IntoFlakeDataSelect:
     CATEGORY = "flakes"
     DESCRIPTION = "Override individual fields of an incoming FLAKE_DATA. Use the dropdown and +/- buttons to add/remove input pins. Only activated pins override the original data."
 
-    def execute(self, flake_data, active_pins='[]', model=None, clip=None, vae=None,
+    def execute(self, flake_data, active_pins='["model"]', model=None, clip=None, vae=None,
                 positive=None, negative=None, latent=None,
                 filename_prefix="", width=1024, height=1024,
                 steps=20, cfg=7.0, sampler_name="euler", scheduler="normal"):
