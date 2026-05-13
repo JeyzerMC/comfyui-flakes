@@ -64,6 +64,12 @@ export function fetchCnModels() {
     return CNMODELS_PROMISE;
 }
 
+let CN_TYPES_PROMISE = null;
+export function fetchCnTypes() {
+    if (!CN_TYPES_PROMISE) CN_TYPES_PROMISE = fetch("/flakes/cn_types").then(r => r.json()).then(d => d.types || []);
+    return CN_TYPES_PROMISE;
+}
+
 let INPUTS_PROMISE = null;
 export function fetchInputs() {
     if (!INPUTS_PROMISE) INPUTS_PROMISE = fetch("/flakes/inputs").then(r => r.json()).then(d => d.inputs || []);

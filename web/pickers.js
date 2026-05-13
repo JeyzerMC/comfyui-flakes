@@ -6,6 +6,7 @@ const BROWSE_TYPE_LABELS = {
     checkpoints: "models/checkpoints",
     loras: "models/loras",
     flakes: "models/flakes",
+    inputs: "input",
 };
 
 export async function openFileLoadPicker({ flakes, directories, family = "" }) {
@@ -463,7 +464,7 @@ export function openFileBrowser({ type, defaultPath = "" }) {
 
         const title = document.createElement("h3");
         css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
-        title.textContent = type === "checkpoints" ? "Select Checkpoint" : type === "loras" ? "Select LoRA" : "Select Flake";
+        title.textContent = type === "checkpoints" ? "Select Checkpoint" : type === "loras" ? "Select LoRA" : type === "inputs" ? "Select Input Image" : "Select Flake";
         content.appendChild(title);
 
         const pathBar = document.createElement("div");

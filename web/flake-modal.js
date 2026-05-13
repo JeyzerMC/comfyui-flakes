@@ -7,7 +7,7 @@ import {
     familyFolder,
 } from "./utils.js";
 import {
-    getCoverUrl, uploadCover, fetchLoras, fetchCnModels, fetchInputs,
+    getCoverUrl, uploadCover, fetchLoras, fetchCnModels, fetchCnTypes, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
 } from "./api.js";
@@ -214,6 +214,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         let coverSourcePath = data?.cover_image || null;
         let coverImg = null;
         let setCoverFromLora = null;
+        let setCoverFromCnImage = null;
 
         let baseRootSelectRef = null;
 
@@ -307,6 +308,14 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 } catch {
                     return false;
                 }
+            };
+
+            // Auto-cover from a controlnet input image when no cover has been chosen
+            setCoverFromCnImage = (imagePath) => {
+                if (coverFile || coverSourcePath || !imagePath) return false;
+                coverSourcePath = imagePath;
+                updateCoverPreview(`/view?filename=${encodeURIComponent(imagePath)}&type=input`);
+                return true;
             };
 
             coverWrap.appendChild(coverBox);
@@ -786,14 +795,104 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         for (let i = 0; i < arr.length; i++) {
                             const cn = arr[i];
                             const card = document.createElement("div");
-                            css(card, "background:#252525;padding:10px;border-radius:6px;display:flex;flex-direction:column;gap:6px;border:1px solid #333;");
+                            css(card, "background:#252525;padding:10px;border-radius:6px;display:flex;flex-direction:row;gap:10px;border:1px solid #333;");
 
-                            const topRow = document.createElement("div");
-                            css(topRow, "display:flex;gap:6px;align-items:center;");
-                            const typeInput = makeComfyInput(cn.type || "", "type (e.g. openpose)");
-                            typeInput.style.flex = "1";
-                            typeInput.addEventListener("change", () => { arr[i].type = typeInput.value; });
-                            topRow.appendChild(typeInput);
+                            // Left: input image with file picker
+                            const imageCol = document.createElement("div");
+                            css(imageCol, "display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto;");
+
+                            const imgBox = document.createElement("div");
+                            css(imgBox, "width:80px;height:80px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
+                            const imgPreview = document.createElement("img");
+                            css(imgPreview, "width:100%;height:100%;object-fit:cover;display:none;");
+                            imgBox.appendChild(imgPreview);
+                            const imgLabel = document.createElement("span");
+                            imgLabel.textContent = "image";
+                            css(imgLabel, "font-size:10px;color:#666;pointer-events:none;");
+                            imgBox.appendChild(imgLabel);
+
+                            const imgFileInput = document.createElement("input");
+                            imgFileInput.type = "file";
+                            imgFileInput.accept = ".png,.jpg,.jpeg,.webp,.gif";
+                            imgFileInput.style.display = "none";
+
+                            const cnImagePath = cn.image || cn.image_name || "";
+
+                            function updateCnImgPreview(src) {
+                                if (src) {
+                                    imgPreview.src = src;
+                                    imgPreview.style.display = "block";
+                                    imgLabel.style.display = "none";
+                                } else {
+                                    imgPreview.style.display = "none";
+                                    imgLabel.style.display = "block";
+                                }
+                            }
+
+                            if (cnImagePath) {
+                                updateCnImgPreview(`/view?filename=${encodeURIComponent(cnImagePath)}&type=input`);
+                            }
+
+                            imgBox.addEventListener("click", async () => {
+                                const result = await openFileBrowser({ type: "inputs", defaultPath: "" });
+                                if (result && result.file) {
+                                    arr[i].image = result.file;
+                                    updateCnImgPreview(`/view?filename=${encodeURIComponent(result.file)}&type=input`);
+                                    if (!coverFile && !coverSourcePath && setCoverFromCnImage) setCoverFromCnImage(result.file);
+                                }
+                            });
+
+                            imgFileInput.addEventListener("change", () => {
+                                const file = imgFileInput.files?.[0];
+                                if (file) {
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                        updateCnImgPreview(reader.result);
+                                    };
+                                    reader.readAsDataURL(file);
+                                }
+                            });
+
+                            imageCol.appendChild(imgBox);
+                            imageCol.appendChild(imgFileInput);
+                            card.appendChild(imageCol);
+
+                            // Right: type, model, sliders
+                            const rightCol = document.createElement("div");
+                            css(rightCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;");
+
+                            // Row 1: Type dropdown + remove button
+                            const typeRow = document.createElement("div");
+                            css(typeRow, "display:flex;gap:4px;align-items:center;");
+
+                            const typeDropdown = makeComfyDropdown(
+                                [{ value: "", label: "\u2014 type \u2014" }],
+                                cn.type || "",
+                            );
+                            (async () => {
+                                try {
+                                    const types = await fetchCnTypes();
+                                    for (const t of types) {
+                                        const o = document.createElement("option");
+                                        o.value = t;
+                                        o.textContent = t;
+                                        if (t === cn.type) o.selected = true;
+                                        typeDropdown.element.appendChild(o);
+                                    }
+                                } catch { /* ignore */ }
+                            })();
+                            typeDropdown.element.addEventListener("change", () => { arr[i].type = typeDropdown.element.value; });
+                            typeDropdown.container.style.flex = "1";
+                            typeRow.appendChild(typeDropdown.container);
+
+                            const removeBtn = makeSmallButton("\u2715");
+                            removeBtn.addEventListener("click", () => { arr.splice(i, 1); renderCNs(); });
+                            typeRow.appendChild(removeBtn);
+                            rightCol.appendChild(typeRow);
+
+                            // Row 2: Model file
+                            const modelRow = document.createElement("div");
+                            css(modelRow, "display:flex;gap:4px;align-items:center;");
 
                             const modelInput = makeComfyInput(cn.model || cn.model_name || "", "model file");
                             const cnModelListId = `cnm-${Math.random().toString(36).slice(2)}`;
@@ -801,49 +900,47 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             cnModelList.id = cnModelListId;
                             modelInput.setAttribute("list", cnModelListId);
                             modelInput.addEventListener("change", () => { arr[i].model = modelInput.value; });
-                            modelInput.style.flex = "2";
-                            topRow.appendChild(modelInput);
-                            topRow.appendChild(cnModelList);
+                            modelInput.style.flex = "1";
+                            modelRow.appendChild(modelInput);
+                            modelRow.appendChild(cnModelList);
                             (async () => {
                                 try {
                                     const cns = await fetchCnModels();
                                     for (const c of cns) { const o = document.createElement("option"); o.value = c; cnModelList.appendChild(o); }
                                 } catch { /* ignore */ }
                             })();
+                            rightCol.appendChild(modelRow);
 
-                            const removeBtn = makeSmallButton("\u2715");
-                            removeBtn.addEventListener("click", () => { arr.splice(i, 1); renderCNs(); });
-                            topRow.appendChild(removeBtn);
-                            card.appendChild(topRow);
+                            // Row 3: Sliders
+                            const slidersRow = document.createElement("div");
+                            css(slidersRow, "display:flex;gap:4px;align-items:center;");
 
-                            const midRow = document.createElement("div");
-                            css(midRow, "display:flex;gap:6px;align-items:center;");
-                            const imgInput = makeComfyInput(cn.image || cn.image_name || "", "input image");
-                            const imgListId = `img-list-${Math.random().toString(36).slice(2)}`;
-                            const imgList = document.createElement("datalist");
-                            imgList.id = imgListId;
-                            imgInput.setAttribute("list", imgListId);
-                            imgInput.addEventListener("change", () => { arr[i].image = imgInput.value; });
-                            imgInput.style.flex = "1";
-                            midRow.appendChild(imgInput);
-                            midRow.appendChild(imgList);
-                            (async () => {
-                                try {
-                                    const inputs = await fetchInputs();
-                                    for (const inp of inputs) { const o = document.createElement("option"); o.value = inp; imgList.appendChild(o); }
-                                } catch { /* ignore */ }
-                            })();
-                            card.appendChild(midRow);
-
-                            const botRow = document.createElement("div");
-                            css(botRow, "display:flex;gap:6px;align-items:center;");
+                            const strLabel = document.createElement("span");
+                            strLabel.textContent = "Str";
+                            css(strLabel, "font-size:10px;color:#888;flex-shrink:0;");
+                            slidersRow.appendChild(strLabel);
                             const strSlider = makeComfyValueSlider(cn.strength ?? 1.0, 0, 2, 0.05);
-                            botRow.appendChild(strSlider);
+                            strSlider.style.flex = "1";
+                            slidersRow.appendChild(strSlider);
+
+                            const startLabel = document.createElement("span");
+                            startLabel.textContent = "Start";
+                            css(startLabel, "font-size:10px;color:#888;flex-shrink:0;");
+                            slidersRow.appendChild(startLabel);
                             const startSlider = makeComfyValueSlider(cn.start_percent ?? 0, 0, 1, 0.05);
-                            botRow.appendChild(startSlider);
+                            startSlider.style.flex = "1";
+                            slidersRow.appendChild(startSlider);
+
+                            const endLabel = document.createElement("span");
+                            endLabel.textContent = "End";
+                            css(endLabel, "font-size:10px;color:#888;flex-shrink:0;");
+                            slidersRow.appendChild(endLabel);
                             const endSlider = makeComfyValueSlider(cn.end_percent ?? 1, 0, 1, 0.05);
-                            botRow.appendChild(endSlider);
-                            card.appendChild(botRow);
+                            endSlider.style.flex = "1";
+                            slidersRow.appendChild(endSlider);
+
+                            rightCol.appendChild(slidersRow);
+                            card.appendChild(rightCol);
                             cnsBox.appendChild(card);
                         }
 

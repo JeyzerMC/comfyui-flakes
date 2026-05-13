@@ -183,6 +183,14 @@ async def _list_controlnets(_request: web.Request) -> web.Response:
     return web.json_response({"controlnets": _shorten_filenames(cns)})
 
 
+@routes.get("/flakes/cn_types")
+async def _list_cn_types(_request: web.Request) -> web.Response:
+    return web.json_response({"types": [
+        "openpose", "depth", "canny", "lineart", "lineart_anime",
+        "softedge", "scribble", "normalbae", "seg", "tile", "ip2p",
+    ]})
+
+
 @routes.get("/flakes/checkpoints")
 async def _list_checkpoints(_request: web.Request) -> web.Response:
     try:
@@ -559,17 +567,21 @@ async def _upload_preset_cover(request: web.Request) -> web.Response:
 # File browser (custom directory picker backed by Python)
 # ---------------------------------------------------------------------------
 
-_BROWSE_TYPES = ("checkpoints", "loras", "flakes")
+_BROWSE_TYPES = ("checkpoints", "loras", "flakes", "inputs")
 
 _BROWSE_FILTERS = {
     "checkpoints": (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".sft"),
     "loras": (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".sft"),
     "flakes": (".yaml", ".yml"),
+    "inputs": (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"),
 }
 
 
 def _get_browse_roots(browse_type: str) -> list[str]:
     """Resolve folder roots dynamically at request time."""
+    if browse_type == "inputs":
+        input_dir = folder_paths.get_input_directory()
+        return [input_dir] if input_dir and os.path.isdir(input_dir) else []
     try:
         paths = folder_paths.get_folder_paths(browse_type)
     except Exception:
