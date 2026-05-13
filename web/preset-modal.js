@@ -147,7 +147,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         css(presetCoverWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;margin:8px 0;");
 
         const presetCoverBox = document.createElement("div");
-        css(presetCoverBox, "width:100px;height:100px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex-shrink:0;");
+        css(presetCoverBox, "width:140px;height:200px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex-shrink:0;");
 
         presetCoverImg = document.createElement("img");
         css(presetCoverImg, "width:100%;height:100%;object-fit:cover;display:none;");
@@ -326,14 +326,39 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         ckptUrlInput.addEventListener("input", updateCkptUrlVisibility);
         updateCkptUrlVisibility();
 
+        const vaeTeRow = document.createElement("div");
+        css(vaeTeRow, "display:flex;gap:8px;align-items:flex-start;");
+        const vaeColWrap = document.createElement("div");
+        css(vaeColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        vaeColWrap.appendChild(makeComfyLabel("VAE (optional)"));
+        const vaeWrap = makeSearchableDropdown([], data.vae || "", "Select VAE...");
+        vaeColWrap.appendChild(vaeWrap.container);
+        vaeTeRow.appendChild(vaeColWrap);
+        const teColWrap = document.createElement("div");
+        css(teColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        teColWrap.appendChild(makeComfyLabel("Text Encoder (optional)"));
+        const teWrap = makeSearchableDropdown([], data.text_encoder || "", "Select text encoder...");
+        teColWrap.appendChild(teWrap.container);
+        vaeTeRow.appendChild(teColWrap);
+        ckptCol.appendChild(vaeTeRow);
+        (async () => {
+            try {
+                const vaes = await fetchVaes();
+                for (const v of vaes) vaeWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: v }));
+            } catch { /* ignore */ }
+            try {
+                const r = await fetch("/flakes/text_encoders");
+                const d = await r.json();
+                const tes = d.text_encoders || [];
+                for (const t of tes) teWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: t }));
+            } catch { /* ignore */ }
+        })();
+
         const sliderRow = document.createElement("div");
         css(sliderRow, "display:flex;gap:8px;align-items:flex-start;");
         const csWrap = document.createElement("div");
         css(csWrap, "flex:1;min-width:0;");
         csWrap.appendChild(makeComfyLabel("Clip Skip"));
-        // Display Clip Skip as a positive value (CivitAI convention). The
-        // underlying ComfyUI CLIPSetLastLayer uses negative indices, so we
-        // negate when reading from / writing to the preset payload.
         const csSlider = makeComfyValueSlider(Math.abs(data.clip_skip ?? -2), 1, 24, 1);
         csWrap.appendChild(csSlider);
         sliderRow.appendChild(csWrap);
@@ -350,16 +375,6 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         cfgWrap.appendChild(cfgSlider);
         sliderRow.appendChild(cfgWrap);
         content.appendChild(sliderRow);
-
-        content.appendChild(makeComfyLabel("VAE (optional)"));
-        const vaeWrap = makeSearchableDropdown([], data.vae || "", "Select VAE...");
-        content.appendChild(vaeWrap.container);
-        (async () => {
-            try {
-                const vaes = await fetchVaes();
-                for (const v of vaes) vaeWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: v }));
-            } catch { /* ignore */ }
-        })();
 
         const sampSchedRow = document.createElement("div");
         css(sampSchedRow, "display:flex;gap:8px;align-items:flex-start;");
@@ -457,6 +472,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
                 checkpoint_url: ckptUrlInput.value || "",
                 clip_skip: -Math.abs(csSlider.getValue()),
                 vae: vaeWrap.element.value || null,
+                text_encoder: teWrap.element.value || null,
                 steps: stepsSlider.getValue(),
                 cfg: cfgSlider.getValue(),
                 sampler: samplerDD.element.value,

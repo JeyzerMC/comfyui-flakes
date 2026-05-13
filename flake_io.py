@@ -48,6 +48,7 @@ class ModelPreset:
     scheduler: str = "karras"
     width: int = 832
     height: int = 1216
+    text_encoder: str | None = None
     positive: str = ""
     negative: str = ""
     embeddings: list[str] = field(default_factory=list)
@@ -744,6 +745,7 @@ def load_preset(name: str) -> ModelPreset:
         checkpoint_url=str(raw.get("checkpoint_url", "")),
         clip_skip=int(raw.get("clip_skip", -2)),
         vae=raw.get("vae") or None,
+        text_encoder=raw.get("text_encoder") or None,
         steps=int(raw.get("steps", 20)),
         cfg=float(raw.get("cfg", 4.0)),
         sampler=str(raw.get("sampler", "dpmpp_2m")),

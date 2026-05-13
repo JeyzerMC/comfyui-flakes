@@ -186,6 +186,30 @@ async def _list_vaes(_request: web.Request) -> web.Response:
     return web.json_response({"vaes": _shorten_filenames(vaes)})
 
 
+@routes.get("/flakes/text_encoders")
+async def _list_text_encoders(_request: web.Request) -> web.Response:
+    try:
+        te_paths = folder_paths.get_filename_paths("text_encoders") if hasattr(folder_paths, "get_filename_paths") and folder_paths.get_filename_paths("text_encoders") else []
+        tes = folder_paths.get_filename_list("text_encoders") if os.environ.get("FLAKES_TEXT_ENCODER_FOLDER") or True else []
+    except Exception:
+        tes = []
+    try:
+        if not tes:
+            te_dir = folder_paths.get_folder_paths("text_encoders") if hasattr(folder_paths, "get_folder_paths") else []
+            if isinstance(te_dir, str):
+                te_dir = [te_dir]
+            for d in te_dir:
+                if os.path.isdir(d):
+                    for dirpath, _, filenames in os.walk(d):
+                        for fn in filenames:
+                            if fn.lower().endswith((".safetensors", ".bin", ".pt", ".ckpt")):
+                                rel = os.path.relpath(os.path.join(dirpath, fn), d).replace(os.sep, "/")
+                                tes.append(rel)
+    except Exception:
+        pass
+    return web.json_response({"text_encoders": _shorten_filenames(tes)})
+
+
 @routes.get("/flakes/inputs")
 async def _list_inputs(_request: web.Request) -> web.Response:
     try:

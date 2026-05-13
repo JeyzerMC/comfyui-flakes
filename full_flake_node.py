@@ -82,6 +82,21 @@ def _load_preset_bundle(preset_name: str):
             vae_sd = comfy.utils.load_torch_file(vae_path)
             vae = comfy.sd.VAE(sd=vae_sd)
 
+    # --- Optional text encoder override ------------------------------------
+    if preset_data.text_encoder:
+        te_path = folder_paths.get_full_path("text_encoders", preset_data.text_encoder)
+        if te_path and os.path.isfile(te_path):
+            te_sd = comfy.utils.load_torch_file(te_path)
+            _, clip, _ = comfy.sd.load_checkpoint_guess_config(
+                te_path,
+                output_vae=False,
+                output_clip=True,
+                embedding_directory=embedding_dir,
+            )
+            if preset_data.clip_skip:
+                clip = clip.clone()
+                clip.clip_layer(preset_data.clip_skip)
+
     # --- Encode prompts -----------------------------------------------------
     encoder = CLIPTextEncode()
     pos_text = preset_data.positive.strip()
