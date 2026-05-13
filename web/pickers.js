@@ -264,7 +264,7 @@ export async function openPresetPicker({ selected = "", family = "" } = {}) {
 
         let selectedName = selected || null;
         let selectedEl = null;
-        let currentFolder = "";
+        let currentFolder = familyFolder(family) || "";
 
         function normPath(p) {
             return p.replace(/\\/g, "/");
