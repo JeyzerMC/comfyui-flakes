@@ -175,26 +175,105 @@ export function makeSearchableDropdown(items = [], value = "", placeholder = "")
     const wrap = document.createElement("div");
     css(wrap, "position:relative;width:100%;");
 
+    const row = document.createElement("div");
+    css(row, "position:relative;display:flex;align-items:center;");
+    wrap.appendChild(row);
+
     const el = document.createElement("input");
     el.type = "text";
     el.value = value;
     el.placeholder = placeholder;
-    const listId = `sd-${Math.random().toString(36).slice(2,9)}`;
-    el.setAttribute("list", listId);
-    css(el, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;outline:none;");
+    css(el, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 28px 6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;outline:none;");
     el.addEventListener("focus", () => { el.style.borderColor = "#555"; });
     el.addEventListener("blur", () => { el.style.borderColor = "#333"; });
 
-    const datalist = document.createElement("datalist");
-    datalist.id = listId;
-    for (const item of items) {
-        const o = document.createElement("option");
-        o.value = item;
-        datalist.appendChild(o);
+    const arrowBtn = document.createElement("button");
+    arrowBtn.type = "button";
+    arrowBtn.tabIndex = -1;
+    arrowBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>`;
+    css(arrowBtn, "position:absolute;right:4px;top:50%;transform:translateY(-50%);background:transparent;border:none;cursor:pointer;padding:2px;display:flex;align-items:center;justify-content:center;z-index:2;line-height:1;");
+    arrowBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (dropdown.style.display === "block") {
+            closeDropdown();
+        } else {
+            openDropdown();
+        }
+    });
+
+    row.appendChild(el);
+    row.appendChild(arrowBtn);
+
+    const dropdown = document.createElement("div");
+    css(dropdown, "position:absolute;top:calc(100% + 2px);left:0;right:0;max-height:200px;overflow-y:auto;background:#1e1e1e;border:1px solid #444;border-radius:6px;z-index:200;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.5);");
+    wrap.appendChild(dropdown);
+
+    let allItems = [...items];
+    let dropdownOpen = false;
+
+    function renderDropdown(filter = "") {
+        dropdown.replaceChildren();
+        const lower = filter.toLowerCase();
+        const filtered = allItems.filter(item => !lower || item.toLowerCase().includes(lower));
+        if (filtered.length === 0) {
+            const empty = document.createElement("div");
+            css(empty, "padding:6px 8px;font-size:12px;color:#666;");
+            empty.textContent = "No matches";
+            dropdown.appendChild(empty);
+            return;
+        }
+        for (const item of filtered) {
+            const opt = document.createElement("div");
+            opt.textContent = item;
+            css(opt, "padding:4px 8px;cursor:pointer;font-size:12px;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
+            opt.addEventListener("mouseenter", () => { opt.style.background = "#333"; });
+            opt.addEventListener("mouseleave", () => { opt.style.background = "transparent"; });
+            opt.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                el.value = item;
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+                closeDropdown();
+            });
+            dropdown.appendChild(opt);
+        }
     }
 
-    wrap.appendChild(el);
-    wrap.appendChild(datalist);
+    function openDropdown() {
+        dropdownOpen = true;
+        dropdown.style.display = "block";
+        renderDropdown(el.value);
+    }
+
+    function closeDropdown() {
+        dropdownOpen = false;
+        dropdown.style.display = "none";
+    }
+
+    el.addEventListener("focus", () => { openDropdown(); });
+    el.addEventListener("input", () => {
+        if (dropdownOpen) renderDropdown(el.value);
+    });
+    el.addEventListener("dblclick", () => {
+        el.select();
+        openDropdown();
+    });
+
+    document.addEventListener("mousedown", (e) => {
+        if (!wrap.contains(e.target)) closeDropdown();
+    });
+
+    const datalist = {
+        appendChild(child) {
+            if (child.tagName === "OPTION" && child.value) {
+                allItems.push(child.value);
+            }
+            return child;
+        },
+    };
+
     return { element: el, datalist, container: wrap };
 }
 
