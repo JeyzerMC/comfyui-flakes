@@ -46,27 +46,27 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
 
         let displayNameInput = null;
         if (mode !== "default") {
-            leftCol.appendChild(makeComfyLabel("Display name"));
-            displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
-            leftCol.appendChild(displayNameInput);
-        }
-
-        let pathInput = null;
-        let familyDropdown = null;
-        let selectedType = data.flake_type || "";
-        let typeChecks = null;
-        const FAMILY_OPTIONS = [
-            { value: "SDXL/Base", label: "SDXL/Base" },
-            { value: "SDXL/Illustrious", label: "SDXL/Illustrious" },
-            { value: "SDXL/Pony", label: "SDXL/Pony" },
-            { value: "ZImage/Base", label: "ZImage/Base" },
-            { value: "ZImage/Turbo", label: "ZImage/Turbo" },
-            { value: "Common", label: "Common" },
-        ];
-        if (mode === "create") {
-            leftCol.appendChild(makeComfyLabel("Model family"));
-            familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, family);
-            leftCol.appendChild(familyDropdown.container);
+            if (mode === "create") {
+                const nameFamilyRow = document.createElement("div");
+                css(nameFamilyRow, "display:flex;gap:8px;align-items:flex-start;");
+                const familyWrap = document.createElement("div");
+                css(familyWrap, "flex:0 0 auto;min-width:0;display:flex;flex-direction:column;gap:4px;");
+                familyWrap.appendChild(makeComfyLabel("Model family"));
+                familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, family);
+                familyWrap.appendChild(familyDropdown.container);
+                nameFamilyRow.appendChild(familyWrap);
+                const nameWrap = document.createElement("div");
+                css(nameWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+                nameWrap.appendChild(makeComfyLabel("Display name"));
+                displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
+                nameWrap.appendChild(displayNameInput);
+                nameFamilyRow.appendChild(nameWrap);
+                leftCol.appendChild(nameFamilyRow);
+            } else {
+                leftCol.appendChild(makeComfyLabel("Display name"));
+                displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
+                leftCol.appendChild(displayNameInput);
+            }
         }
 
         // ---- Flake Type (mutually exclusive tags) — available in create and edit ----
@@ -202,7 +202,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             css(coverWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
 
             const coverBox = document.createElement("div");
-            css(coverBox, "width:80px;height:80px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
+            css(coverBox, "width:120px;height:160px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
 
             coverImg = document.createElement("img");
             css(coverImg, "width:100%;height:100%;object-fit:cover;display:none;");
