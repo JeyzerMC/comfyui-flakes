@@ -44,7 +44,7 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onO
     // Strikethrough for bypassed state
     if (isBypassed) {
         const strike = document.createElement("div");
-        css(strike, "position:absolute;top:50%;left:10%;right:10%;height:2px;background:rgba(200,60,60,0.7);transform:translateY(-50%);z-index:4;pointer-events:none;");
+        css(strike, "position:absolute;top:50%;left:10%;right:10%;height:2.5px;background:rgba(230,90,90,0.85);transform:translateY(-50%) rotate(-30deg);z-index:4;pointer-events:none;");
         block.appendChild(strike);
     }
 
