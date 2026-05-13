@@ -45,6 +45,18 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         css(leftCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
 
         let displayNameInput = null;
+        let pathInput = null;
+        let familyDropdown = null;
+        let selectedType = data.flake_type || "";
+        let typeChecks = null;
+        const FAMILY_OPTIONS = [
+            { value: "SDXL/Base", label: "SDXL/Base" },
+            { value: "SDXL/Illustrious", label: "SDXL/Illustrious" },
+            { value: "SDXL/Pony", label: "SDXL/Pony" },
+            { value: "ZImage/Base", label: "ZImage/Base" },
+            { value: "ZImage/Turbo", label: "ZImage/Turbo" },
+            { value: "Common", label: "Common" },
+        ];
         if (mode !== "default") {
             if (mode === "create") {
                 const nameFamilyRow = document.createElement("div");
