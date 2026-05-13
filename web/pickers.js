@@ -248,7 +248,10 @@ export async function openPresetPicker({ selected = "", family = "" } = {}) {
         title.textContent = "Select a Preset";
         content.appendChild(title);
 
-        // Search bar
+        const pathBar = document.createElement("div");
+        css(pathBar, "font-size:11px;color:#888;margin-bottom:6px;word-break:break-all;cursor:pointer;");
+        content.appendChild(pathBar);
+
         const searchRow = document.createElement("div");
         css(searchRow, "margin-bottom:8px;");
         const searchInput = makeComfyInput("", "Search presets...");
@@ -261,66 +264,176 @@ export async function openPresetPicker({ selected = "", family = "" } = {}) {
 
         let selectedName = selected || null;
         let selectedEl = null;
+        let currentFolder = "";
+
+        function normPath(p) {
+            return p.replace(/\\/g, "/");
+        }
+
+        function getSubfolders(folder) {
+            const prefix = folder ? normPath(folder) + "/" : "";
+            const subs = new Set();
+            for (const p of presets) {
+                const n = normPath(p);
+                if (!n.startsWith(prefix)) continue;
+                const rest = n.slice(prefix.length);
+                if (!rest) continue;
+                const slashIdx = rest.indexOf("/");
+                if (slashIdx === -1) continue;
+                subs.add(rest.slice(0, slashIdx));
+            }
+            return [...subs].sort();
+        }
+
+        function getPresetsInFolder(folder) {
+            const prefix = folder ? normPath(folder) + "/" : "";
+            return presets.filter(p => {
+                const n = normPath(p);
+                if (!prefix) return !n.includes("/");
+                if (!n.startsWith(prefix)) return false;
+                return !n.slice(prefix.length).includes("/");
+            }).sort();
+        }
+
+        function renderBreadcrumb() {
+            const base = "model_presets/";
+            pathBar.textContent = base + (currentFolder ? normPath(currentFolder) + "/" : "");
+        }
+
+        function makePresetThumb(name) {
+            const thumb = document.createElement("div");
+            css(thumb, `position:relative;height:100px;background:#2a2a2a;border:2px solid ${name === selectedName ? "#2a6acf" : "#444"};border-radius:6px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(name)});background-size:cover;background-position:center;transition:border-color 0.15s ease;`);
+
+            const overlay = document.createElement("div");
+            css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.4);pointer-events:none;z-index:0;transition:background 0.15s ease;");
+            thumb.appendChild(overlay);
+
+            const nameAfterSlash = name.replace(/\\/g, "/").split("/").pop() || name;
+            const nameEl = document.createElement("div");
+            nameEl.title = name;
+            css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.9);padding:6px 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
+            nameEl.textContent = nameAfterSlash;
+            thumb.appendChild(nameEl);
+
+            thumb.addEventListener("mouseenter", () => {
+                thumb.style.borderColor = "#555";
+                overlay.style.background = "rgba(0,0,0,0.25)";
+            });
+            thumb.addEventListener("mouseleave", () => {
+                thumb.style.borderColor = name === selectedName ? "#2a6acf" : "#444";
+                overlay.style.background = "rgba(0,0,0,0.4)";
+            });
+
+            thumb.addEventListener("click", () => {
+                if (selectedEl) {
+                    selectedEl.style.borderColor = "#444";
+                }
+                selectedName = name;
+                selectedEl = thumb;
+                thumb.style.borderColor = "#2a6acf";
+            });
+            thumb.addEventListener("dblclick", () => {
+                close({ name });
+            });
+
+            if (name === selectedName) {
+                selectedEl = thumb;
+            }
+
+            return thumb;
+        }
 
         function renderGrid(filter = "") {
             grid.replaceChildren();
             selectedEl = null;
             const term = String(filter || "").toLowerCase().trim();
-            const filtered = term
-                ? presets.filter(n => String(n || "").toLowerCase().includes(term))
-                : presets;
+            renderBreadcrumb();
 
-            if (filtered.length === 0) {
-                const empty = document.createElement("div");
-                empty.textContent = term ? "No presets found." : "No presets available.";
-                css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;grid-column:1 / -1;");
-                grid.appendChild(empty);
+            if (term) {
+                const prefix = currentFolder ? normPath(currentFolder) + "/" : "";
+                const scoped = prefix
+                    ? presets.filter(n => normPath(n).startsWith(prefix))
+                    : presets;
+                const filtered = scoped.filter(n => normPath(n).slice(prefix.length).toLowerCase().includes(term));
+                if (filtered.length === 0) {
+                    const empty = document.createElement("div");
+                    empty.textContent = "No presets found.";
+                    css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;grid-column:1 / -1;");
+                    grid.appendChild(empty);
+                    return;
+                }
+                for (const name of filtered) {
+                    grid.appendChild(makePresetThumb(name));
+                }
                 return;
             }
 
-            for (const name of filtered) {
-                const thumb = document.createElement("div");
-                css(thumb, `position:relative;height:100px;background:#2a2a2a;border:2px solid ${name === selectedName ? "#2a6acf" : "#444"};border-radius:6px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(name)});background-size:cover;background-position:center;transition:border-color 0.15s ease;`);
+            const subfolders = getSubfolders(currentFolder);
+            const folderPresets = getPresetsInFolder(currentFolder);
 
-                const overlay = document.createElement("div");
-                css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.4);pointer-events:none;z-index:0;transition:background 0.15s ease;");
-                thumb.appendChild(overlay);
-
-                const nameAfterSlash = name.replace(/\\/g, "/").split("/").pop() || name;
-                const nameEl = document.createElement("div");
-                nameEl.title = name;
-                css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.9);padding:6px 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
-                nameEl.textContent = nameAfterSlash;
-                thumb.appendChild(nameEl);
-
-                thumb.addEventListener("mouseenter", () => {
-                    thumb.style.borderColor = "#555";
-                    overlay.style.background = "rgba(0,0,0,0.25)";
+            if (currentFolder) {
+                const upItem = document.createElement("div");
+                css(upItem, "height:100px;background:#252525;border:1px solid #444;border-radius:6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
+                const upIcon = document.createElement("div");
+                upIcon.textContent = "\u2191";
+                css(upIcon, "font-size:24px;color:#888;");
+                const upLabel = document.createElement("div");
+                upLabel.textContent = "..";
+                css(upLabel, "font-size:10px;color:#aaa;");
+                upItem.appendChild(upIcon);
+                upItem.appendChild(upLabel);
+                upItem.addEventListener("click", () => {
+                    const parts = normPath(currentFolder).split("/").filter(Boolean);
+                    parts.pop();
+                    currentFolder = parts.join("/");
+                    searchInput.value = "";
+                    renderGrid();
                 });
-                thumb.addEventListener("mouseleave", () => {
-                    thumb.style.borderColor = name === selectedName ? "#2a6acf" : "#444";
-                    overlay.style.background = "rgba(0,0,0,0.4)";
-                });
+                upItem.addEventListener("dblclick", (e) => e.stopPropagation());
+                grid.appendChild(upItem);
+            }
 
-                thumb.addEventListener("click", () => {
-                    if (selectedEl) {
-                        selectedEl.style.borderColor = "#444";
-                    }
-                    selectedName = name;
-                    selectedEl = thumb;
-                    thumb.style.borderColor = "#2a6acf";
+            for (const sub of subfolders) {
+                const folderItem = document.createElement("div");
+                css(folderItem, "height:100px;background:#252525;border:1px solid #444;border-radius:6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
+                const fIcon = document.createElement("div");
+                fIcon.textContent = "\uD83D\uDCC1";
+                css(fIcon, "font-size:32px;");
+                const fLabel = document.createElement("div");
+                fLabel.textContent = sub;
+                css(fLabel, "font-size:10px;color:#ddd;text-align:center;padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;");
+                folderItem.appendChild(fIcon);
+                folderItem.appendChild(fLabel);
+                folderItem.addEventListener("click", () => {
+                    currentFolder = currentFolder ? normPath(currentFolder) + "/" + sub : sub;
+                    searchInput.value = "";
+                    renderGrid();
                 });
-                thumb.addEventListener("dblclick", () => {
-                    close({ name });
+                folderItem.addEventListener("dblclick", () => {
+                    currentFolder = currentFolder ? normPath(currentFolder) + "/" + sub : sub;
+                    searchInput.value = "";
+                    renderGrid();
                 });
+                grid.appendChild(folderItem);
+            }
 
-                if (name === selectedName) {
-                    selectedEl = thumb;
-                }
+            for (const name of folderPresets) {
+                grid.appendChild(makePresetThumb(name));
+            }
 
-                grid.appendChild(thumb);
+            if (subfolders.length === 0 && folderPresets.length === 0) {
+                const empty = document.createElement("div");
+                empty.textContent = "No presets found.";
+                css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;grid-column:1 / -1;");
+                grid.appendChild(empty);
             }
         }
+
+        pathBar.addEventListener("click", () => {
+            currentFolder = "";
+            searchInput.value = "";
+            renderGrid();
+        });
 
         renderGrid();
         searchInput.addEventListener("input", () => renderGrid(searchInput.value));
