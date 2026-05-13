@@ -419,15 +419,15 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
 
         const prompt = data.prompt || {};
         content.appendChild(makeComfyLabel("Positive prompt"));
-        const posTA = makeTextarea(prompt.positive || "", "masterpiece, best quality", 5);
-        css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;min-height:100px;flex-shrink:0;");
+        const posTA = makeTextarea(prompt.positive || "", "masterpiece, best quality", 3);
+        css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;min-height:78px;flex-shrink:0;");
         posTA.addEventListener("focus", () => posTA.style.borderColor = "#555");
         posTA.addEventListener("blur", () => posTA.style.borderColor = "#333");
         content.appendChild(posTA);
 
         content.appendChild(makeComfyLabel("Negative prompt"));
-        const negTA = makeTextarea(prompt.negative || "", "worst quality, low quality", 5);
-        css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;min-height:100px;flex-shrink:0;");
+        const negTA = makeTextarea(prompt.negative || "", "worst quality, low quality", 3);
+        css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;min-height:78px;flex-shrink:0;");
         negTA.addEventListener("focus", () => negTA.style.borderColor = "#555");
         negTA.addEventListener("blur", () => negTA.style.borderColor = "#333");
         content.appendChild(negTA);
