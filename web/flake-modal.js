@@ -50,6 +50,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         let selectedType = data.flake_type || "";
         const FLAKE_TYPES = ["Style", "Slider", "Character", "Pose", "Concept", "Other"];
         let typeDropdown = null;
+        let baseRootSelectRef = null;
 
         if (mode !== "default") {
             const nameStemRow = document.createElement("div");
@@ -215,8 +216,6 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         let coverImg = null;
         let setCoverFromLora = null;
         let setCoverFromCnImage = null;
-
-        let baseRootSelectRef = null;
 
         let currentFamily = family;
 
