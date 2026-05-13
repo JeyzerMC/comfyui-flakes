@@ -111,7 +111,7 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onTogg
 
     if (!isDefault) {
         const hoverWrap = document.createElement("div");
-        css(hoverWrap, "position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:6px;z-index:3;background:rgba(0,0,0,0.35);");
+        css(hoverWrap, "position:absolute;top:4px;left:4px;right:4px;bottom:4px;display:none;align-items:center;justify-content:center;gap:6px;z-index:3;background:rgba(0,0,0,0.35);border-radius:4px;");
         const HOVER_BTN = "width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);";
 
         const replaceBtn = document.createElement("button");
@@ -145,7 +145,7 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onTogg
     if (!isDefault && entry.name) {
         triangleBtn = document.createElement("button");
         triangleBtn.innerHTML = "&#9662;"; // down-pointing triangle
-        css(triangleBtn, "position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:transparent;color:rgba(180,180,180,0.6);border:none;padding:0;font-size:12px;line-height:1;cursor:pointer;z-index:2;display:none;");
+        css(triangleBtn, "position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:transparent;color:rgba(180,180,180,0.6);border:none;padding:0;font-size:12px;line-height:1;cursor:pointer;z-index:4;display:none;");
         triangleBtn.addEventListener("click", (e) => {
             e.stopPropagation();
         });
