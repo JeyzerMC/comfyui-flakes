@@ -1,8 +1,8 @@
 import { openOverlay } from "./modal.js";
 import {
     css, makeButton, makeSmallButton, makeComfyLabel, makeComfyInput,
-    makeComfyDropdown, makeSearchableDropdown, makeComfyNumberInput,
-    makeComfyValueSlider, makeTextarea,
+    makeComfyDropdown, makeSearchableDropdown, makeComfySlider,
+    makeTextarea,
 } from "./utils.js";
 import { fetchPreset, fetchCheckpoints, fetchVaes, fetchEmbeddings } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
@@ -359,31 +359,31 @@ const numRow = document.createElement("div");
         const wWrap = document.createElement("div");
         css(wWrap, "flex:1;min-width:0;");
         wWrap.appendChild(makeComfyLabel("Width"));
-        const wInput = makeComfyNumberInput(data.width ?? 1024, "1024", 64);
-        wWrap.appendChild(wInput);
+        const wSlider = makeComfySlider(data.width ?? 1024, 64, 4096, 64);
+        wWrap.appendChild(wSlider);
         numRow.appendChild(wWrap);
         const hWrap = document.createElement("div");
         css(hWrap, "flex:1;min-width:0;");
         hWrap.appendChild(makeComfyLabel("Height"));
-        const hInput = makeComfyNumberInput(data.height ?? 1024, "1024", 64);
-        hWrap.appendChild(hInput);
+        const hSlider = makeComfySlider(data.height ?? 1024, 64, 4096, 64);
+        hWrap.appendChild(hSlider);
         numRow.appendChild(hWrap);
         const csWrap = document.createElement("div");
         css(csWrap, "flex:1;min-width:0;");
         csWrap.appendChild(makeComfyLabel("Clip Skip"));
-        const csSlider = makeComfyValueSlider(Math.abs(data.clip_skip ?? -2), 1, 24, 1);
+        const csSlider = makeComfySlider(Math.abs(data.clip_skip ?? -2), 1, 24, 1);
         csWrap.appendChild(csSlider);
         numRow.appendChild(csWrap);
         const stepsWrap = document.createElement("div");
         css(stepsWrap, "flex:1;min-width:0;");
         stepsWrap.appendChild(makeComfyLabel("Steps"));
-        const stepsSlider = makeComfyValueSlider(data.steps ?? 20, 1, 150, 1);
+        const stepsSlider = makeComfySlider(data.steps ?? 20, 1, 150, 1);
         stepsWrap.appendChild(stepsSlider);
         numRow.appendChild(stepsWrap);
         const cfgWrap = document.createElement("div");
         css(cfgWrap, "flex:1;min-width:0;");
         cfgWrap.appendChild(makeComfyLabel("CFG"));
-        const cfgSlider = makeComfyValueSlider(data.cfg ?? 7.0, 1, 30, 0.5);
+        const cfgSlider = makeComfySlider(data.cfg ?? 7.0, 1, 30, 0.5);
         cfgWrap.appendChild(cfgSlider);
         numRow.appendChild(cfgWrap);
         content.appendChild(numRow);
@@ -484,8 +484,8 @@ const numRow = document.createElement("div");
                 cfg: cfgSlider.getValue(),
                 sampler: samplerDD.element.value,
                 scheduler: schedDD.element.value,
-                width: parseInt(wInput.value) || 1024,
-                height: parseInt(hInput.value) || 1024,
+                width: wSlider.getValue(),
+                height: hSlider.getValue(),
                 prompt: { positive: posTA.value, negative: negTA.value },
                 embeddings: {
                     positive: posEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),
