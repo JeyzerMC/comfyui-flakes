@@ -3,6 +3,7 @@ import { setupFlakeWidget } from "./widgets/flake-stack.js";
 import { setupFlakeComboWidget } from "./widgets/flake-combo.js";
 import { setupFlakeModelPresetWidget } from "./widgets/flake-model-preset.js";
 import { setupFlakeModelComboWidget } from "./widgets/flake-model-combo.js";
+import { setupFlakeDataSplitSelect, setupIntoFlakeDataSelect } from "./widgets/flake-data-select.js";
 import "./queue.js";
 
 function removeHiddenInputs(node, names) {
@@ -106,6 +107,48 @@ app.registerExtension({
                 this._configured = true;
                 removeHiddenInputs(this, ["model_family", "preset"]);
                 this._model_combo_render?.();
+                return r;
+            };
+        }
+        if (nodeData.name === "FlakeDataSplitSelect") {
+            const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                const r = origOnNodeCreated?.apply(this, arguments);
+                setupFlakeDataSplitSelect(this);
+                removeHiddenInputs(this, ["selected_pins"]);
+                if (!this._configured) {
+                    setDefaultSize(this, 260);
+                }
+                return r;
+            };
+
+            const origOnConfigure = nodeType.prototype.onConfigure;
+            nodeType.prototype.onConfigure = function () {
+                const r = origOnConfigure?.apply(this, arguments);
+                this._configured = true;
+                removeHiddenInputs(this, ["selected_pins"]);
+                this._splitPinUpdate?.();
+                return r;
+            };
+        }
+        if (nodeData.name === "IntoFlakeDataSelect") {
+            const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                const r = origOnNodeCreated?.apply(this, arguments);
+                setupIntoFlakeDataSelect(this);
+                removeHiddenInputs(this, ["active_pins"]);
+                if (!this._configured) {
+                    setDefaultSize(this, 260);
+                }
+                return r;
+            };
+
+            const origOnConfigure = nodeType.prototype.onConfigure;
+            nodeType.prototype.onConfigure = function () {
+                const r = origOnConfigure?.apply(this, arguments);
+                this._configured = true;
+                removeHiddenInputs(this, ["active_pins"]);
+                this._intoPinUpdate?.();
                 return r;
             };
         }
