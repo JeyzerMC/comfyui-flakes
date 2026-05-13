@@ -7,23 +7,25 @@ import { fetchList, fetchFlake, saveFlakeApi, getCoverUrl, fetchFlakeMeta } from
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 
-function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const isDefault = !!entry.inline;
+    const isBypassed = !!entry.bypassed;
     const hasCover = !isDefault && entry.name;
     const block = document.createElement("div");
     block.dataset.idx = String(idx);
     block.dataset.flakeBlock = "1";
 
     css(block, `position:relative;height:80px;background:${
-        isDefault ? "#2a3a4a" : "#2a2a2a"
+        isDefault ? "#2a3a4a" : isBypassed ? "#1a1a1a" : "#2a2a2a"
     };border:1px solid ${
-        isDefault ? "#3a5a8a" : "#444"
+        isDefault ? "#3a5a8a" : isBypassed ? "#333" : "#444"
     };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;${
         hasCover ? `background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;` : ""
-    }`);
+    }${isBypassed ? "opacity:0.45;" : ""}`);
 
     // Type ribbon (top-left) — always visible on non-default entries,
     // defaulting to "Other" when the flake has no explicit flake_type set.
+    // Clicking toggles the bypassed state.
     const TYPE_COLORS = {
         Style: "#8a6acf", Slider: "#6a9acf", Character: "#6acf8a",
         Pose: "#cf8a6a", Other: "#cf6a8a",
@@ -33,9 +35,23 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onDrag
         const color = TYPE_COLORS[typeTag] || TYPE_COLORS.Other;
         const ribbon = document.createElement("div");
         ribbon.textContent = typeTag[0];
-        ribbon.title = typeTag;
-        css(ribbon, `position:absolute;top:0;left:0;width:16px;height:16px;background:${color};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:4px 0 4px 0;z-index:3;text-shadow:none;`);
+        ribbon.title = isBypassed ? `${typeTag} (click to activate)` : `${typeTag} (click to bypass)`;
+        const bgColor = isBypassed ? "#555" : color;
+        css(ribbon, `position:absolute;top:0;left:0;width:16px;height:16px;background:${bgColor};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:4px 0 4px 0;z-index:5;text-shadow:none;cursor:pointer;transition:opacity 0.15s;`);
+        ribbon.addEventListener("mouseenter", () => { ribbon.style.opacity = "0.8"; });
+        ribbon.addEventListener("mouseleave", () => { ribbon.style.opacity = "1"; });
+        ribbon.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (onToggleBypass) onToggleBypass(idx);
+        });
         block.appendChild(ribbon);
+    }
+
+    // Strikethrough for bypassed state
+    if (isBypassed && !isDefault) {
+        const strike = document.createElement("div");
+        css(strike, "position:absolute;top:50%;left:10%;right:10%;height:2px;background:rgba(200,60,60,0.7);transform:translateY(-50%);z-index:4;pointer-events:none;");
+        block.appendChild(strike);
     }
 
     // Dark overlay for cover readability
@@ -342,6 +358,7 @@ export function setupFlakeWidget(node) {
                 onRemove: handleRemove,
                 onReplace: handleReplace,
                 onOverride: handleOverride,
+                onToggleBypass: handleToggleBypass,
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
                     e.dataTransfer.effectAllowed = "move";
@@ -446,6 +463,14 @@ export function setupFlakeWidget(node) {
         if (idx === 0) return;
         const arr = readEntries();
         arr.splice(idx, 1);
+        writeEntries(arr);
+        render();
+    }
+
+    function handleToggleBypass(idx) {
+        if (idx === 0) return;
+        const arr = readEntries();
+        arr[idx].bypassed = !arr[idx].bypassed;
         writeEntries(arr);
         render();
     }

@@ -12,30 +12,45 @@ const TYPE_COLORS = {
     Pose: "#cf8a6a", Other: "#cf6a8a",
 };
 
-function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onOverride, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onOverride, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const hasCover = !!entry.name;
+    const isBypassed = !!entry.bypassed;
     const block = document.createElement("div");
     block.dataset.idx = String(idx);
     block.dataset.flakeBlock = "1";
 
-    const activeBorder = isActive ? "border-top:2px solid #5a8acf;" : "border-top:2px solid transparent;";
+    const activeBorder = isActive && !isBypassed ? "border-top:2px solid #5a8acf;" : "border-top:2px solid transparent;";
 
     css(block, `position:relative;height:80px;background:${
-        hasCover ? "#2a2a2a" : "#2a2a2a"
+        isBypassed ? "#1a1a1a" : "#2a2a2a"
     };border:1px solid ${
-        isActive ? "#5a8acf" : "#444"
+        isActive && !isBypassed ? "#5a8acf" : "#444"
     };${activeBorder}border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;${
         hasCover ? `background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;` : ""
-    }`);
+    }${isBypassed ? "opacity:0.45;" : ""}`);
 
-    // Type ribbon
+    // Type ribbon — clickable to toggle bypass
     const typeTag = entry._pendingData?.flake_type || entry.flake_type || "Other";
     const color = TYPE_COLORS[typeTag] || TYPE_COLORS.Other;
     const ribbon = document.createElement("div");
     ribbon.textContent = typeTag[0];
-    ribbon.title = typeTag;
-    css(ribbon, `position:absolute;top:0;left:0;width:16px;height:16px;background:${color};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:4px 0 4px 0;z-index:3;text-shadow:none;`);
+    ribbon.title = isBypassed ? `${typeTag} (click to activate)` : `${typeTag} (click to bypass)`;
+    const bgColor = isBypassed ? "#555" : color;
+    css(ribbon, `position:absolute;top:0;left:0;width:16px;height:16px;background:${bgColor};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:4px 0 4px 0;z-index:5;text-shadow:none;cursor:pointer;transition:opacity 0.15s;`);
+    ribbon.addEventListener("mouseenter", () => { ribbon.style.opacity = "0.8"; });
+    ribbon.addEventListener("mouseleave", () => { ribbon.style.opacity = "1"; });
+    ribbon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (onToggleBypass) onToggleBypass(idx);
+    });
     block.appendChild(ribbon);
+
+    // Strikethrough for bypassed state
+    if (isBypassed) {
+        const strike = document.createElement("div");
+        css(strike, "position:absolute;top:50%;left:10%;right:10%;height:2px;background:rgba(200,60,60,0.7);transform:translateY(-50%);z-index:4;pointer-events:none;");
+        block.appendChild(strike);
+    }
 
     // Dark overlay for cover readability
     if (hasCover) {
@@ -338,6 +353,7 @@ export function setupFlakeComboWidget(node) {
                 onRemove: handleRemove,
                 onReplace: handleReplace,
                 onOverride: handleOverride,
+                onToggleBypass: handleToggleBypass,
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
                     e.dataTransfer.effectAllowed = "move";
@@ -438,6 +454,13 @@ export function setupFlakeComboWidget(node) {
         if (node.properties._combo_active_index >= arr.length) {
             node.properties._combo_active_index = Math.max(0, arr.length - 1);
         }
+        writeAllFlakes(arr);
+        render();
+    }
+
+    function handleToggleBypass(idx) {
+        const arr = readAllFlakes();
+        arr[idx].bypassed = !arr[idx].bypassed;
         writeAllFlakes(arr);
         render();
     }

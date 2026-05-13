@@ -226,8 +226,9 @@ class FlakeStack:
             else:
                 logging.warning("[FlakeStack] skipping entry %d (needs 'name' or 'inline')", i)
 
-        # --- Resolve flakes -----------------------------------------------------
-        flakes = [flake_io.resolve(e) for e in normalized]
+        # --- Resolve flakes (skip bypassed) --------------------------------------
+        active_entries = [e for i, e in enumerate(normalized) if not e.get("bypassed")]
+        flakes = [flake_io.resolve(e) for e in active_entries]
 
         # --- Apply LoRAs --------------------------------------------------------
         lora_loader = LoraLoader()
@@ -286,7 +287,7 @@ class FlakeStack:
                     cn.strength, cn.start_percent, cn.end_percent,
                 )
 
-        # --- Resolution ---------------------------------------------------------
+        # --- Resolution (skip bypassed) ----------------------------------------
         new_width, new_height = width, height
         for f in flakes:
             if f.resolution is not None:
@@ -296,7 +297,7 @@ class FlakeStack:
         if (new_width, new_height) != (width, height):
             latent = EmptyLatentImage().generate(new_width, new_height, 1)[0]
 
-        # --- Filename prefix ----------------------------------------------------
+        # --- Filename prefix (skip bypassed) ------------------------------------
         for f in flakes:
             if f.output_stem:
                 filename_state["stems"].append(f.output_stem)
