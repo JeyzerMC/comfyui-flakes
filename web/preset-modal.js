@@ -406,19 +406,27 @@ const numRow = document.createElement("div");
         sampSchedRow.appendChild(schedWrap);
         content.appendChild(sampSchedRow);
 
-        content.appendChild(makeComfyLabel("Positive embeddings"));
+        const embRow = document.createElement("div");
+        css(embRow, "display:flex;gap:8px;align-items:flex-start;");
+        const posEmbCol = document.createElement("div");
+        css(posEmbCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        posEmbCol.appendChild(makeComfyLabel("Positive embeddings"));
         const posEmbWrap = makeSearchableDropdown([], (data.embeddings?.positive || []).join(", "), "embedding1, embedding2...");
-        content.appendChild(posEmbWrap.container);
+        posEmbCol.appendChild(posEmbWrap.container);
+        embRow.appendChild(posEmbCol);
+        const negEmbCol = document.createElement("div");
+        css(negEmbCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        negEmbCol.appendChild(makeComfyLabel("Negative embeddings"));
+        const negEmbWrap = makeSearchableDropdown([], (data.embeddings?.negative || []).join(", "), "embedding1, embedding2...");
+        negEmbCol.appendChild(negEmbWrap.container);
+        embRow.appendChild(negEmbCol);
+        content.appendChild(embRow);
         (async () => {
             try {
                 const embs = await fetchEmbeddings();
                 for (const e of embs) posEmbWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: e }));
             } catch { /* ignore */ }
         })();
-
-        content.appendChild(makeComfyLabel("Negative embeddings"));
-        const negEmbWrap = makeSearchableDropdown([], (data.embeddings?.negative || []).join(", "), "embedding1, embedding2...");
-        content.appendChild(negEmbWrap.container);
         (async () => {
             try {
                 const embs = await fetchEmbeddings();
