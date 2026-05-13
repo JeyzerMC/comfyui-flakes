@@ -28,7 +28,7 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onTogg
     // Clicking toggles the bypassed state.
     const TYPE_COLORS = {
         Style: "#8a6acf", Slider: "#6a9acf", Character: "#6acf8a",
-        Pose: "#cf8a6a", Other: "#cf6a8a",
+        Pose: "#cf8a6a", Concept: "#6acfcf", Other: "#cf6a8a",
     };
     if (!isDefault) {
         const typeTag = entry._pendingData?.flake_type || entry.flake_type || "Other";
@@ -140,18 +140,20 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onTogg
         block.addEventListener("mouseleave", () => { hoverWrap.style.display = "none"; });
     }
 
-    // Triangle button (bottom center) for variants / LoRA
+    // Triangle button (bottom center) for variants / LoRA / output path
     let triangleBtn = null;
     if (!isDefault && entry.name) {
         triangleBtn = document.createElement("button");
         triangleBtn.innerHTML = "&#9662;"; // down-pointing triangle
-        css(triangleBtn, "position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:transparent;color:rgba(180,180,180,0.6);border:none;padding:0;font-size:12px;line-height:1;cursor:pointer;z-index:4;display:none;");
+        css(triangleBtn, "position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:transparent;color:#fff;border:none;padding:0;font-size:12px;line-height:1;cursor:pointer;z-index:4;opacity:0;transition:opacity 0.15s;");
         triangleBtn.addEventListener("click", (e) => {
             e.stopPropagation();
         });
         triangleBtn.addEventListener("dblclick", (e) => e.stopPropagation());
         triangleBtn.addEventListener("mousedown", (e) => e.stopPropagation());
         block.appendChild(triangleBtn);
+        block.addEventListener("mouseenter", () => { if (triangleBtn.style.display !== "none") triangleBtn.style.opacity = "1"; });
+        block.addEventListener("mouseleave", () => { triangleBtn.style.opacity = "0"; });
     }
 
     block.addEventListener("dblclick", () => onEdit(idx));
@@ -190,9 +192,9 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
         const hasLoras = lorasMeta.length > 0;
         const hasOptionGroups = hasOptions && Object.keys(hasOptions).length > 0;
 
-        // Show triangle only if there's something to tweak
+        // Show triangle for all non-default entries (output path is always editable)
         if (triangleBtn) {
-            triangleBtn.style.display = (hasLoras || hasOptionGroups) ? "block" : "none";
+            triangleBtn.style.display = "block";
         }
 
         // LoRA strength sliders at top of panel
@@ -214,14 +216,8 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
             }
         }
 
-        if (!hasOptionGroups) {
-            if (!hasLoras) {
-                const empty = document.createElement("div");
-                css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
-                empty.textContent = "no variants";
-                panel.appendChild(empty);
-            }
-        } else {
+        const hasContent = hasOptionGroups || hasLoras;
+        if (hasOptionGroups) {
             for (const group of Object.keys(hasOptions)) {
                 const row = document.createElement("div");
                 css(row, "display:flex;flex-direction:column;gap:2px;");
@@ -247,7 +243,33 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
                 row.appendChild(dd.container);
                 panel.appendChild(row);
             }
+        } else if (!hasLoras) {
+            const empty = document.createElement("div");
+            css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
+            empty.textContent = "no variants";
+            panel.appendChild(empty);
         }
+
+        // Output path field
+        const outputStem = (entry._pendingData?.output_stem ?? flakeData?.output_stem ?? "") || "";
+        const sep = document.createElement("div");
+        css(sep, "border-top:1px solid #333;margin:2px 0;");
+        panel.appendChild(sep);
+        const opLabel = document.createElement("div");
+        opLabel.textContent = "Output Stem";
+        css(opLabel, "font-size:9px;opacity:0.7;text-align:center;");
+        panel.appendChild(opLabel);
+        const opInput = document.createElement("input");
+        opInput.type = "text";
+        opInput.value = outputStem;
+        opInput.placeholder = "e.g. musashi/";
+        css(opInput, "width:100%;box-sizing:border-box;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:2px 4px;border-radius:3px;font-size:10px;outline:none;");
+        opInput.addEventListener("input", () => {
+            if (!entry._pendingData) entry._pendingData = flakeData ? JSON.parse(JSON.stringify(flakeData)) : {};
+            entry._pendingData.output_stem = opInput.value || null;
+            onChanged();
+        });
+        panel.appendChild(opInput);
     }
 
     async function loadOptions() {

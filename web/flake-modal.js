@@ -46,91 +46,58 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
 
         let displayNameInput = null;
         let pathInput = null;
-        let familyDropdown = null;
+        let outputStemInput = null;
         let selectedType = data.flake_type || "";
-        let typeChecks = null;
-        const FAMILY_OPTIONS = [
-            { value: "SDXL/Base", label: "SDXL/Base" },
-            { value: "SDXL/Illustrious", label: "SDXL/Illustrious" },
-            { value: "SDXL/Pony", label: "SDXL/Pony" },
-            { value: "ZImage/Base", label: "ZImage/Base" },
-            { value: "ZImage/Turbo", label: "ZImage/Turbo" },
-            { value: "Common", label: "Common" },
-        ];
+        const FLAKE_TYPES = ["Style", "Slider", "Character", "Pose", "Concept", "Other"];
+        let typeDropdown = null;
+
         if (mode !== "default") {
-            if (mode === "create") {
-                const nameFamilyRow = document.createElement("div");
-                css(nameFamilyRow, "display:flex;gap:8px;align-items:flex-start;");
-                const familyWrap = document.createElement("div");
-                css(familyWrap, "flex:0 0 auto;min-width:0;display:flex;flex-direction:column;gap:4px;");
-                familyWrap.appendChild(makeComfyLabel("Model family"));
-                familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, family);
-                familyWrap.appendChild(familyDropdown.container);
-                nameFamilyRow.appendChild(familyWrap);
-                const nameWrap = document.createElement("div");
-                css(nameWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-                nameWrap.appendChild(makeComfyLabel("Display name"));
-                displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
-                nameWrap.appendChild(displayNameInput);
-                nameFamilyRow.appendChild(nameWrap);
-                leftCol.appendChild(nameFamilyRow);
-            } else {
-                leftCol.appendChild(makeComfyLabel("Display name"));
-                displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
-                leftCol.appendChild(displayNameInput);
-            }
+            const nameStemRow = document.createElement("div");
+            css(nameStemRow, "display:flex;gap:8px;align-items:flex-start;");
+            const nameWrap = document.createElement("div");
+            css(nameWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            nameWrap.appendChild(makeComfyLabel("Display name"));
+            displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
+            nameWrap.appendChild(displayNameInput);
+            nameStemRow.appendChild(nameWrap);
+            const stemWrap = document.createElement("div");
+            css(stemWrap, "flex:0 0 140px;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            stemWrap.appendChild(makeComfyLabel("Output Stem"));
+            outputStemInput = makeComfyInput(data.output_stem ?? "", "e.g. musashi/");
+            outputStemInput.addEventListener("change", () => {
+                fieldState.output_stem = outputStemInput.value || null;
+            });
+            stemWrap.appendChild(outputStemInput);
+            nameStemRow.appendChild(stemWrap);
+            leftCol.appendChild(nameStemRow);
         }
 
-        // ---- Flake Type (mutually exclusive tags) — available in create and edit ----
+        // ---- Base + Flake type on same row ----
         if (mode !== "default") {
-            leftCol.appendChild(makeComfyLabel("Flake type"));
             const typeRow = document.createElement("div");
-            css(typeRow, "display:flex;gap:6px;flex-wrap:wrap;");
-            const FLAKE_TYPES = ["Style", "Slider", "Character", "Pose", "Other"];
-            typeChecks = {};
-            for (const t of FLAKE_TYPES) {
-                const wrap = document.createElement("label");
-                css(wrap, "display:flex;align-items:center;gap:2px;cursor:pointer;font-size:11px;color:#aaa;user-select:none;");
-                const cb = document.createElement("input");
-                cb.type = "checkbox";
-                cb.checked = t === selectedType;
-                css(cb, "cursor:pointer;");
-                cb.addEventListener("change", () => {
-                    if (cb.checked) {
-                        selectedType = t;
-                        for (const other of FLAKE_TYPES) {
-                            if (other !== t && typeChecks[other]) typeChecks[other].checked = false;
-                        }
-                    } else if (selectedType === t) {
-                        selectedType = "";
-                    }
-                });
-                typeChecks[t] = cb;
-                wrap.appendChild(cb);
-                wrap.appendChild(document.createTextNode(t));
-                typeRow.appendChild(wrap);
-            }
-            leftCol.appendChild(typeRow);
-        }
-
-        let baseRootSelect = null;
-        if (mode !== "default") {
-            const basePathRow = document.createElement("div");
-            css(basePathRow, "display:flex;gap:8px;align-items:flex-start;");
+            css(typeRow, "display:flex;gap:8px;align-items:flex-start;");
             const baseWrap = document.createElement("div");
             css(baseWrap, "flex:0 0 auto;min-width:0;display:flex;flex-direction:column;gap:4px;");
             baseWrap.appendChild(makeComfyLabel("Base"));
-            baseRootSelect = document.createElement("select");
+            const baseRootSelect = document.createElement("select");
             css(baseRootSelect, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;box-sizing:border-box;");
             baseWrap.appendChild(baseRootSelect);
-            basePathRow.appendChild(baseWrap);
-            const pathWrap = document.createElement("div");
-            css(pathWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            pathWrap.appendChild(makeComfyLabel("Output path"));
-            pathInput = makeComfyInput(mode === "create" ? "" : (name || ""), "characters/musashi");
-            pathWrap.appendChild(pathInput);
-            basePathRow.appendChild(pathWrap);
-            leftCol.appendChild(basePathRow);
+            baseRootSelectRef = baseRootSelect;
+            typeRow.appendChild(baseWrap);
+            const typeWrap = document.createElement("div");
+            css(typeWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            typeWrap.appendChild(makeComfyLabel("Flake type"));
+            typeDropdown = makeComfyDropdown(
+                [{ value: "", label: "\u2014" }, ...FLAKE_TYPES.map(t => ({ value: t, label: t }))],
+                selectedType,
+            );
+            typeDropdown.element.addEventListener("change", () => {
+                selectedType = typeDropdown.element.value;
+                updatePrefillPath();
+            });
+            typeWrap.appendChild(typeDropdown.container);
+            typeRow.appendChild(typeWrap);
+            leftCol.appendChild(typeRow);
             (async () => {
                 try {
                     const r = await fetch("/flakes/roots?type=flakes");
@@ -145,6 +112,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                         opt.title = `${root.label}: ${root.path}`;
                         baseRootSelect.appendChild(opt);
                     }
+                    updateResolvedPath();
                     if (!roots.length) {
                         const opt = document.createElement("option");
                         opt.textContent = "(no roots configured)";
@@ -154,14 +122,81 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 } catch { /* ignore */ }
             })();
 
+            // ---- Output Path on its own row ----
+            const pathRow = document.createElement("div");
+            css(pathRow, "display:flex;flex-direction:column;gap:2px;");
+            const pathLabel = makeComfyLabel("Output path");
+            pathRow.appendChild(pathLabel);
+            pathInput = makeComfyInput("", "characters/musashi");
+            pathRow.appendChild(pathInput);
+            const resolvedPathLabel = document.createElement("div");
+            css(resolvedPathLabel, "font-size:11px;color:#666;word-break:break-all;min-height:0;");
+            pathRow.appendChild(resolvedPathLabel);
+
+            let currentRootPath = "";
+            let rootsCache = [];
+
+            function getOutputPrefix() {
+                const folder = familyFolder(currentFamily);
+                return folder ? `img/${folder}/` : "img/";
+            }
+
+            function stripOutputPrefix(val) {
+                if (!val) return val;
+                const prefixes = ["img/sdxl/", "img/illustrious/", "img/pony/", "img/zib/", "img/zit/", "img/common/", "img/"];
+                for (const p of prefixes) {
+                    if (val.toLowerCase().startsWith(p)) return val.slice(p.length);
+                }
+                return val;
+            }
+
+            function updateResolvedPath() {
+                const raw = (pathInput?.value || "").trim();
+                if (!raw) {
+                    resolvedPathLabel.textContent = "";
+                    return;
+                }
+                const rootPart = currentRootPath ? currentRootPath : "C:/<comfyui_path>/models/flakes/";
+                const prefix = getOutputPrefix();
+                const fullPath = `${rootPart}${prefix}${raw}.yaml`.replace(/\/\//g, "/");
+                resolvedPathLabel.textContent = fullPath;
+            }
+
+            (async () => {
+                try {
+                    const r = await fetch("/flakes/roots?type=flakes");
+                    const d = await r.json();
+                    rootsCache = d.roots || [];
+                    const rootIdx = parseInt(baseRootSelect?.value || "0", 10);
+                    const root = rootsCache[rootIdx] || rootsCache[0];
+                    currentRootPath = (root?.path || "").replace(/\\/g, "/");
+                    if (!currentRootPath.endsWith("/")) currentRootPath += "/";
+                    updateResolvedPath();
+                } catch { /* ignore */ }
+            })();
+
+            baseRootSelect.addEventListener("change", () => {
+                const rootIdx = parseInt(baseRootSelect.value, 10);
+                const root = rootsCache[rootIdx] || rootsCache[0];
+                currentRootPath = (root?.path || "").replace(/\\/g, "/").replace(/\/+$/, "") + "/";
+                updateResolvedPath();
+            });
+
+            if (mode === "edit" && name) {
+                const stripped = stripOutputPrefix(name);
+                pathInput.value = stripped;
+            }
+
+            leftCol.appendChild(pathRow);
+
             // Auto-fill path from display name + tag (create mode only)
             let pathManuallyEdited = mode !== "create";
-            pathInput.addEventListener("input", () => { pathManuallyEdited = true; });
+            pathInput.addEventListener("input", () => { pathManuallyEdited = true; updateResolvedPath(); });
             function updatePrefillPath() {
                 if (pathManuallyEdited) return;
                 const dn = displayNameInput?.value?.trim() || "";
                 const tag = selectedType;
-                if (!dn && !tag) { pathInput.value = ""; return; }
+                if (!dn && !tag) { pathInput.value = ""; updateResolvedPath(); return; }
                 const tagFolder = tag ? tag.toLowerCase() + "s" : "";
                 const formatted = dn.replace(/ /g, "_").toLowerCase();
                 if (tagFolder && formatted) {
@@ -169,42 +204,52 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 } else {
                     pathInput.value = tagFolder || formatted;
                 }
+                updateResolvedPath();
             }
             displayNameInput?.addEventListener("input", updatePrefillPath);
-            if (typeChecks) {
-                for (const cb of Object.values(typeChecks)) {
-                    cb.addEventListener("change", updatePrefillPath);
-                }
-            }
         }
         topSection.appendChild(leftCol);
 
         let coverFile = null;
         let coverSourcePath = data?.cover_image || null;
         let coverImg = null;
-        // Set by the cover-image block; used by the LoRA selectors to default
-        // the cover to the LoRA's sibling image when no cover has been chosen.
         let setCoverFromLora = null;
 
+        let baseRootSelectRef = null;
+
+        let currentFamily = family;
+
+        function inferFamilyFromPath(path) {
+            if (!path) return family;
+            const norm = path.replace(/\\/g, "/");
+            const FAMILY_PATH_MAP = {
+                "img/sdxl/": "SDXL/Base",
+                "img/illustrious/": "SDXL/Illustrious",
+                "img/pony/": "SDXL/Pony",
+                "img/zib/": "ZImage/Base",
+                "img/zit/": "ZImage/Turbo",
+                "img/common/": "Common",
+            };
+            for (const [prefix, fam] of Object.entries(FAMILY_PATH_MAP)) {
+                if (norm.toLowerCase().startsWith(prefix)) return fam;
+            }
+            return family;
+        }
+
+        if (mode === "edit" && name) {
+            currentFamily = inferFamilyFromPath(name);
+        }
+
         function loraBrowserDefaultPath() {
-            // Create mode: use the family dropdown's current value.
-            if (familyDropdown?.element?.value) {
-                const folder = familyFolder(familyDropdown.element.value);
-                return folder ? `img/${folder}` : "";
-            }
-            // Edit mode: derive from the flake's stored name (e.g. img/illustrious/...).
-            if (typeof name === "string") {
-                const m = name.replace(/\\/g, "/").match(/^img\/([^/]+)\//);
-                if (m) return `img/${m[1]}`;
-            }
-            return "";
+            const folder = familyFolder(currentFamily);
+            return folder ? `img/${folder}` : "";
         }
         if (mode === "edit" || mode === "create") {
             const coverWrap = document.createElement("div");
             css(coverWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
 
             const coverBox = document.createElement("div");
-            css(coverBox, "width:120px;height:160px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
+            css(coverBox, "width:160px;height:200px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
 
             coverImg = document.createElement("img");
             css(coverImg, "width:100%;height:100%;object-fit:cover;display:none;");
@@ -273,9 +318,9 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 pathInput.addEventListener("input", () => {
                     const p = pathInput.value.trim();
                     if (p && !coverFile) {
-                        const pngPath = p.replace(/\.ya?ml$/i, ".png");
-                        // We can't know if it exists, but we can set the src anyway
-                        updateCoverPreview(getCoverUrl(pngPath));
+                        const prefix = getOutputPrefix();
+                        const fullP = prefix + p.replace(/\.ya?ml$/i, ".png");
+                        updateCoverPreview(getCoverUrl(fullP));
                     }
                 });
             }
@@ -317,7 +362,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
 
         // Derive field order from YAML key order (Python preserves insertion order)
         const activeFields = [];
-        const knownFieldKeys = { loras: "lora", path: "lora", prompt: "prompt", resolution: "resolution", controlnets: "controlnets", variants: "variants", options: "variants", output_stem: "output_stem" };
+        const knownFieldKeys = { loras: "lora", path: "lora", prompt: "prompt", resolution: "resolution", controlnets: "controlnets", variants: "variants", options: "variants" };
         for (const key of Object.keys(data)) {
             const ft = knownFieldKeys[key];
             if (ft && !activeFields.includes(ft)) activeFields.push(ft);
@@ -326,9 +371,8 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         if (!activeFields.includes("lora") && (Array.isArray(data.loras) || data.path)) activeFields.push("lora");
         if (!activeFields.includes("prompt") && fieldState.prompt) activeFields.push("prompt");
         if (!activeFields.includes("resolution") && fieldState.resolution) activeFields.push("resolution");
-        if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0) activeFields.push("controlnets");
-        if (!activeFields.includes("variants") && Object.keys(fieldState.variants).length > 0) activeFields.push("variants");
-        if (!activeFields.includes("output_stem") && fieldState.output_stem != null) activeFields.push("output_stem");
+if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0) activeFields.push("controlnets");
+            if (!activeFields.includes("variants") && Object.keys(fieldState.variants).length > 0) activeFields.push("variants");
 
         const optionalBox = document.createElement("div");
         css(optionalBox, "display:flex;flex-direction:column;gap:8px;");
@@ -418,7 +462,6 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     if (fieldType === "variants") {
                         for (const k of Object.keys(fieldState.variants)) delete fieldState.variants[k];
                     }
-                    if (fieldType === "output_stem") fieldState.output_stem = null;
                     renderFields();
                 });
                 header.appendChild(delFieldBtn);
@@ -1045,14 +1088,6 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     renderOpts();
                 }
 
-                if (fieldType === "output_stem") {
-                    const stemInput = makeComfyInput(fieldState.output_stem ?? "", "e.g. musashi/ or bike");
-                    stemInput.addEventListener("change", () => {
-                        fieldState.output_stem = stemInput.value || null;
-                    });
-                    fieldWrap.appendChild(stemInput);
-                }
-
                 optionalBox.appendChild(fieldWrap);
             }
         }
@@ -1073,7 +1108,6 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             { key: "resolution", label: "Resolution override" },
             { key: "controlnets", label: "ControlNets" },
             { key: "variants", label: "Variants" },
-            { key: "output_stem", label: "Output Filename Stem" },
         ];
         for (const ft of fieldTypes) {
             const item = document.createElement("button");
@@ -1088,7 +1122,6 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 if (ft.key === "resolution") fieldState.resolution = [1024, 1024];
                 if (ft.key === "controlnets") fieldState.controlnets._ = [];
                 if (ft.key === "variants") fieldState.variants = {};
-                if (ft.key === "output_stem") fieldState.output_stem = "";
                 renderFields();
             });
             fieldMenu.appendChild(item);
@@ -1152,6 +1185,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             const ordered = {};
             if (displayNameInput && displayNameInput.value) ordered.name = displayNameInput.value.trim();
             if (selectedType) ordered.flake_type = selectedType;
+            if (outputStemInput && outputStemInput.value.trim()) ordered.output_stem = outputStemInput.value.trim();
 
             // Save fields in the user-selected order so YAML key order is preserved
             for (const ft of activeFields) {
@@ -1180,9 +1214,6 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 if (ft === "variants" && Object.keys(fieldState.variants).length > 0) {
                     ordered.variants = fieldState.variants;
                 }
-                if (ft === "output_stem" && fieldState.output_stem != null) {
-                    ordered.output_stem = fieldState.output_stem;
-                }
             }
             if (coverSourcePath && !coverFile) {
                 ordered.cover_image = coverSourcePath;
@@ -1195,14 +1226,14 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 }
                 const outputPath = (pathInput?.value || "").trim();
                 if (!outputPath) { window.alert("Path is required"); return; }
-                const family = familyDropdown?.element?.value || "";
-                const baseRootIndex = baseRootSelect ? parseInt(baseRootSelect.value, 10) : 0;
+                const fullOutputPath = getOutputPrefix() + outputPath;
+                const baseRootIndex = baseRootSelectRef ? parseInt(baseRootSelectRef.value, 10) : 0;
                 const body = {
-                    name: outputPath,
+                    name: fullOutputPath,
                     data: ordered,
-                    family: family || undefined,
+                    family: currentFamily || undefined,
                     base_root_index: Number.isFinite(baseRootIndex) ? baseRootIndex : 0,
-                    output_path: outputPath,
+                    output_path: fullOutputPath,
                 };
                 if (mode !== "create") body.old_name = name;
                 const r = await fetch("/flakes/save", {
