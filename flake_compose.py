@@ -20,21 +20,28 @@ from nodes import (
 from . import flake_io
 
 
-def _resolve_lora_name(stem_or_name: str) -> str:
-    """Accept either a full filename under models/loras/ or a stem; return the filename that LoraLoader expects."""
-    available = folder_paths.get_filename_list("loras")
-    available_set = set(available)
+def _resolve_model_name(category: str, stem_or_name: str) -> str:
+    available = folder_paths.get_filename_list(category)
+    available_norm = {p.replace("\\", "/"): p for p in available}
 
     norm = stem_or_name.replace("\\", "/")
-    if norm in available_set:
-        return norm
+    if norm in available_norm:
+        return available_norm[norm]
 
-    for candidate in available:
-        cand_norm = candidate.replace("\\", "/")
+    norm_stem, _ = os.path.splitext(norm)
+    for cand_norm, candidate in available_norm.items():
         stem, _ = os.path.splitext(cand_norm)
-        if stem == norm:
+        if stem == norm_stem:
             return candidate
 
+    return stem_or_name
+
+
+def _resolve_lora_name(stem_or_name: str) -> str:
+    result = _resolve_model_name("loras", stem_or_name)
+    available = folder_paths.get_filename_list("loras")
+    if result.replace("\\", "/") in {p.replace("\\", "/") for p in available}:
+        return result
     raise FileNotFoundError(
         f"LoRA '{stem_or_name}' not found in models/loras/. "
         f"Provide the stem or full filename of an existing LoRA."
@@ -101,9 +108,10 @@ def compose(
         for cn in f.controlnets:
             if cn.strength == 0:
                 continue
-            if cn.model_name not in cn_model_cache:
-                cn_model_cache[cn.model_name] = cn_loader.load_controlnet(cn.model_name)[0]
-            cn_model = cn_model_cache[cn.model_name]
+            cn_resolved = _resolve_model_name("controlnet", cn.model_name)
+            if cn_resolved not in cn_model_cache:
+                cn_model_cache[cn_resolved] = cn_loader.load_controlnet(cn_resolved)[0]
+            cn_model = cn_model_cache[cn_resolved]
             image = _load_cn_image(cn.image_name)
             positive, negative = cn_apply.apply_controlnet(
                 positive, negative, cn_model, image,

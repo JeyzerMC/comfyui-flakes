@@ -33,9 +33,8 @@ def _build_filename_prefix(preset_name: str, stems: list[str]) -> str:
     return path + filename
 
 
-def _resolve_lora_name(stem_or_name: str) -> str:
-    available = folder_paths.get_filename_list("loras")
-    # Map normalized (forward-slash) paths back to original paths
+def _resolve_model_name(category: str, stem_or_name: str) -> str:
+    available = folder_paths.get_filename_list(category)
     available_norm = {p.replace("\\", "/"): p for p in available}
 
     norm = stem_or_name.replace("\\", "/")
@@ -48,6 +47,14 @@ def _resolve_lora_name(stem_or_name: str) -> str:
         if stem == norm_stem:
             return candidate
 
+    return stem_or_name
+
+
+def _resolve_lora_name(stem_or_name: str) -> str:
+    result = _resolve_model_name("loras", stem_or_name)
+    available = folder_paths.get_filename_list("loras")
+    if result.replace("\\", "/") in {p.replace("\\", "/") for p in available}:
+        return result
     raise FileNotFoundError(f"LoRA '{stem_or_name}' not found in models/loras/")
 
 
@@ -56,7 +63,8 @@ def _load_preset_bundle(preset_name: str):
     preset_data = flake_io.load_preset(preset_name)
 
     # --- Load checkpoint ----------------------------------------------------
-    ckpt_path = folder_paths.get_full_path("checkpoints", preset_data.checkpoint)
+    ckpt_name = _resolve_model_name("checkpoints", preset_data.checkpoint)
+    ckpt_path = folder_paths.get_full_path("checkpoints", ckpt_name)
     if not ckpt_path or not os.path.isfile(ckpt_path):
         raise FileNotFoundError(
             f"Checkpoint '{preset_data.checkpoint}' not found in models/checkpoints/"
@@ -77,14 +85,16 @@ def _load_preset_bundle(preset_name: str):
 
     # --- Optional VAE override ----------------------------------------------
     if preset_data.vae:
-        vae_path = folder_paths.get_full_path("vae", preset_data.vae)
+        vae_name = _resolve_model_name("vae", preset_data.vae)
+        vae_path = folder_paths.get_full_path("vae", vae_name)
         if vae_path and os.path.isfile(vae_path):
             vae_sd = comfy.utils.load_torch_file(vae_path)
             vae = comfy.sd.VAE(sd=vae_sd)
 
     # --- Optional text encoder override ------------------------------------
     if preset_data.text_encoder:
-        te_path = folder_paths.get_full_path("text_encoders", preset_data.text_encoder)
+        te_name = _resolve_model_name("text_encoders", preset_data.text_encoder)
+        te_path = folder_paths.get_full_path("text_encoders", te_name)
         if te_path and os.path.isfile(te_path):
             te_sd = comfy.utils.load_torch_file(te_path)
             _, clip, _ = comfy.sd.load_checkpoint_guess_config(
@@ -266,9 +276,10 @@ class FlakeStack:
             for cn in f.controlnets:
                 if cn.strength == 0:
                     continue
-                if cn.model_name not in cn_model_cache:
-                    cn_model_cache[cn.model_name] = cn_loader.load_controlnet(cn.model_name)[0]
-                cn_model = cn_model_cache[cn.model_name]
+                cn_resolved = _resolve_model_name("controlnet", cn.model_name)
+                if cn_resolved not in cn_model_cache:
+                    cn_model_cache[cn_resolved] = cn_loader.load_controlnet(cn_resolved)[0]
+                cn_model = cn_model_cache[cn_resolved]
                 image = _load_cn_image(cn.image_name)
                 positive_cond, negative_cond = cn_apply.apply_controlnet(
                     positive_cond, negative_cond, cn_model, image,

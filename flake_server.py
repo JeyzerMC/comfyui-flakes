@@ -137,13 +137,30 @@ async def _delete_flake(request: web.Request) -> web.Response:
 # ---------------------------------------------------------------------------
 
 def _shorten_filenames(filenames: list[str]) -> list[str]:
-    """Deduplicate by showing both full path and stem when they differ."""
+    """Return filenames with extensions stripped, deduplicated."""
     result: set[str] = set()
     for f in filenames:
-        result.add(f)
         stem, _ = os.path.splitext(f)
-        result.add(stem)
+        result.add(stem if stem else f)
     return sorted(result)
+
+
+def _resolve_model_name(category: str, stem_or_name: str) -> str:
+    """Resolve a stem-or-full model name to the full filename in a folder_paths category."""
+    try:
+        available = folder_paths.get_filename_list(category)
+    except Exception:
+        return stem_or_name
+    available_norm = {p.replace("\\", "/"): p for p in available}
+    norm = stem_or_name.replace("\\", "/")
+    if norm in available_norm:
+        return available_norm[norm]
+    norm_stem, _ = os.path.splitext(norm)
+    for cand_norm, candidate in available_norm.items():
+        stem, _ = os.path.splitext(cand_norm)
+        if stem == norm_stem:
+            return candidate
+    return stem_or_name
 
 
 @routes.get("/flakes/loras")
@@ -378,8 +395,9 @@ _CHECKPOINT_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
 
 
 def _sibling_image_response(folder_type: str, path: str) -> web.Response:
+    resolved = _resolve_model_name(folder_type, path)
     try:
-        full_path = folder_paths.get_full_path(folder_type, path)
+        full_path = folder_paths.get_full_path(folder_type, resolved)
     except Exception:
         full_path = None
     if not full_path or not os.path.isfile(full_path):
@@ -405,8 +423,9 @@ def _sibling_image_response(folder_type: str, path: str) -> web.Response:
 def _resolve_sibling_image_relpath(folder_type: str, path: str) -> str | None:
     """Return the relative path (under the folder_type tree) of the sibling
     image for the given weight file, or None if no sibling exists."""
+    resolved = _resolve_model_name(folder_type, path)
     try:
-        full_path = folder_paths.get_full_path(folder_type, path)
+        full_path = folder_paths.get_full_path(folder_type, resolved)
     except Exception:
         full_path = None
     if not full_path or not os.path.isfile(full_path):
