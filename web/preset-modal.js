@@ -55,16 +55,23 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
             content.appendChild(nameInput);
         }
 
-        // Base path + output path (works in both create and edit). The
-        // dropdown is filled asynchronously from /flakes/roots.
-        content.appendChild(makeComfyLabel("Output base path"));
+        // Base path + output path on same line.
+        const pathRow = document.createElement("div");
+        css(pathRow, "display:flex;gap:8px;align-items:flex-start;");
+        const basePathWrap = document.createElement("div");
+        css(basePathWrap, "flex:0 0 auto;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        basePathWrap.appendChild(makeComfyLabel("Base"));
         const baseRootSelect = document.createElement("select");
-        css(baseRootSelect, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;");
-        content.appendChild(baseRootSelect);
-
-        content.appendChild(makeComfyLabel("Output path"));
+        css(baseRootSelect, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;box-sizing:border-box;");
+        basePathWrap.appendChild(baseRootSelect);
+        pathRow.appendChild(basePathWrap);
+        const pathWrap = document.createElement("div");
+        css(pathWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        pathWrap.appendChild(makeComfyLabel("Output path"));
         pathInput = makeComfyInput("", "illustrious/wai_illustrious_v17");
-        content.appendChild(pathInput);
+        pathWrap.appendChild(pathInput);
+        pathRow.appendChild(pathWrap);
+        content.appendChild(pathRow);
 
         // pathManuallyEdited: once true, stop auto-syncing from name/family.
         let pathManuallyEdited = mode !== "create";
@@ -110,7 +117,9 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
                 for (const root of availableRoots) {
                     const opt = document.createElement("option");
                     opt.value = String(root.index);
-                    opt.textContent = `${root.label}: ${root.path}`;
+                    const driveLetter = (root.path || "").replace(/\\/g, "/").match(/^\/?([A-Za-z]:)/)?.[1] || "";
+                    opt.textContent = driveLetter ? `${root.label} (${driveLetter})` : root.label;
+                    opt.title = `${root.label}: ${root.path}`;
                     baseRootSelect.appendChild(opt);
                 }
                 if (!availableRoots.length) {
