@@ -109,15 +109,15 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             const typeRow = document.createElement("div");
             css(typeRow, "display:flex;gap:8px;align-items:flex-start;");
             const baseWrap = document.createElement("div");
-            css(baseWrap, "flex:0 0 auto;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            baseWrap.appendChild(makeComfyLabel("Base"));
+            css(baseWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            baseWrap.appendChild(makeComfyLabel("Base Directory"));
             const baseRootSelect = document.createElement("select");
-            css(baseRootSelect, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;box-sizing:border-box;");
+            css(baseRootSelect, "width:100%;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;box-sizing:border-box;");
             baseWrap.appendChild(baseRootSelect);
             baseRootSelectRef = baseRootSelect;
             typeRow.appendChild(baseWrap);
             const typeWrap = document.createElement("div");
-            css(typeWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            css(typeWrap, "flex:0 0 140px;min-width:0;display:flex;flex-direction:column;gap:4px;");
             typeWrap.appendChild(makeComfyLabel("Flake type"));
             typeDropdown = makeComfyDropdown(
                 [{ value: "", label: "\u2014" }, ...FLAKE_TYPES.map(t => ({ value: t, label: t }))],
@@ -139,8 +139,14 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     for (const root of roots) {
                         const opt = document.createElement("option");
                         opt.value = String(root.index);
-                        const driveLetter = (root.path || "").replace(/\\/g, "/").match(/^\/?([A-Za-z]:)/)?.[1] || "";
-                        opt.textContent = driveLetter ? `${root.label} (${driveLetter})` : root.label;
+                        const normalizedPath = (root.path || "").replace(/\\/g, "/").replace(/\/+$/, "");
+                        // Abbreviate long paths: keep drive + first two segments + .../models
+                        const pathParts = normalizedPath.split("/").filter(Boolean);
+                        let shortPath = normalizedPath;
+                        if (pathParts.length > 4) {
+                            shortPath = `${pathParts[0]}/<...>/${pathParts.slice(-2).join("/")}`;
+                        }
+                        opt.textContent = `${root.label}: ${shortPath}`;
                         opt.title = `${root.label}: ${root.path}`;
                         baseRootSelect.appendChild(opt);
                     }
