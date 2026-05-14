@@ -588,7 +588,7 @@ export function svgIcon(d, w = 14) {
 }
 
 const HOVER_BTN_SIZE = 26;
-const HOVER_BTN_CSS = `width:${HOVER_BTN_SIZE}px;height:${HOVER_BTN_SIZE}px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);`;
+const HOVER_BTN_CSS = `width:${HOVER_BTN_SIZE}px;height:${HOVER_BTN_SIZE}px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);overflow:hidden;line-height:1;box-sizing:border-box;`;
 
 export function makeGridItemOverlay({
     block,
