@@ -202,13 +202,12 @@ class FlakeStack:
         steps, cfg, sampler, scheduler = sampling_preset
 
         # --- Filename prefix state ----------------------------------------------
-        # Always start with a fresh stems list so we don't accumulate them
-        # across cached executions — ComfyUI may hand us back the same
-        # generation_data tuple from a previous run, and mutating its dict
-        # in place would compound the output_stem path on every queue.
+        # Copy the incoming filename_state so we don't mutate the original tuple.
+        # Preserve existing stems from upstream FlakeStack nodes so that stems
+        # accumulate correctly across a chain of stacked nodes.
         if len(generation_data) > 7 and isinstance(generation_data[7], dict):
             filename_state = dict(generation_data[7])
-            filename_state["stems"] = []
+            filename_state["stems"] = list(filename_state.get("stems", []))
         else:
             filename_state = {"preset": "", "stems": []}
 
