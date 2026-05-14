@@ -5,6 +5,7 @@ import { setupFlakeModelPresetWidget } from "./widgets/flake-model-preset.js";
 import { setupFlakeModelComboWidget } from "./widgets/flake-model-combo.js";
 import { setupFlakeDataSplitSelect, setupIntoFlakeDataSelect, DEFAULT_SPLIT_PINS, DEFAULT_INTO_PINS } from "./widgets/flake-data-select.js";
 import { setupPreviewFlakeDataWidget } from "./widgets/flake-preview.js";
+import { setupFlakeGenerateWidget } from "./widgets/flake-generate.js";
 import "./queue.js";
 
 function removeHiddenInputs(node, names) {
@@ -202,6 +203,24 @@ app.registerExtension({
                 if (!this._configured) {
                     setDefaultSize(this, 260);
                 }
+                return r;
+            };
+        }
+        if (nodeData.name === "FlakeGenerate") {
+            const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+            nodeType.prototype.onNodeCreated = function () {
+                const r = origOnNodeCreated?.apply(this, arguments);
+                setupFlakeGenerateWidget(this);
+                if (!this._configured) {
+                    setDefaultSize(this, 300);
+                }
+                return r;
+            };
+
+            const origOnConfigure = nodeType.prototype.onConfigure;
+            nodeType.prototype.onConfigure = function () {
+                const r = origOnConfigure?.apply(this, arguments);
+                this._configured = true;
                 return r;
             };
         }

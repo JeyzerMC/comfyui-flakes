@@ -120,7 +120,7 @@ def _load_preset_bundle(preset_name: str):
 
     model_bundle = (model, clip, vae)
     filename_state = {
-        "preset": preset_name,
+        "preset": preset_data.filename_prefix or preset_name,
         "stems": [],
         "checkpoint": preset_data.checkpoint,
         "vae": preset_data.vae or "baked-in",

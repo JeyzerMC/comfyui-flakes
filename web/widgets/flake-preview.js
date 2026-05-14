@@ -1,15 +1,15 @@
 import { css } from "../utils.js";
 
-const CATEGORIES = ["Models", "Prompts", "Parameters", "Metadata"];
+export const CATEGORIES = ["Models", "Prompts", "Parameters", "Metadata"];
 
-const CATEGORY_STYLE = {
+export const CATEGORY_STYLE = {
     Models: { icon: "\uD83D\uDCBB", color: "#4a9eff" },
     Prompts: { icon: "\uD83D\uDCDD", color: "#4aff9e" },
     Parameters: { icon: "\u2699\uFE0F", color: "#ff9e4a" },
     Metadata: { icon: "\uD83D\uDCCB", color: "#9e4aff" },
 };
 
-function makeOverlay(container, category, data) {
+export function makeOverlay(container, category, data) {
     const existing = container.querySelector(".flake-preview-overlay");
     if (existing) existing.remove();
 
@@ -70,7 +70,7 @@ function makeOverlay(container, category, data) {
     container.appendChild(overlay);
 }
 
-function makeButton(category, info, hasData, onClick) {
+export function makeButton(category, info, hasData, onClick) {
     const btn = document.createElement("div");
     const accent = info.color;
     const disabledStyle = hasData ? "" : "opacity:0.35;cursor:default;";
