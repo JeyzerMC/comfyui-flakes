@@ -29,6 +29,8 @@ _FAMILY_COMPAT = {
     "ZImage/Turbo": {"common", "zit"},
 }
 
+_FAMILY_FROM_FOLDER = {v: k for k, v in _FAMILY_MAP.items()}
+
 
 # ---------------------------------------------------------------------------
 # Preset dataclass
@@ -52,6 +54,7 @@ class ModelPreset:
     positive: str = ""
     negative: str = ""
     embeddings: list[str] = field(default_factory=list)
+    filename_prefix: str = ""
 
 # ---------------------------------------------------------------------------
 # Flake dataclass + ControlNetEntry
@@ -143,6 +146,24 @@ def _family_folder(family: str | None) -> str | None:
     return _FAMILY_MAP.get(family) if family else None
 
 
+def infer_preset_family(path: str) -> str | None:
+    parts = path.replace("\\", "/").split("/")
+    if parts[0] == "img" and len(parts) >= 2 and parts[1] in _FAMILY_FROM_FOLDER:
+        return _FAMILY_FROM_FOLDER[parts[1]]
+    if len(parts) >= 2 and parts[0] in _FAMILY_FROM_FOLDER:
+        return _FAMILY_FROM_FOLDER[parts[0]]
+    return None
+
+
+def strip_preset_prefix(path: str) -> str:
+    parts = path.replace("\\", "/").split("/")
+    if parts[0] == "img" and len(parts) >= 3 and parts[1] in _FAMILY_FROM_FOLDER:
+        return "/".join(parts[2:])
+    if len(parts) >= 2 and parts[0] in _FAMILY_FROM_FOLDER:
+        return "/".join(parts[1:])
+    return path
+
+
 def _is_flake_compatible(path: str, family: str | None) -> bool:
     if not family:
         return True
@@ -167,6 +188,8 @@ def _is_preset_compatible(path: str, family: str | None) -> bool:
     parts = path.replace("\\", "/").split("/")
     if not parts or parts[0] == "":
         return True
+    if parts[0] == "img" and len(parts) >= 2:
+        return parts[1] in compat
     if parts[0] in compat:
         return True
     return False
@@ -586,6 +609,20 @@ def list_presets(family: str | None = None) -> list[str]:
     return sorted(names)
 
 
+def list_preset_display_names(family: str | None = None) -> dict[str, str]:
+    names = list_presets(family=family)
+    display_names: dict[str, str] = {}
+    for name in names:
+        try:
+            raw = read_preset_raw(name)
+            dn = raw.get("display_name") or ""
+            if dn:
+                display_names[name] = dn
+        except Exception:
+            pass
+    return display_names
+
+
 def read_preset_raw(name: str) -> dict[str, Any]:
     path = _resolve_preset_file(name)
     with open(path, encoding="utf-8") as f:
@@ -637,10 +674,13 @@ def save_preset(
     if output_path:
         canonical = output_path.replace("\\", "/").strip("/")
         _validate_name(canonical)
+        folder = _family_folder(family)
+        if folder:
+            canonical = f"img/{folder}/{canonical}"
     else:
         _validate_name(name)
         folder = _family_folder(family)
-        canonical = f"{folder}/{name}" if folder else name
+        canonical = f"img/{folder}/{name}" if folder else name
 
     target = os.path.join(root, f"{canonical}.yaml")
     _ensure_inside(target, root)
@@ -769,4 +809,5 @@ def load_preset(name: str) -> ModelPreset:
         positive=str(prompt.get("positive", "") or ""),
         negative=str(prompt.get("negative", "") or ""),
         embeddings=list(raw.get("embeddings") or []),
+        filename_prefix=str(raw.get("filename_prefix", "") or ""),
     )

@@ -317,10 +317,11 @@ async def _list_presets(request: web.Request) -> web.Response:
     family = request.query.get("family", "").strip() or None
     try:
         names = flake_io.list_presets(family=family)
+        display_names = flake_io.list_preset_display_names(family=family)
     except Exception as exc:
         logging.exception("[flakes] failed to list presets")
         return _server_error(str(exc))
-    return web.json_response({"presets": names})
+    return web.json_response({"presets": names, "display_names": display_names})
 
 
 @routes.get("/flakes/preset")

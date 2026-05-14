@@ -232,11 +232,13 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
 export async function openPresetPicker({ selected = "", family = "" } = {}) {
     return new Promise(async (resolve) => {
         let presets = [];
+        let displayNames = {};
         try {
             const query = family ? `?family=${encodeURIComponent(family)}` : "";
             const r = await fetch(`/flakes/presets${query}`, { cache: "no-store" });
             const d = await r.json();
             presets = d.presets || [];
+            displayNames = d.display_names || {};
         } catch (err) {
             console.error("[flakes] failed to load presets for picker:", err);
         }
@@ -310,11 +312,11 @@ export async function openPresetPicker({ selected = "", family = "" } = {}) {
             css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.4);pointer-events:none;z-index:0;transition:background 0.15s ease;");
             thumb.appendChild(overlay);
 
-            const nameAfterSlash = name.replace(/\\/g, "/").split("/").pop() || name;
+            const displayLabel = displayNames[name] || name.replace(/\\/g, "/").split("/").pop() || name;
             const nameEl = document.createElement("div");
             nameEl.title = name;
             css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.9);padding:6px 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
-            nameEl.textContent = nameAfterSlash;
+            nameEl.textContent = displayLabel;
             thumb.appendChild(nameEl);
 
             thumb.addEventListener("mouseenter", () => {
