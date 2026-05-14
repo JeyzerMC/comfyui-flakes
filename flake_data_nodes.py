@@ -24,8 +24,8 @@ _ALL_PINS = [
     ("height", "INT"),
     ("steps", "INT"),
     ("cfg", "FLOAT"),
-    ("sampler_name", "SAMPLER"),
-    ("scheduler", "SCHEDULER"),
+    ("sampler_name", _SAMPLER_TYPES[0]),
+    ("scheduler", _SAMPLER_TYPES[1]),
 ]
 
 
@@ -344,7 +344,7 @@ class PreviewFlakeData:
         }
 
         return {
-            "ui": {"preview_data": preview_data},
+            "ui": {"preview_data": [preview_data]},
             "result": (flake_data,),
         }
 
@@ -474,7 +474,7 @@ class FlakeGenerate:
         }
 
         ui_data = dict(save_result.get("ui", {}))
-        ui_data["preview_data"] = preview_data
-        ui_data["seed"] = seed
+        ui_data["preview_data"] = [preview_data]
+        ui_data["seed"] = [seed]
 
         return {"ui": ui_data}
