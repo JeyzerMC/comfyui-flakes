@@ -74,6 +74,37 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         }
 
         // ---- Base + Flake type on same row ----
+        let currentRootPath = "";
+        let rootsCache = [];
+        let resolvedPathLabel = null;
+
+        function getOutputPrefix() {
+            const folder = familyFolder(currentFamily);
+            return folder ? `img/${folder}/` : "img/";
+        }
+
+        function stripOutputPrefix(val) {
+            if (!val) return val;
+            const prefixes = ["img/sdxl/", "img/illustrious/", "img/pony/", "img/zib/", "img/zit/", "img/common/", "img/"];
+            for (const p of prefixes) {
+                if (val.toLowerCase().startsWith(p)) return val.slice(p.length);
+            }
+            return val;
+        }
+
+        function updateResolvedPath() {
+            if (!resolvedPathLabel) return;
+            const raw = (pathInput?.value || "").trim();
+            if (!raw) {
+                resolvedPathLabel.textContent = "";
+                return;
+            }
+            const rootPart = currentRootPath ? currentRootPath : "C:/<comfyui_path>/models/flakes/";
+            const prefix = getOutputPrefix();
+            const fullPath = `${rootPart}${prefix}${raw}.yaml`.replace(/\/\//g, "/");
+            resolvedPathLabel.textContent = fullPath;
+        }
+
         if (mode !== "default") {
             const typeRow = document.createElement("div");
             css(typeRow, "display:flex;gap:8px;align-items:flex-start;");
@@ -130,37 +161,6 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             pathRow.appendChild(pathLabel);
             pathInput = makeComfyInput("", "characters/musashi");
             pathRow.appendChild(pathInput);
-
-            let currentRootPath = "";
-            let rootsCache = [];
-            let resolvedPathLabel = null;
-
-            function getOutputPrefix() {
-                const folder = familyFolder(currentFamily);
-                return folder ? `img/${folder}/` : "img/";
-            }
-
-            function stripOutputPrefix(val) {
-                if (!val) return val;
-                const prefixes = ["img/sdxl/", "img/illustrious/", "img/pony/", "img/zib/", "img/zit/", "img/common/", "img/"];
-                for (const p of prefixes) {
-                    if (val.toLowerCase().startsWith(p)) return val.slice(p.length);
-                }
-                return val;
-            }
-
-            function updateResolvedPath() {
-                if (!resolvedPathLabel) return;
-                const raw = (pathInput?.value || "").trim();
-                if (!raw) {
-                    resolvedPathLabel.textContent = "";
-                    return;
-                }
-                const rootPart = currentRootPath ? currentRootPath : "C:/<comfyui_path>/models/flakes/";
-                const prefix = getOutputPrefix();
-                const fullPath = `${rootPart}${prefix}${raw}.yaml`.replace(/\/\//g, "/");
-                resolvedPathLabel.textContent = fullPath;
-            }
 
             (async () => {
                 try {
