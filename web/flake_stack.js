@@ -142,10 +142,6 @@ app.registerExtension({
                     } catch { savedPins = null; }
                 }
                 if (!Array.isArray(savedPins)) savedPins = [...DEFAULT_SPLIT_PINS];
-                for (let i = this.outputs.length - 1; i >= 0; i--) {
-                    this.disconnectOutputs(i);
-                    this.removeOutput(i);
-                }
                 this.properties._selected_split_pins = [...savedPins];
                 this._splitPinUpdate?.();
                 return r;
@@ -181,15 +177,6 @@ app.registerExtension({
                     } catch { savedPins = null; }
                 }
                 if (!Array.isArray(savedPins)) savedPins = [...DEFAULT_INTO_PINS];
-                const fixedNames = new Set(["flake_data", "active_pins"]);
-                for (let i = this.inputs.length - 1; i >= 0; i--) {
-                    if (!fixedNames.has(this.inputs[i].name)) {
-                        if (this.inputs[i].link != null) {
-                            this.disconnectInput(i);
-                        }
-                        this.removeInput(i);
-                    }
-                }
                 this.properties._selected_into_pins = [...savedPins];
                 this._intoPinUpdate?.();
                 return r;

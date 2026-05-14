@@ -32,24 +32,12 @@ const ALL_INTO_PINS = [
     { name: "scheduler", label: "Scheduler" },
 ];
 
-const SPLIT_PIN_TYPES = {
-    model: "MODEL", clip: "CLIP", vae: "VAE",
-    positive: "CONDITIONING", negative: "CONDITIONING", latent: "LATENT",
-    filename_prefix: "STRING", width: "INT", height: "INT",
-    steps: "INT", cfg: "FLOAT",
-    sampler_name: "COMBO_SAMPLER", scheduler: "COMBO_SCHEDULER",
-};
 
-const INTO_PIN_TYPES = {
-    model: "MODEL", clip: "CLIP", vae: "VAE",
-    positive: "CONDITIONING", negative: "CONDITIONING", latent: "LATENT",
-    filename_prefix: "STRING", width: "INT", height: "INT",
-    steps: "INT", cfg: "FLOAT",
-    sampler_name: "COMBO_SAMPLER", scheduler: "COMBO_SCHEDULER",
-};
 
 export const DEFAULT_SPLIT_PINS = ["model"];
 export const DEFAULT_INTO_PINS = ["model"];
+
+const WIDGET_PIN_NAMES = new Set(["filename_prefix", "width", "height", "steps", "cfg", "sampler_name", "scheduler"]);
 
 function applyPinVisibility(node, selected, direction, allPins) {
     if (direction === "output") {
@@ -85,68 +73,57 @@ function applyPinVisibility(node, selected, direction, allPins) {
     }
 }
 
-function addDynamicOutput(node, pinName) {
-    const type = SPLIT_PIN_TYPES[pinName] || "*";
-    node.addOutput(pinName, type);
+function syncSplitVisibility(node, selected) {
+    applyPinVisibility(node, selected, "output", ALL_SPLIT_PINS);
 }
 
-function removeDynamicOutput(node, pinName) {
-    const idx = node.outputs.findIndex(o => o.name === pinName);
-    if (idx === -1) return;
-    if (node.outputs[idx].links && node.outputs[idx].links.length > 0) {
-        node.disconnectOutputs(idx);
-    }
-    node.removeOutput(idx);
-}
-
-function addDynamicInput(node, pinName) {
-    const type = INTO_PIN_TYPES[pinName] || "*";
-    node.addInput(pinName, type, { shape: 6 });
-}
-
-function removeDynamicInput(node, pinName) {
-    const idx = node.inputs.findIndex(i => i.name === pinName);
-    if (idx === -1) return;
-    if (node.inputs[idx].link != null) {
-        node.disconnectInput(idx);
-    }
-    node.removeInput(idx);
-}
-
-function syncSplitOutputs(node, selected) {
-    const currentNames = node.outputs.map(o => o.name);
-    const toRemove = currentNames.filter(n => !selected.includes(n));
-    for (const name of toRemove) {
-        removeDynamicOutput(node, name);
-    }
-    for (const name of selected) {
-        if (!currentNames.includes(name)) {
-            addDynamicOutput(node, name);
+function syncIntoVisibility(node, selected, widgetContainer) {
+    applyPinVisibility(node, selected, "input", ALL_INTO_PINS);
+    if (widgetContainer) {
+        widgetContainer.replaceChildren();
+        for (const name of selected) {
+            if (!WIDGET_PIN_NAMES.has(name)) continue;
+            const pinDef = ALL_INTO_PINS.find(p => p.name === name);
+            const hiddenW = node.widgets?.find(w => w.name === name);
+            const row = document.createElement("div");
+            css(row, "display:flex;align-items:center;gap:4px;padding:2px 0;");
+            const lbl = document.createElement("span");
+            lbl.textContent = (pinDef?.label || name) + ":";
+            css(lbl, "font-size:10px;color:#999;white-space:nowrap;min-width:60px;flex-shrink:0;");
+            row.appendChild(lbl);
+            let inputEl;
+            if (name === "sampler_name" || name === "scheduler") {
+                inputEl = document.createElement("select");
+                const opts = hiddenW?.options?.values || [];
+                for (const opt of opts) {
+                    const o = document.createElement("option");
+                    o.value = opt;
+                    o.textContent = opt;
+                    if (opt === (hiddenW?.value || "")) o.selected = true;
+                    inputEl.appendChild(o);
+                }
+                css(inputEl, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #444;border-radius:3px;padding:2px 4px;font-size:11px;height:22px;cursor:pointer;outline:none;");
+            } else if (name === "filename_prefix") {
+                inputEl = document.createElement("input");
+                inputEl.type = "text";
+                inputEl.value = hiddenW?.value || "";
+                css(inputEl, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #444;border-radius:3px;padding:2px 4px;font-size:11px;outline:none;");
+            } else {
+                inputEl = document.createElement("input");
+                inputEl.type = "number";
+                inputEl.value = hiddenW?.value ?? 0;
+                inputEl.step = name === "cfg" ? "0.1" : "1";
+                css(inputEl, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #444;border-radius:3px;padding:2px 4px;font-size:11px;outline:none;");
+            }
+            inputEl.addEventListener("input", () => {
+                if (hiddenW) hiddenW.value = inputEl.value;
+            });
+            inputEl.addEventListener("change", () => {
+                if (hiddenW) hiddenW.value = inputEl.value;
+            });
+            row.appendChild(inputEl);
+            widgetContainer.appendChild(row);
         }
-    }
-    node.setDirtyCanvas(true, true);
-    const sz = node.computeSize();
-    if (node.size[0] < sz[0] || node.size[1] < sz[1]) {
-        node.setSize([Math.max(node.size[0], sz[0]), Math.max(node.size[1], sz[1])]);
-    }
-}
-
-function syncIntoInputs(node, selected) {
-    const fixedNames = new Set(["flake_data", "active_pins"]);
-    const currentDynamic = node.inputs.filter(i => !fixedNames.has(i.name)).map(i => i.name);
-    const toRemove = currentDynamic.filter(n => !selected.includes(n));
-    for (const name of toRemove) {
-        removeDynamicInput(node, name);
-    }
-    for (const name of selected) {
-        if (!currentDynamic.includes(name)) {
-            addDynamicInput(node, name);
-        }
-    }
-    node.setDirtyCanvas(true, true);
-    const sz = node.computeSize();
-    if (node.size[0] < sz[0] || node.size[1] < sz[1]) {
-        node.setSize([Math.max(node.size[0], sz[0]), Math.max(node.size[1], sz[1])]);
     }
 }
 
@@ -160,7 +137,7 @@ function hideWidget(node, widgetName) {
     if (w.inputEl) { w.inputEl.remove(); w.inputEl = null; }
 }
 
-function createPinSelector({ node, allPins, defaultPins, propName, hiddenName, direction, syncFn }) {
+function createPinSelector({ node, allPins, defaultPins, propName, hiddenName, direction, syncFn, showRemoveButton = true }) {
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:4px;padding:4px 6px;font-size:11px;color:#ddd;pointer-events:auto;");
 
@@ -217,14 +194,19 @@ function createPinSelector({ node, allPins, defaultPins, propName, hiddenName, d
     const addBtn = document.createElement("button");
     addBtn.textContent = "+";
     addBtn.title = "Add pin";
-    css(addBtn, "width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:#2a4a3a;color:#ddd;border:1px solid #3a8a5a;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;line-height:1;flex-shrink:0;");
+    css(addBtn, "width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;background:#333;color:#ccc;border:1px solid #555;border-radius:3px;cursor:pointer;font-size:13px;line-height:1;flex-shrink:0;transition:background 0.1s;");
+    addBtn.addEventListener("mouseenter", () => addBtn.style.background = "#444");
+    addBtn.addEventListener("mouseleave", () => addBtn.style.background = "#333");
     row.appendChild(addBtn);
 
-    const removeBtn = document.createElement("button");
-    removeBtn.textContent = "\u2212";
-    removeBtn.title = "Remove pin";
-    css(removeBtn, "width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:#4a2a2a;color:#ddd;border:1px solid #8a3a3a;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;line-height:1;flex-shrink:0;");
-    row.appendChild(removeBtn);
+    let removeBtn = null;
+    if (showRemoveButton) {
+        removeBtn = document.createElement("button");
+        removeBtn.textContent = "\u2212";
+        removeBtn.title = "Remove pin";
+        css(removeBtn, "width:20px;height:20px;padding:0;display:flex;align-items:center;justify-content:center;background:#4a2a2a;color:#ddd;border:1px solid #8a3a3a;border-radius:3px;cursor:pointer;font-size:13px;line-height:1;flex-shrink:0;");
+        row.appendChild(removeBtn);
+    }
 
     container.appendChild(row);
 
@@ -232,13 +214,16 @@ function createPinSelector({ node, allPins, defaultPins, propName, hiddenName, d
     css(pinList, "display:flex;flex-wrap:wrap;gap:3px;min-height:16px;");
     container.appendChild(pinList);
 
+    const widgetRows = document.createElement("div");
+    css(widgetRows, "display:flex;flex-direction:column;gap:1px;");
+
     function refresh() {
         if (hiddenWidget) {
             hiddenWidget.value = JSON.stringify(selected);
         }
         node.properties[propName] = [...selected];
 
-        syncFn(node, selected);
+        syncFn(node, selected, widgetRows);
 
         pinList.replaceChildren();
         if (selected.length === 0) {
@@ -268,6 +253,9 @@ function createPinSelector({ node, allPins, defaultPins, propName, hiddenName, d
                 pinList.appendChild(chip);
             }
         }
+        if (direction === "input" && widgetRows.children.length > 0 && !container.contains(widgetRows)) {
+            container.appendChild(widgetRows);
+        }
     }
 
     addBtn.addEventListener("click", (e) => {
@@ -280,43 +268,26 @@ function createPinSelector({ node, allPins, defaultPins, propName, hiddenName, d
         }
     });
 
-    removeBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        const pinName = select.value;
-        const idx = selected.indexOf(pinName);
-        if (idx !== -1) {
-            selected.splice(idx, 1);
-            refresh();
-        }
-    });
+    if (removeBtn) {
+        removeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const pinName = select.value;
+            const idx = selected.indexOf(pinName);
+            if (idx !== -1) {
+                selected.splice(idx, 1);
+                refresh();
+            }
+        });
+    }
 
     refresh();
 
     return { container, refresh };
 }
 
-function removeInitialPins(node, allPins, direction) {
-    if (direction === "output") {
-        for (let i = node.outputs.length - 1; i >= 0; i--) {
-            node.disconnectOutputs(i);
-            node.removeOutput(i);
-        }
-    } else {
-        const fixedNames = new Set(["flake_data", "active_pins"]);
-        for (let i = node.inputs.length - 1; i >= 0; i--) {
-            if (!fixedNames.has(node.inputs[i].name)) {
-                if (node.inputs[i].link != null) {
-                    node.disconnectInput(i);
-                }
-                node.removeInput(i);
-            }
-        }
-    }
-}
-
 export function setupFlakeDataSplitSelect(node) {
-    removeInitialPins(node, ALL_SPLIT_PINS, "output");
+    applyPinVisibility(node, DEFAULT_SPLIT_PINS, "output", ALL_SPLIT_PINS);
 
     const { container, refresh } = createPinSelector({
         node,
@@ -325,7 +296,7 @@ export function setupFlakeDataSplitSelect(node) {
         propName: "_selected_split_pins",
         hiddenName: "selected_pins",
         direction: "output",
-        syncFn: syncSplitOutputs,
+        syncFn: syncSplitVisibility,
     });
 
     hideWidget(node, "selected_pins");
@@ -343,7 +314,11 @@ export function setupFlakeDataSplitSelect(node) {
 }
 
 export function setupIntoFlakeDataSelect(node) {
-    removeInitialPins(node, ALL_INTO_PINS, "input");
+    applyPinVisibility(node, DEFAULT_INTO_PINS, "input", ALL_INTO_PINS);
+
+    for (const wName of WIDGET_PIN_NAMES) {
+        hideWidget(node, wName);
+    }
 
     const { container, refresh } = createPinSelector({
         node,
@@ -352,7 +327,8 @@ export function setupIntoFlakeDataSelect(node) {
         propName: "_selected_into_pins",
         hiddenName: "active_pins",
         direction: "input",
-        syncFn: syncIntoInputs,
+        syncFn: syncIntoVisibility,
+        showRemoveButton: false,
     });
 
     hideWidget(node, "active_pins");

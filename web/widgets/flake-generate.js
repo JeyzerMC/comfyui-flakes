@@ -65,7 +65,7 @@ export function setupFlakeGenerateWidget(node) {
                 noImageLabel.style.display = "block";
             }
             if (output.preview_data) {
-                currentPreviewData = output.preview_data;
+                currentPreviewData = Array.isArray(output.preview_data) ? output.preview_data[0] : output.preview_data;
                 node.properties._preview_data = currentPreviewData;
                 renderPreviewGrid(currentPreviewData);
             }
