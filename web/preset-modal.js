@@ -39,8 +39,34 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         let pathInput = null;
         let familyDropdown = null;
         let nameInput = null;
+        let filenamePrefixInput = null;
         let baseRootDropdown = null;
         let availableRoots = [];
+        let resolvedPathLabel = null;
+
+        const FAMILY_FROM_FOLDER = {
+            sdxl: "SDXL/Base",
+            illustrious: "SDXL/Illustrious",
+            pony: "SDXL/Pony",
+            zib: "ZImage/Base",
+            zit: "ZImage/Turbo",
+            common: "Common",
+        };
+
+        function inferFamilyFromPath(p) {
+            const parts = p.replace(/\\/g, "/").split("/");
+            if (parts[0] === "img" && parts.length >= 2 && FAMILY_FROM_FOLDER[parts[1]]) return FAMILY_FROM_FOLDER[parts[1]];
+            if (parts.length >= 2 && FAMILY_FROM_FOLDER[parts[0]]) return FAMILY_FROM_FOLDER[parts[0]];
+            return "";
+        }
+
+        function stripPresetPrefix(p) {
+            const parts = p.replace(/\\/g, "/").split("/");
+            if (parts[0] === "img" && parts.length >= 3 && FAMILY_FROM_FOLDER[parts[1]]) return parts.slice(2).join("/");
+            if (parts.length >= 2 && FAMILY_FROM_FOLDER[parts[0]]) return parts.slice(1).join("/");
+            return p;
+        }
+
         if (mode === "create") {
             const nameFamilyRow = document.createElement("div");
             css(nameFamilyRow, "display:flex;gap:8px;align-items:flex-start;");
@@ -56,11 +82,38 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
             nameInput = makeComfyInput("", "e.g. WAI Illustrious V17");
             nameWrap.appendChild(nameInput);
             nameFamilyRow.appendChild(nameWrap);
+            const prefixWrap = document.createElement("div");
+            css(prefixWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            prefixWrap.appendChild(makeComfyLabel("Filename prefix"));
+            filenamePrefixInput = makeComfyInput("", "wai_illustrious_v17");
+            prefixWrap.appendChild(filenamePrefixInput);
+            nameFamilyRow.appendChild(prefixWrap);
             content.appendChild(nameFamilyRow);
         } else {
-            content.appendChild(makeComfyLabel("Preset name"));
+            const inferredFamily = inferFamilyFromPath(name || "");
+            const effectiveFamily = family || inferredFamily;
+
+            const nameFamilyRow = document.createElement("div");
+            css(nameFamilyRow, "display:flex;gap:8px;align-items:flex-start;");
+            const familyWrap = document.createElement("div");
+            css(familyWrap, "flex:0 0 auto;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            familyWrap.appendChild(makeComfyLabel("Model family"));
+            familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, effectiveFamily);
+            familyWrap.appendChild(familyDropdown.container);
+            nameFamilyRow.appendChild(familyWrap);
+            const nameWrap = document.createElement("div");
+            css(nameWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            nameWrap.appendChild(makeComfyLabel("Preset name"));
             nameInput = makeComfyInput(data?.display_name || name, "");
-            content.appendChild(nameInput);
+            nameWrap.appendChild(nameInput);
+            nameFamilyRow.appendChild(nameWrap);
+            const prefixWrap = document.createElement("div");
+            css(prefixWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            prefixWrap.appendChild(makeComfyLabel("Filename prefix"));
+            filenamePrefixInput = makeComfyInput(data?.filename_prefix || "", "wai_illustrious_v17");
+            prefixWrap.appendChild(filenamePrefixInput);
+            nameFamilyRow.appendChild(prefixWrap);
+            content.appendChild(nameFamilyRow);
         }
 
         // Base path + output path on same line.
@@ -75,15 +128,33 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         pathRow.appendChild(basePathWrap);
         const pathWrap = document.createElement("div");
         css(pathWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-        pathWrap.appendChild(makeComfyLabel("Output path"));
-        pathInput = makeComfyInput("", "illustrious/wai_illustrious_v17");
-        pathWrap.appendChild(pathInput);
-        pathRow.appendChild(pathWrap);
+pathWrap.appendChild(makeComfyLabel("Output path"));
+            pathInput = makeComfyInput("", "nova_anime_xl_v18");
+            pathWrap.appendChild(pathInput);
+            resolvedPathLabel = document.createElement("div");
+            css(resolvedPathLabel, "font-size:10px;color:#666;margin-top:2px;word-break:break-all;");
+            pathWrap.appendChild(resolvedPathLabel);
+            pathRow.appendChild(pathWrap);
         content.appendChild(pathRow);
+
+        function updateResolvedPath() {
+            const raw = (pathInput?.value || "").trim();
+            if (!raw) {
+                resolvedPathLabel.textContent = "";
+                return;
+            }
+            const rootIdx = parseInt(baseRootSelect?.value || "0", 10);
+            const root = availableRoots[rootIdx] || availableRoots[0];
+            const rootPart = root ? (root.path || "").replace(/\\/g, "/").replace(/\/+$/, "") + "/" : "C:/<comfy>/model_presets/";
+            const folder = familyFolderLocal(familyDropdown?.element?.value || family);
+            const familyPrefix = folder ? `img/${folder}/` : "";
+            const fullPath = `${rootPart}${familyPrefix}${raw}.yaml`;
+            resolvedPathLabel.textContent = fullPath;
+        }
 
         // pathManuallyEdited: once true, stop auto-syncing from name/family.
         let pathManuallyEdited = mode !== "create";
-        pathInput.addEventListener("input", () => { pathManuallyEdited = true; });
+        pathInput.addEventListener("input", () => { pathManuallyEdited = true; updateResolvedPath(); });
 
         function familyFolderLocal(fam) {
             const map = {
@@ -102,18 +173,18 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         }
 
         function syncOutputPath() {
-            if (pathManuallyEdited) return;
-            const folder = familyFolderLocal(familyDropdown?.element?.value || family);
             const stem = snake(nameInput.value);
-            if (!folder && !stem) { pathInput.value = ""; return; }
-            pathInput.value = folder && stem ? `${folder}/${stem}` : (folder || stem);
+            if (!pathManuallyEdited) pathInput.value = stem;
+            filenamePrefixInput.value = stem;
+            updateResolvedPath();
         }
         nameInput.addEventListener("input", syncOutputPath);
-        if (familyDropdown) familyDropdown.element.addEventListener("change", syncOutputPath);
+        if (familyDropdown) familyDropdown.element.addEventListener("change", () => { syncOutputPath(); updateResolvedPath(); });
 
         // Seed output path from the existing preset name in edit mode.
         if (mode !== "create" && name) {
-            pathInput.value = name;
+            pathInput.value = stripPresetPrefix(name);
+            updateResolvedPath();
         }
 
         (async () => {
@@ -137,8 +208,11 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
                     baseRootSelect.appendChild(opt);
                 }
                 if (mode === "create" && !pathManuallyEdited) syncOutputPath();
+                updateResolvedPath();
             } catch { /* ignore */ }
         })();
+
+        baseRootSelect.addEventListener("change", updateResolvedPath);
 
         // Cover image
         let presetCoverFile = null;
@@ -458,6 +532,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         saveBtn.addEventListener("click", async () => {
             const ordered = {
                 display_name: (nameInput.value || "").trim() || undefined,
+                filename_prefix: (filenamePrefixInput.value || "").trim() || undefined,
                 checkpoint: ckptWrap.element.value,
                 checkpoint_url: ckptUrlInput.value || "",
                 clip_skip: -Math.abs(csSlider.getValue()),
