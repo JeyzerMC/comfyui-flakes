@@ -3,7 +3,7 @@ import {
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider,
 } from "../utils.js";
-import { fetchList, fetchFlake, saveFlakeApi, getCoverUrl, fetchFlakeMeta } from "../api.js";
+import { fetchList, fetchFlake, saveFlakeApi, getCoverUrl, fetchFlakeMeta, invalidateList } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 
@@ -483,6 +483,7 @@ export function setupFlakeWidget(node) {
             family: getFamily(),
         });
         if (!result || !result.created) return;
+        invalidateList(); // ensure the load picker sees the newly created flake
         const arr = readEntries();
         let has_lora = false;
         let display_name = null;

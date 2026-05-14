@@ -150,6 +150,13 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                         opt.title = `${root.label}: ${root.path}`;
                         baseRootSelect.appendChild(opt);
                     }
+                    // Default to the extra model path (index > 0) when available
+                    if (roots.length > 1 && mode === "create") {
+                        baseRootSelect.value = String(roots[roots.length - 1].index);
+                        const rootIdx = parseInt(baseRootSelect.value, 10);
+                        const root = rootsCache[rootIdx] || rootsCache[0];
+                        currentRootPath = (root?.path || "").replace(/\\/g, "/").replace(/\/+$/, "") + "/";
+                    }
                     updateResolvedPath();
                     if (!roots.length) {
                         const opt = document.createElement("option");

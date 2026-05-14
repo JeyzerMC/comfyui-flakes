@@ -1,6 +1,6 @@
 import { openOverlay } from "./modal.js";
 import { css, makeButton, makeComfyInput, familyFolder } from "./utils.js";
-import { getCoverUrl, fetchBrowse } from "./api.js";
+import { getCoverUrl, fetchBrowse, fetchLoras, fetchCheckpoints } from "./api.js";
 
 const BROWSE_TYPE_LABELS = {
     checkpoints: "models/checkpoints",
@@ -488,10 +488,53 @@ export function openFileBrowser({ type, defaultPath = "" }) {
         let currentPath = defaultPath;
         let selectedFile = null;
         let dirEntries = [];
+        let allFlatItems = []; // full flat list for search (loras/checkpoints only)
+
+        // Pre-fetch the full flat list so search works across all subdirectories
+        if (type === "loras") {
+            fetchLoras().then(list => { allFlatItems = list || []; }).catch(() => {});
+        } else if (type === "checkpoints") {
+            fetchCheckpoints().then(list => { allFlatItems = list || []; }).catch(() => {});
+        }
 
         function renderEntries(filter = "") {
             listBox.replaceChildren();
             const term = String(filter || "").toLowerCase().trim();
+
+            // When searching, use the full flat list if available
+            if (term && allFlatItems.length > 0) {
+                const filtered = allFlatItems.filter(p => String(p).toLowerCase().includes(term));
+                if (filtered.length === 0) {
+                    const empty = document.createElement("div");
+                    empty.textContent = "No matches";
+                    css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;font-size:12px;");
+                    listBox.appendChild(empty);
+                    return;
+                }
+                for (const filePath of filtered) {
+                    const parts = filePath.replace(/\\/g, "/").split("/");
+                    const fileName = parts.pop();
+                    const dir = parts.join("/");
+                    const row = document.createElement("button");
+                    row.textContent = fileName + (dir ? `  (${dir})` : "");
+                    row.title = filePath;
+                    css(row, "text-align:left;padding:6px 10px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
+                    row.addEventListener("mouseenter", () => { row.style.background = "#333"; });
+                    row.addEventListener("mouseleave", () => { row.style.background = "#2a2a2a"; });
+                    row.addEventListener("click", () => {
+                        selectedFile = filePath;
+                        for (const b of listBox.querySelectorAll("button")) b.style.borderColor = "#444";
+                        row.style.borderColor = "#2a6acf";
+                    });
+                    row.addEventListener("dblclick", () => {
+                        selectedFile = filePath;
+                        close({ file: selectedFile });
+                    });
+                    listBox.appendChild(row);
+                }
+                return;
+            }
+
             const entries = term
                 ? dirEntries.filter(e => String(e.name || "").toLowerCase().includes(term))
                 : dirEntries;
