@@ -1,4 +1,5 @@
 import { css } from "../utils.js";
+import { openOverlay } from "../modal.js";
 
 export const CATEGORIES = ["Models", "Prompts", "Parameters", "Metadata"];
 
@@ -9,68 +10,60 @@ export const CATEGORY_STYLE = {
     Metadata: { icon: "\uD83D\uDCCB", color: "#9e4aff" },
 };
 
-export function makeOverlay(container, category, data) {
-    const existing = container.querySelector(".flake-preview-overlay");
-    if (existing) existing.remove();
-
+export function makeOverlay(category, data) {
     const info = CATEGORY_STYLE[category];
     const entries = Object.entries(data);
     const accent = info.color;
 
-    const overlay = document.createElement("div");
-    css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.92);z-index:100;display:flex;flex-direction:column;padding:10px;box-sizing:border-box;overflow-y:auto;");
+    const { content, footer, close } = openOverlay();
 
+    // Header
     const header = document.createElement("div");
-    css(header, "display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-shrink:0;");
+    css(header, "display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-shrink:0;padding-bottom:10px;border-bottom:1px solid #333;");
     const iconEl = document.createElement("span");
     iconEl.textContent = info.icon;
-    iconEl.style.fontSize = "15px";
+    iconEl.style.fontSize = "18px";
     header.appendChild(iconEl);
     const titleEl = document.createElement("span");
     titleEl.textContent = category;
-    css(titleEl, `font-size:13px;font-weight:600;color:${accent};`);
+    css(titleEl, `font-size:15px;font-weight:600;color:${accent};`);
     header.appendChild(titleEl);
-    const closeBtn = document.createElement("button");
-    closeBtn.textContent = "\u2715";
-    css(closeBtn, "margin-left:auto;background:none;border:1px solid #555;color:#aaa;width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;");
-    closeBtn.addEventListener("click", (e) => { e.stopPropagation(); overlay.remove(); });
-    header.appendChild(closeBtn);
-    overlay.appendChild(header);
+    content.appendChild(header);
 
     if (entries.length === 0) {
         const empty = document.createElement("div");
-        css(empty, "font-size:11px;color:#555;text-align:center;padding:20px;");
+        css(empty, "font-size:13px;color:#555;text-align:center;padding:40px;");
         empty.textContent = "No data available";
-        overlay.appendChild(empty);
+        content.appendChild(empty);
     } else {
         const list = document.createElement("div");
-        css(list, "display:flex;flex-direction:column;gap:4px;");
+        css(list, "display:flex;flex-direction:column;gap:6px;");
         for (const [key, value] of entries) {
             const row = document.createElement("div");
-            css(row, `background:#1e1e1e;border:1px solid #333;border-radius:4px;padding:5px 7px;`);
+            css(row, `background:#181818;border:1px solid #333;border-radius:6px;padding:8px 10px;`);
             const keyEl = document.createElement("div");
             keyEl.textContent = key;
-            css(keyEl, `font-size:10px;color:${accent};font-weight:600;`);
+            css(keyEl, `font-size:11px;color:${accent};font-weight:600;margin-bottom:3px;`);
             row.appendChild(keyEl);
             const valEl = document.createElement("div");
             const valStr = typeof value === "string" ? value : String(value);
             valEl.textContent = valStr;
-            css(valEl, "font-size:11px;color:#ddd;word-break:break-word;white-space:pre-wrap;max-height:120px;overflow-y:auto;");
+            css(valEl, "font-size:13px;color:#ddd;word-break:break-word;white-space:pre-wrap;");
             row.appendChild(valEl);
             list.appendChild(row);
         }
-        overlay.appendChild(list);
+        content.appendChild(list);
     }
 
-    overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) overlay.remove();
-    });
-
-    container.style.position = "relative";
-    container.appendChild(overlay);
+    // Close button in footer
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "Close";
+    css(closeBtn, "padding:6px 18px;background:#333;color:#ddd;border:1px solid #555;border-radius:6px;cursor:pointer;font-size:13px;");
+    closeBtn.addEventListener("click", () => close());
+    footer.appendChild(closeBtn);
 }
 
-export function makeButton(category, info, hasData, onClick) {
+export function makeButton(category, info, hasData, onClick, title = "") {
     const btn = document.createElement("div");
     const accent = info.color;
     const disabledStyle = hasData ? "" : "opacity:0.35;cursor:default;";
@@ -124,7 +117,7 @@ export function setupPreviewFlakeDataWidget(node) {
             const hasData = previewData && Object.keys(data).length > 0;
             const btn = makeButton(cat, info, hasData, (category) => {
                 const catData = currentData ? (currentData[category] || {}) : {};
-                makeOverlay(container, category, catData);
+                makeOverlay(category, catData);
             });
             container.appendChild(btn);
         }

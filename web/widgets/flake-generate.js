@@ -1,5 +1,6 @@
 import { css } from "../utils.js";
 import { CATEGORIES, CATEGORY_STYLE, makeOverlay, makeButton } from "./flake-preview.js";
+import { fetchFlake } from "../api.js";
 
 export function setupFlakeGenerateWidget(node) {
     if (!node.properties) node.properties = {};
@@ -21,10 +22,68 @@ export function setupFlakeGenerateWidget(node) {
             const hasData = previewData && Object.keys(data).length > 0;
             const btn = makeButton(cat, info, hasData, (category) => {
                 const catData = currentPreviewData ? (currentPreviewData[category] || {}) : {};
-                makeOverlay(gridContainer, category, catData);
+                makeOverlay(category, catData);
             });
             gridContainer.appendChild(btn);
         }
+    }
+
+    async function buildPreviewFromUpstream() {
+        // Walk upstream from the flake_data input to collect flake configs
+        const flakeInput = node.inputs?.find(i => i.name === "flake_data");
+        if (!flakeInput?.link) return;
+
+        const graph = node.graph;
+        if (!graph) return;
+        const link = graph.links[flakeInput.link];
+        if (!link) return;
+        const upstreamNode = graph.getNodeById(link.origin_id);
+        if (!upstreamNode) return;
+
+        // Collect flake names from the upstream FlakeStack widget
+        const flakesJsonWidget = upstreamNode.widgets?.find(w => w.name === "flakes_json");
+        if (!flakesJsonWidget) return;
+
+        let flakes;
+        try { flakes = JSON.parse(flakesJsonWidget.value || "[]"); } catch { return; }
+        if (!Array.isArray(flakes) || flakes.length === 0) return;
+
+        const modelsInfo = {};
+        const promptsInfo = {};
+        const paramsInfo = {};
+        const metaInfo = {};
+
+        for (const entry of flakes) {
+            if (!entry.name || entry.inline) continue;
+            try {
+                const data = await fetchFlake(entry.name);
+                const label = entry.display_name || entry.name.split("/").pop() || entry.name;
+
+                if (data.checkpoint) modelsInfo[`${label} · Checkpoint`] = data.checkpoint;
+                if (data.vae && data.vae !== "baked-in") modelsInfo[`${label} · VAE`] = data.vae;
+                if (Array.isArray(data.loras)) {
+                    data.loras.forEach((lr, i) => {
+                        const lrName = lr.name || lr.path || `LoRA #${i + 1}`;
+                        modelsInfo[`${label} · ${lrName}`] = `strength: ${lr.strength ?? 1}`;
+                    });
+                }
+                if (data.positive_prompt) promptsInfo[`${label} · Positive`] = data.positive_prompt;
+                if (data.negative_prompt) promptsInfo[`${label} · Negative`] = data.negative_prompt;
+                if (data.steps != null) paramsInfo[`${label} · Steps`] = String(data.steps);
+                if (data.cfg != null) paramsInfo[`${label} · CFG`] = String(data.cfg);
+                if (data.sampler) paramsInfo[`${label} · Sampler`] = data.sampler;
+                if (data.scheduler) paramsInfo[`${label} · Scheduler`] = data.scheduler;
+                if (data.width != null) metaInfo[`${label} · Width`] = String(data.width);
+                if (data.height != null) metaInfo[`${label} · Height`] = String(data.height);
+            } catch { /* skip flakes that fail to load */ }
+        }
+
+        const hasAny = [modelsInfo, promptsInfo, paramsInfo, metaInfo].some(o => Object.keys(o).length > 0);
+        if (!hasAny) return;
+
+        currentPreviewData = { Models: modelsInfo, Prompts: promptsInfo, Parameters: paramsInfo, Metadata: metaInfo };
+        node.properties._preview_data = currentPreviewData;
+        renderPreviewGrid(currentPreviewData);
     }
 
     renderPreviewGrid(currentPreviewData);
@@ -47,6 +106,23 @@ export function setupFlakeGenerateWidget(node) {
 
     // ── Add DOM widget ──
     const genWidget = node.addDOMWidget("flake_generate_ui", "div", container, { serialize: false, margin: 4 });
+
+    const origOnConnectionsChange = node.onConnectionsChange;
+    node.onConnectionsChange = function (type, index, connected, link_info) {
+        const r = origOnConnectionsChange?.apply(this, arguments);
+        // type 1 = input changed
+        const flakeInputIdx = node.inputs?.findIndex(i => i.name === "flake_data") ?? 0;
+        if (type === 1 && index === flakeInputIdx) {
+            if (connected) {
+                buildPreviewFromUpstream();
+            } else {
+                currentPreviewData = null;
+                node.properties._preview_data = null;
+                renderPreviewGrid(null);
+            }
+        }
+        return r;
+    };
 
     const origOnExecuted = node.onExecuted;
     node.onExecuted = function (output) {
