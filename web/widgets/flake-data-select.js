@@ -80,7 +80,7 @@ export function setupFlakeDataSplitSelect(node) {
     row.appendChild(label);
 
     const select = document.createElement("select");
-    css(select, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #444;border-right:none;border-radius:4px 0 0 4px;padding:2px 4px;font-size:11px;height:22px;cursor:pointer;outline:none;min-width:0;box-sizing:border-box;");
+    css(select, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #444;border-right:none;border-radius:4px 0 0 4px;padding:2px 8px 2px 4px;font-size:11px;height:22px;cursor:pointer;outline:none;min-width:0;box-sizing:border-box;appearance:auto;");
     for (const pin of ALL_SPLIT_PINS) {
         const opt = document.createElement("option");
         opt.value = pin.name;
@@ -177,8 +177,26 @@ function removeIntoPin(node, pinName) {
     node.removeInput(idx);
 }
 
+const OPTIONAL_WIDGET_NAMES = new Set([
+    "filename_prefix", "width", "height", "steps", "cfg", "sampler_name", "scheduler"
+]);
+
+function hideIntoWidgets(node) {
+    if (!node.widgets) return;
+    for (const w of node.widgets) {
+        if (!OPTIONAL_WIDGET_NAMES.has(w.name)) continue;
+        w.computeSize = () => [0, -4];
+        w.type = "hidden";
+        w.hidden = true;
+        if (w.element) { w.element.style.display = "none"; }
+    }
+}
+
 export function setupIntoFlakeDataSelect(node) {
     if (!node.properties) node.properties = {};
+
+    // Hide auto-created widgets for optional fields — pins are managed dynamically.
+    hideIntoWidgets(node);
 
     // Remove any pre-existing optional inputs that Python adds automatically.
     // Keep only flake_data.
@@ -213,9 +231,9 @@ export function setupIntoFlakeDataSelect(node) {
     label.textContent = "input pin";
     row.appendChild(label);
 
-    // Dropdown — matches Load Image style: select + button attached to its right
+    // Dropdown styled to match ComfyUI's native COMBO widget (sampler_name style)
     const select = document.createElement("select");
-    css(select, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #444;border-right:none;border-radius:4px 0 0 4px;padding:2px 4px;font-size:11px;height:22px;cursor:pointer;outline:none;min-width:0;box-sizing:border-box;");
+    css(select, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #444;border-right:none;border-radius:4px 0 0 4px;padding:2px 8px 2px 4px;font-size:11px;height:22px;cursor:pointer;outline:none;min-width:0;box-sizing:border-box;appearance:auto;");
     for (const pin of ALL_INTO_PINS) {
         const opt = document.createElement("option");
         opt.value = pin.name;
