@@ -1,15 +1,9 @@
 import {
-    css, ensureDefault,
+    css, svgIcon, makeGridItemOverlay, makeHoverButton,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators,
 } from "../utils.js";
 import { openPresetPicker } from "../pickers.js";
 import { fetchPreset } from "../api.js";
-
-function svgIcon(d, w = 14) {
-    const tpl = document.createElement("template");
-    tpl.innerHTML = `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
-    return tpl.content.firstChild;
-}
 
 export function makeModelComboBlock({ preset, display_name, idx, isActive, onActivate, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const block = document.createElement("div");
@@ -17,12 +11,18 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, onAct
 
     css(block, `position:relative;height:80px;background:#2a2a2a;border:1px solid #444;border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(preset)});background-size:cover;background-position:center;`);
 
-    // Dark overlay for cover readability
-    const overlay = document.createElement("div");
-    css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;border-radius:3px;");
-    block.appendChild(overlay);
+    // Dark overlay, hover buttons — using shared helper (no triangle for model combo)
+    makeGridItemOverlay({
+        block,
+        showHoverButtons: true,
+        buttons: [
+            makeHoverButton({ svg: `<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`, title: "Replace Preset", onClick: () => onReplace(idx) }),
+            makeHoverButton({ svg: `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`, title: "Edit Preset", onClick: () => onEdit(idx) }),
+            makeHoverButton({ svg: `<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>`, title: "Remove from Combo", onClick: () => onRemove(idx) }),
+        ],
+        showTriangle: false,
+    });
 
-    // Name — show display_name (falling back to last part of path)
     const fullName = display_name || preset.split(/[\/\\]+/).pop() || preset;
     const nameEl = document.createElement("div");
     nameEl.title = preset;
@@ -30,7 +30,6 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, onAct
     nameEl.textContent = fullName;
     block.appendChild(nameEl);
 
-    // Draggable for reorder
     block.draggable = true;
     block.style.cursor = "grab";
     block.addEventListener("dragstart", (e) => {
@@ -45,37 +44,6 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, onAct
         block.style.cursor = "grab";
         onDragEnd(block);
     });
-
-    // Hover button group: Replace / Edit / Remove
-    const hoverWrap = document.createElement("div");
-    css(hoverWrap, "position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:6px;z-index:3;background:rgba(0,0,0,0.35);border-radius:3px;");
-
-    const HOVER_BTN = "width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);";
-
-    const replaceBtn = document.createElement("button");
-    replaceBtn.title = "Replace Preset";
-    replaceBtn.appendChild(svgIcon(`<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`));
-    css(replaceBtn, HOVER_BTN);
-    replaceBtn.addEventListener("click", (e) => { e.stopPropagation(); onReplace(idx); });
-    hoverWrap.appendChild(replaceBtn);
-
-    const editBtn = document.createElement("button");
-    editBtn.title = "Edit Preset";
-    editBtn.appendChild(svgIcon(`<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`));
-    css(editBtn, HOVER_BTN);
-    editBtn.addEventListener("click", (e) => { e.stopPropagation(); onEdit(idx); });
-    hoverWrap.appendChild(editBtn);
-
-    const removeBtn = document.createElement("button");
-    removeBtn.title = "Remove from Combo";
-    removeBtn.appendChild(svgIcon(`<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>`));
-    css(removeBtn, HOVER_BTN);
-    removeBtn.addEventListener("click", (e) => { e.stopPropagation(); onRemove(idx); });
-    hoverWrap.appendChild(removeBtn);
-
-    block.appendChild(hoverWrap);
-    block.addEventListener("mouseenter", () => { hoverWrap.style.display = "flex"; });
-    block.addEventListener("mouseleave", () => { hoverWrap.style.display = "none"; });
 
     block.addEventListener("dblclick", () => onEdit(idx));
     block.addEventListener("dragover", (e) => onDragOver(e, idx, block));

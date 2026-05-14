@@ -1,16 +1,11 @@
 import {
-    css, ensureDefault, makeSmallButton,
+    css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, fetchFlakeMeta } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
-
-const TYPE_COLORS = {
-    Style: "#8a6acf", Slider: "#6a9acf", Character: "#6acf8a",
-    Pose: "#cf8a6a", Other: "#cf6a8a",
-};
 
 function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onOverride, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const hasCover = !!entry.name;
@@ -26,36 +21,27 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onO
     }${isBypassed ? "opacity:0.45;" : ""}`);
 
     // Type ribbon — clickable to toggle bypass
-    const typeTag = entry._pendingData?.flake_type || entry.flake_type || "Other";
-    const color = TYPE_COLORS[typeTag] || TYPE_COLORS.Other;
-    const ribbon = document.createElement("div");
-    ribbon.textContent = typeTag[0];
-    ribbon.title = isBypassed ? `${typeTag} (click to activate)` : `${typeTag} (click to bypass)`;
-    const bgColor = isBypassed ? "#555" : color;
-    css(ribbon, `position:absolute;top:0;left:0;width:16px;height:16px;background:${bgColor};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:4px 0 4px 0;z-index:5;text-shadow:none;cursor:pointer;transition:opacity 0.15s;`);
-    ribbon.addEventListener("mouseenter", () => { ribbon.style.opacity = "0.8"; });
-    ribbon.addEventListener("mouseleave", () => { ribbon.style.opacity = "1"; });
-    ribbon.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (onToggleBypass) onToggleBypass(idx);
-    });
+    const ribbon = makeTypeRibbon(entry, isBypassed, onToggleBypass, idx);
     block.appendChild(ribbon);
 
     // Strikethrough for bypassed state
     if (isBypassed) {
-        const strike = document.createElement("div");
-        css(strike, "position:absolute;top:50%;left:10%;right:10%;height:2.5px;background:rgba(230,90,90,0.85);transform:translateY(-50%) rotate(-30deg);z-index:4;pointer-events:none;");
-        block.appendChild(strike);
+        block.appendChild(makeBypassStrike());
     }
 
-    // Dark overlay for cover readability
-    if (hasCover) {
-        const overlay = document.createElement("div");
-        css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;border-radius:3px;");
-        block.appendChild(overlay);
-    }
+    // Dark overlay, hover buttons, and triangle dropdown — using shared helper
+    const { triangleBtn } = makeGridItemOverlay({
+        block,
+        showHoverButtons: true,
+        buttons: [
+            makeHoverButton({ svg: `<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`, title: "Replace Flake", onClick: () => onReplace(idx) }),
+            makeHoverButton({ svg: `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`, title: "Edit Flake", onClick: () => onEdit(idx) }),
+            makeHoverButton({ svg: `<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>`, title: "Remove from Combo", onClick: () => onRemove(idx) }),
+        ],
+        showTriangle: !!entry.name,
+    });
 
-    // Name — show full display name with word wrapping (matching flake-stack logic)
+    // Name — show full display name with word wrapping
     const fullName = entry.display_name || entry.name || "(missing)";
     const nameEl = document.createElement("div");
     nameEl.title = fullName;
@@ -87,55 +73,6 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onO
         css(ov, "position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(0,0,0,0.5);color:#ddd;border:1px solid #555;border-radius:2px;cursor:pointer;padding:0;z-index:4;");
         ov.addEventListener("click", (e) => { e.stopPropagation(); onOverride(idx); });
         block.appendChild(ov);
-    }
-
-    // Hover button group: Replace / Edit / Remove (only visible on hover)
-    function svgIcon(d, w = 14) {
-        const tpl = document.createElement("template");
-        tpl.innerHTML = `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
-        return tpl.content.firstChild;
-    }
-
-    const hoverWrap = document.createElement("div");
-    css(hoverWrap, "position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:6px;z-index:3;background:rgba(0,0,0,0.35);border-radius:3px;");
-
-    const HOVER_BTN = "width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);";
-
-    const replaceBtn = document.createElement("button");
-    replaceBtn.title = "Replace Flake";
-    replaceBtn.appendChild(svgIcon(`<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`));
-    css(replaceBtn, HOVER_BTN);
-    replaceBtn.addEventListener("click", (e) => { e.stopPropagation(); onReplace(idx); });
-    hoverWrap.appendChild(replaceBtn);
-
-    const editBtn = document.createElement("button");
-    editBtn.title = "Edit Flake";
-    editBtn.appendChild(svgIcon(`<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`));
-    css(editBtn, HOVER_BTN);
-    editBtn.addEventListener("click", (e) => { e.stopPropagation(); onEdit(idx); });
-    hoverWrap.appendChild(editBtn);
-
-    const removeBtn = document.createElement("button");
-    removeBtn.title = "Remove from Combo";
-    removeBtn.appendChild(svgIcon(`<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>`));
-    css(removeBtn, HOVER_BTN);
-    removeBtn.addEventListener("click", (e) => { e.stopPropagation(); onRemove(idx); });
-    hoverWrap.appendChild(removeBtn);
-
-    block.appendChild(hoverWrap);
-    block.addEventListener("mouseenter", () => { hoverWrap.style.display = "flex"; });
-    block.addEventListener("mouseleave", () => { hoverWrap.style.display = "none"; });
-
-    // Triangle button (bottom center) for variants / LoRA
-    let triangleBtn = null;
-    if (entry.name) {
-        triangleBtn = document.createElement("button");
-        triangleBtn.innerHTML = "&#9662;";
-        css(triangleBtn, "position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:transparent;color:rgba(180,180,180,0.6);border:none;padding:0;font-size:12px;line-height:1;cursor:pointer;z-index:2;display:none;");
-        triangleBtn.addEventListener("click", (e) => { e.stopPropagation(); });
-        triangleBtn.addEventListener("dblclick", (e) => e.stopPropagation());
-        triangleBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-        block.appendChild(triangleBtn);
     }
 
     block.addEventListener("dblclick", () => onEdit(idx));

@@ -1,5 +1,5 @@
 import {
-    css, ensureDefault, makeSmallButton,
+    css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider,
 } from "../utils.js";
@@ -23,42 +23,15 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onTogg
         hasCover ? `background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;` : ""
     }${isBypassed ? "opacity:0.45;" : ""}`);
 
-    // Type ribbon (top-left) — always visible on non-default entries,
-    // defaulting to "Other" when the flake has no explicit flake_type set.
-    // Clicking toggles the bypassed state.
-    const TYPE_COLORS = {
-        Style: "#8a6acf", Slider: "#6a9acf", Character: "#6acf8a",
-        Pose: "#cf8a6a", Concept: "#6acfcf", Other: "#cf6a8a",
-    };
+    // Type ribbon + bypass (clicking toggles bypass)
     if (!isDefault) {
-        const typeTag = entry._pendingData?.flake_type || entry.flake_type || "Other";
-        const color = TYPE_COLORS[typeTag] || TYPE_COLORS.Other;
-        const ribbon = document.createElement("div");
-        ribbon.textContent = typeTag[0];
-        ribbon.title = isBypassed ? `${typeTag} (click to activate)` : `${typeTag} (click to bypass)`;
-        const bgColor = isBypassed ? "#555" : color;
-        css(ribbon, `position:absolute;top:0;left:0;width:16px;height:16px;background:${bgColor};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:4px 0 4px 0;z-index:5;text-shadow:none;cursor:pointer;transition:opacity 0.15s;`);
-        ribbon.addEventListener("mouseenter", () => { ribbon.style.opacity = "0.8"; });
-        ribbon.addEventListener("mouseleave", () => { ribbon.style.opacity = "1"; });
-        ribbon.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (onToggleBypass) onToggleBypass(idx);
-        });
+        const ribbon = makeTypeRibbon(entry, isBypassed, onToggleBypass, idx);
         block.appendChild(ribbon);
     }
 
     // Strikethrough for bypassed state
     if (isBypassed && !isDefault) {
-        const strike = document.createElement("div");
-        css(strike, "position:absolute;top:50%;left:10%;right:10%;height:2.5px;background:rgba(230,90,90,0.85);transform:translateY(-50%) rotate(-30deg);z-index:4;pointer-events:none;");
-        block.appendChild(strike);
-    }
-
-    // Dark overlay for cover readability
-    if (hasCover) {
-        const overlay = document.createElement("div");
-        css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;");
-        block.appendChild(overlay);
+        block.appendChild(makeBypassStrike());
     }
 
     // Name — show portion after / with word wrapping
@@ -102,59 +75,16 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onTogg
         block.appendChild(ov);
     }
 
-    // Hover button group: Replace / Edit / Remove (only visible on hover)
-    function svgIcon(d, w = 14) {
-        const tpl = document.createElement("template");
-        tpl.innerHTML = `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
-        return tpl.content.firstChild;
-    }
-
-    if (!isDefault) {
-        const hoverWrap = document.createElement("div");
-        css(hoverWrap, "position:absolute;top:4px;left:4px;right:4px;bottom:4px;display:none;align-items:center;justify-content:center;gap:6px;z-index:3;background:rgba(0,0,0,0.35);border-radius:4px;");
-        const HOVER_BTN = "width:22px;height:22px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);";
-
-        const replaceBtn = document.createElement("button");
-        replaceBtn.title = "Replace Flake";
-        replaceBtn.appendChild(svgIcon(`<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`));
-        css(replaceBtn, HOVER_BTN);
-        replaceBtn.addEventListener("click", (e) => { e.stopPropagation(); onReplace(idx); });
-        hoverWrap.appendChild(replaceBtn);
-
-        const editBtn = document.createElement("button");
-        editBtn.title = "Edit Flake";
-        editBtn.appendChild(svgIcon(`<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`));
-        css(editBtn, HOVER_BTN);
-        editBtn.addEventListener("click", (e) => { e.stopPropagation(); onEdit(idx); });
-        hoverWrap.appendChild(editBtn);
-
-        const removeBtn = document.createElement("button");
-        removeBtn.title = "Remove Flake";
-        removeBtn.appendChild(svgIcon(`<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>`));
-        css(removeBtn, HOVER_BTN);
-        removeBtn.addEventListener("click", (e) => { e.stopPropagation(); onRemove(idx); });
-        hoverWrap.appendChild(removeBtn);
-
-        block.appendChild(hoverWrap);
-        block.addEventListener("mouseenter", () => { hoverWrap.style.display = "flex"; });
-        block.addEventListener("mouseleave", () => { hoverWrap.style.display = "none"; });
-    }
-
-    // Triangle button (bottom center) for variants / LoRA / output path
-    let triangleBtn = null;
-    if (!isDefault && entry.name) {
-        triangleBtn = document.createElement("button");
-        triangleBtn.innerHTML = "&#9662;"; // down-pointing triangle
-        css(triangleBtn, "position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:transparent;color:#fff;border:none;padding:0;font-size:12px;line-height:1;cursor:pointer;z-index:4;opacity:0;transition:opacity 0.15s;");
-        triangleBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-        });
-        triangleBtn.addEventListener("dblclick", (e) => e.stopPropagation());
-        triangleBtn.addEventListener("mousedown", (e) => e.stopPropagation());
-        block.appendChild(triangleBtn);
-        block.addEventListener("mouseenter", () => { if (triangleBtn.style.display !== "none") triangleBtn.style.opacity = "1"; });
-        block.addEventListener("mouseleave", () => { triangleBtn.style.opacity = "0"; });
-    }
+    const { triangleBtn } = makeGridItemOverlay({
+        block,
+        showHoverButtons: !isDefault,
+        buttons: !isDefault ? [
+            makeHoverButton({ svg: `<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`, title: "Replace Flake", onClick: () => onReplace(idx) }),
+            makeHoverButton({ svg: `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`, title: "Edit Flake", onClick: () => onEdit(idx) }),
+            makeHoverButton({ svg: `<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>`, title: "Remove Flake", onClick: () => onRemove(idx) }),
+        ] : [],
+        showTriangle: !isDefault && !!entry.name,
+    });
 
     block.addEventListener("dblclick", () => onEdit(idx));
     block.addEventListener("dragover", (e) => onDragOver(e, idx, block));

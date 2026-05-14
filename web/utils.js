@@ -573,6 +573,92 @@ export function makeSmallValueSlider(value, min, max, step, onChange) {
     return row;
 }
 
+// ---------- Shared grid item helpers ----------
+
+export const TYPE_COLORS = {
+    Style: "#8a6acf", Slider: "#6a9acf", Character: "#6acf8a",
+    Pose: "#cf8a6a", Concept: "#6acfcf", Other: "#cf6a8a",
+};
+
+export function svgIcon(d, w = 14) {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = `<svg width="${w}" height="${w}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+    return tpl.content.firstChild;
+}
+
+const HOVER_BTN_SIZE = 33;
+const HOVER_BTN_CSS = `width:${HOVER_BTN_SIZE}px;height:${HOVER_BTN_SIZE}px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);`;
+
+export function makeGridItemOverlay({
+    block,
+    showHoverButtons = true,
+    buttons = [],
+    showTriangle = false,
+}) {
+    const overlay = document.createElement("div");
+    css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;border-radius:3px;");
+    block.appendChild(overlay);
+
+    let hoverWrap = null;
+    if (showHoverButtons && buttons.length > 0) {
+        hoverWrap = document.createElement("div");
+        css(hoverWrap, "position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:6px;z-index:3;background:rgba(0,0,0,0.35);border-radius:3px;");
+        for (const btn of buttons) {
+            hoverWrap.appendChild(btn);
+        }
+        block.appendChild(hoverWrap);
+        block.addEventListener("mouseenter", () => { hoverWrap.style.display = "flex"; });
+        block.addEventListener("mouseleave", () => { hoverWrap.style.display = "none"; });
+    }
+
+    let triangleBtn = null;
+    if (showTriangle) {
+        triangleBtn = document.createElement("button");
+        triangleBtn.innerHTML = "&#9662;";
+        const triSize = Math.round(12 * 1.5);
+        css(triangleBtn, `position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:transparent;color:rgba(180,180,180,0.6);border:none;padding:0;font-size:${triSize}px;line-height:1;cursor:pointer;z-index:2;display:none;`);
+        triangleBtn.addEventListener("click", (e) => { e.stopPropagation(); });
+        triangleBtn.addEventListener("dblclick", (e) => e.stopPropagation());
+        triangleBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+        block.appendChild(triangleBtn);
+        block.addEventListener("mouseenter", () => { if (triangleBtn.style.display !== "none") triangleBtn.style.opacity = "1"; });
+        block.addEventListener("mouseleave", () => { triangleBtn.style.opacity = "0"; });
+    }
+
+    return { overlay, hoverWrap, triangleBtn };
+}
+
+export function makeHoverButton({ svg, title, onClick }) {
+    const btn = document.createElement("button");
+    btn.title = title;
+    btn.appendChild(svgIcon(svg));
+    css(btn, HOVER_BTN_CSS);
+    btn.addEventListener("click", (e) => { e.stopPropagation(); onClick(); });
+    return btn;
+}
+
+export function makeTypeRibbon(entry, isBypassed, onToggleBypass, idx) {
+    const typeTag = entry._pendingData?.flake_type || entry.flake_type || "Other";
+    const color = TYPE_COLORS[typeTag] || TYPE_COLORS.Other;
+    const ribbon = document.createElement("div");
+    ribbon.textContent = typeTag[0];
+    ribbon.title = isBypassed ? `${typeTag} (click to activate)` : `${typeTag} (click to bypass)`;
+    const bgColor = isBypassed ? "#555" : color;
+    css(ribbon, `position:absolute;top:0;left:0;width:16px;height:16px;background:${bgColor};color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border-radius:4px 0 4px 0;z-index:5;text-shadow:none;cursor:pointer;transition:opacity 0.15s;`);
+    ribbon.addEventListener("mouseenter", () => { ribbon.style.opacity = "0.8"; });
+    ribbon.addEventListener("mouseleave", () => { ribbon.style.opacity = "1"; });
+    if (onToggleBypass) {
+        ribbon.addEventListener("click", (e) => { e.stopPropagation(); onToggleBypass(idx); });
+    }
+    return ribbon;
+}
+
+export function makeBypassStrike() {
+    const strike = document.createElement("div");
+    css(strike, "position:absolute;top:50%;left:10%;right:10%;height:2.5px;background:rgba(230,90,90,0.85);transform:translateY(-50%) rotate(-30deg);z-index:4;pointer-events:none;");
+    return strike;
+}
+
 // ---------- Drag indicator helpers ----------
 
 export function _showDropIndicator(block) {
