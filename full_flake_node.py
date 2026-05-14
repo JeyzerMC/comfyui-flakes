@@ -119,7 +119,14 @@ def _load_preset_bundle(preset_name: str):
     latent = EmptyLatentImage().generate(width, height, 1)[0]
 
     model_bundle = (model, clip, vae)
-    filename_state = {"preset": preset_name, "stems": []}
+    filename_state = {
+        "preset": preset_name,
+        "stems": [],
+        "checkpoint": preset_data.checkpoint,
+        "vae": preset_data.vae or "baked-in",
+        "text_encoder": preset_data.text_encoder or "baked-in",
+        "loras": [],
+    }
     generation_data = (positive, negative, latent, width, height, pos_text, neg_text, filename_state)
     sampling_preset = (preset_data.steps, preset_data.cfg, preset_data.sampler, preset_data.scheduler)
 
@@ -200,10 +207,8 @@ class FlakeStack:
         # generation_data tuple from a previous run, and mutating its dict
         # in place would compound the output_stem path on every queue.
         if len(generation_data) > 7 and isinstance(generation_data[7], dict):
-            filename_state = {
-                "preset": generation_data[7].get("preset", ""),
-                "stems": [],
-            }
+            filename_state = dict(generation_data[7])
+            filename_state["stems"] = []
         else:
             filename_state = {"preset": "", "stems": []}
 
@@ -232,17 +237,19 @@ class FlakeStack:
 
         # --- Apply LoRAs --------------------------------------------------------
         lora_loader = LoraLoader()
+        lora_entries = []
         for f in flakes:
-            # New multi-LoRA format
             for lr in f.loras:
                 if not lr.path:
                     continue
                 lora_name = _resolve_lora_name(lr.path)
                 model, clip = lora_loader.load_lora(model, clip, lora_name, lr.strength, lr.strength)
+                lora_entries.append({"name": lr.name or lr.path, "path": lr.path, "strength": lr.strength})
             # Legacy single LoRA fallback
             if f.lora_path:
                 lora_name = _resolve_lora_name(f.lora_path)
                 model, clip = lora_loader.load_lora(model, clip, lora_name, f.strength, f.strength)
+                lora_entries.append({"name": f.lora_path, "path": f.lora_path, "strength": f.strength})
 
         # --- Build prompt text (existing → flakes) ------------------------------
         pos_parts: list[str] = []
@@ -296,6 +303,9 @@ class FlakeStack:
 
         if (new_width, new_height) != (width, height):
             latent = EmptyLatentImage().generate(new_width, new_height, 1)[0]
+
+        # --- Lora metadata for Preview Flake Data ---------------------------------
+        filename_state["loras"] = lora_entries
 
         # --- Filename prefix (skip bypassed) ------------------------------------
         for f in flakes:

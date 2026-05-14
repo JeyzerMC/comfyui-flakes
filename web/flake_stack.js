@@ -124,10 +124,20 @@ app.registerExtension({
             };
 
             const origOnConfigure = nodeType.prototype.onConfigure;
-            nodeType.prototype.onConfigure = function () {
+            nodeType.prototype.onConfigure = function (info) {
                 const r = origOnConfigure?.apply(this, arguments);
                 this._configured = true;
                 removeHiddenInputs(this, ["selected_pins"]);
+                if (!this.properties) this.properties = {};
+                let saved = DEFAULT_SPLIT_PINS;
+                try {
+                    const raw = this.properties._selected_split_pins;
+                    if (raw) saved = typeof raw === "string" ? JSON.parse(raw) : raw;
+                } catch { /* keep default */ }
+                while (this.outputs.length > 0) {
+                    this.removeOutput(0);
+                }
+                this.properties._selected_split_pins = [...saved];
                 this._splitPinUpdate?.();
                 return r;
             };
@@ -149,6 +159,22 @@ app.registerExtension({
                 const r = origOnConfigure?.apply(this, arguments);
                 this._configured = true;
                 removeHiddenInputs(this, ["active_pins"]);
+                if (!this.properties) this.properties = {};
+                let saved = DEFAULT_INTO_PINS;
+                try {
+                    const raw = this.properties._selected_into_pins;
+                    if (raw) saved = typeof raw === "string" ? JSON.parse(raw) : raw;
+                } catch { /* keep default */ }
+                const fixedNames = new Set(["flake_data", "active_pins"]);
+                for (let i = this.inputs.length - 1; i >= 0; i--) {
+                    if (!fixedNames.has(this.inputs[i].name)) {
+                        if (this.inputs[i].link != null) {
+                            this.disconnectInput(i);
+                        }
+                        this.removeInput(i);
+                    }
+                }
+                this.properties._selected_into_pins = [...saved];
                 this._intoPinUpdate?.();
                 return r;
             };
@@ -161,14 +187,6 @@ app.registerExtension({
                 if (!this._configured) {
                     setDefaultSize(this, 260);
                 }
-                return r;
-            };
-
-            const origOnConfigure = nodeType.prototype.onConfigure;
-            nodeType.prototype.onConfigure = function () {
-                const r = origOnConfigure?.apply(this, arguments);
-                this._configured = true;
-                this._preview_update?.();
                 return r;
             };
         }

@@ -258,4 +258,91 @@ class PreviewFlakeData:
     OUTPUT_NODE = True
 
     def execute(self, flake_data):
-        return (flake_data,)
+        model_bundle, generation_data, sampling_preset = flake_data
+
+        models_info = {}
+        prompts_info = {}
+        params_info = {}
+        meta_info = {}
+
+        meta = {}
+        if generation_data is not None and len(generation_data) > 7 and isinstance(generation_data[7], dict):
+            meta = generation_data[7]
+
+        # --- Models ---
+        if model_bundle is not None:
+            model, clip, vae = model_bundle
+
+            ckpt_name = meta.get("checkpoint", "")
+            if ckpt_name:
+                models_info["Checkpoint"] = ckpt_name
+            elif model is not None:
+                ckpt_attr = getattr(model, "sd_checkpoint_name", None)
+                models_info["Checkpoint"] = ckpt_attr if ckpt_attr else "(loaded)"
+
+            vae_name = meta.get("vae")
+            if vae_name is not None:
+                models_info["VAE"] = vae_name if vae_name != "baked-in" else "baked-in"
+            else:
+                models_info["VAE"] = "(loaded)" if vae is not None else "none"
+
+            te_name = meta.get("text_encoder")
+            if te_name is not None:
+                models_info["Text Encoder"] = te_name if te_name != "baked-in" else "baked-in"
+            else:
+                models_info["Text Encoder"] = "(loaded)" if clip is not None else "none"
+
+            loras = meta.get("loras", [])
+            for i, lr in enumerate(loras):
+                lr_display = lr.get("name", "") or lr.get("path", "") or f"LoRA #{i + 1}"
+                lr_strength = lr.get("strength", 1.0)
+                models_info[lr_display] = f"strength: {lr_strength}"
+
+        # --- Prompts ---
+        if generation_data is not None:
+            pos_text = generation_data[5] if len(generation_data) > 5 else ""
+            neg_text = generation_data[6] if len(generation_data) > 6 else ""
+            if pos_text:
+                prompts_info["Positive"] = str(pos_text)
+            if neg_text:
+                prompts_info["Negative"] = str(neg_text)
+
+        # --- Parameters ---
+        if sampling_preset is not None:
+            steps, cfg, sampler_name, scheduler = sampling_preset
+            params_info["Steps"] = str(steps)
+            params_info["CFG"] = str(cfg)
+            params_info["Sampler"] = str(sampler_name)
+            params_info["Scheduler"] = str(scheduler)
+
+        # --- Metadata ---
+        if generation_data is not None:
+            width = generation_data[3] if len(generation_data) > 3 else None
+            height = generation_data[4] if len(generation_data) > 4 else None
+            if width is not None:
+                meta_info["Width"] = str(width)
+            if height is not None:
+                meta_info["Height"] = str(height)
+
+            preset = meta.get("preset", "")
+            stems = meta.get("stems", [])
+            fname_parts = []
+            if preset:
+                fname_parts.append(preset)
+            if stems:
+                fname_parts.append("/".join(stems))
+            fname = "/".join(fname_parts) if fname_parts else ""
+            if fname:
+                meta_info["Filename Prefix"] = fname
+
+        preview_data = {
+            "Models": models_info,
+            "Prompts": prompts_info,
+            "Parameters": params_info,
+            "Metadata": meta_info,
+        }
+
+        return {
+            "ui": {"preview_data": preview_data},
+            "result": (flake_data,),
+        }

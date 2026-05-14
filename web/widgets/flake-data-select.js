@@ -1,5 +1,37 @@
 import { css } from "../utils.js";
 
+const SPLIT_PIN_TYPES = {
+    model: "MODEL",
+    clip: "CLIP",
+    vae: "VAE",
+    positive: "CONDITIONING",
+    negative: "CONDITIONING",
+    latent: "LATENT",
+    filename_prefix: "STRING",
+    width: "INT",
+    height: "INT",
+    steps: "INT",
+    cfg: "FLOAT",
+    sampler_name: "COMBO_SAMPLER",
+    scheduler: "COMBO_SCHEDULER",
+};
+
+const INTO_PIN_TYPES = {
+    model: "MODEL",
+    clip: "CLIP",
+    vae: "VAE",
+    positive: "CONDITIONING",
+    negative: "CONDITIONING",
+    latent: "LATENT",
+    filename_prefix: "STRING",
+    width: "INT",
+    height: "INT",
+    steps: "INT",
+    cfg: "FLOAT",
+    sampler_name: "COMBO_SAMPLER",
+    scheduler: "COMBO_SCHEDULER",
+};
+
 const ALL_SPLIT_PINS = [
     { name: "model", label: "Model" },
     { name: "clip", label: "Clip" },
@@ -35,39 +67,7 @@ const ALL_INTO_PINS = [
 const DEFAULT_SPLIT_PINS = ["model"];
 const DEFAULT_INTO_PINS = ["model"];
 
-function applyPinVisibility(node, selected, direction, allPins) {
-    if (direction === "output") {
-        for (let i = 0; i < node.outputs.length && i < allPins.length; i++) {
-            const wasHidden = node.outputs[i].hidden;
-            const shouldHide = !selected.includes(allPins[i].name);
-            node.outputs[i].hidden = shouldHide;
-            if (shouldHide && !wasHidden) {
-                node.disconnectOutputs(i);
-            }
-        }
-    } else {
-        const fixedNames = ["flake_data", "active_pins"];
-        for (let i = 0; i < node.inputs.length; i++) {
-            const input = node.inputs[i];
-            if (fixedNames.includes(input.name)) continue;
-            const pinDef = allPins.find(p => p.name === input.name);
-            if (!pinDef) continue;
-            const wasHidden = input.hidden;
-            const shouldHide = !selected.includes(input.name);
-            input.hidden = shouldHide;
-            if (shouldHide && !wasHidden && input.link != null) {
-                node.disconnectInput(i);
-            }
-        }
-    }
-    node.setDirtyCanvas(true, true);
-    const sz = node.computeSize();
-    if (node.size[0] < sz[0] || node.size[1] < sz[1]) {
-        node.setSize([Math.max(node.size[0], sz[0]), Math.max(node.size[1], sz[1])]);
-    }
-}
-
-function hidePinsWidget(node, widgetName) {
+function hideWidget(node, widgetName) {
     const w = node.widgets?.find(w => w.name === widgetName);
     if (!w) return;
     w.computeSize = () => [0, -4];
@@ -77,7 +77,81 @@ function hidePinsWidget(node, widgetName) {
     if (w.inputEl) { w.inputEl.remove(); w.inputEl = null; }
 }
 
-function createPinSelector({ node, allPins, defaultPins, propName, direction }) {
+const SPLIT_OUTPUT_ORDER = ALL_SPLIT_PINS.map(p => p.name);
+const INTO_INPUT_ORDER = ALL_INTO_PINS.map(p => p.name);
+
+function addDynamicOutput(node, pinName) {
+    const type = SPLIT_PIN_TYPES[pinName] || "*";
+    const pinDef = ALL_SPLIT_PINS.find(p => p.name === pinName);
+    const label = pinDef ? pinDef.label : pinName;
+    node.addOutput(label, type);
+    const outIdx = node.outputs.length - 1;
+    node.outputs[outIdx].name = pinName;
+    return outIdx;
+}
+
+function removeDynamicOutput(node, pinName) {
+    const idx = node.outputs.findIndex(o => o.name === pinName);
+    if (idx === -1) return;
+    if (node.outputs[idx].links && node.outputs[idx].links.length > 0) {
+        node.disconnectOutputs(idx);
+    }
+    node.removeOutput(idx);
+}
+
+function addDynamicInput(node, pinName) {
+    const type = INTO_PIN_TYPES[pinName] || "*";
+    const pinDef = ALL_INTO_PINS.find(p => p.name === pinName);
+    node.addInput(pinName, type, { shape: 6 });
+}
+
+function removeDynamicInput(node, pinName) {
+    const idx = node.inputs.findIndex(i => i.name === pinName);
+    if (idx === -1) return;
+    if (node.inputs[idx].link != null) {
+        node.disconnectInput(idx);
+    }
+    node.removeInput(idx);
+}
+
+function syncSplitOutputs(node, selected) {
+    const current = node.outputs.map(o => o.name);
+    const toRemove = current.filter(n => !selected.includes(n));
+    for (const name of toRemove) {
+        removeDynamicOutput(node, name);
+    }
+    for (const name of selected) {
+        if (!current.includes(name)) {
+            addDynamicOutput(node, name);
+        }
+    }
+    node.setDirtyCanvas(true, true);
+    const sz = node.computeSize();
+    if (node.size[0] < sz[0] || node.size[1] < sz[1]) {
+        node.setSize([Math.max(node.size[0], sz[0]), Math.max(node.size[1], sz[1])]);
+    }
+}
+
+function syncIntoInputs(node, selected) {
+    const fixedNames = new Set(["flake_data", "active_pins"]);
+    const currentDynamic = node.inputs.filter(i => !fixedNames.has(i.name)).map(i => i.name);
+    const toRemove = currentDynamic.filter(n => !selected.includes(n));
+    for (const name of toRemove) {
+        removeDynamicInput(node, name);
+    }
+    for (const name of selected) {
+        if (!currentDynamic.includes(name)) {
+            addDynamicInput(node, name);
+        }
+    }
+    node.setDirtyCanvas(true, true);
+    const sz = node.computeSize();
+    if (node.size[0] < sz[0] || node.size[1] < sz[1]) {
+        node.setSize([Math.max(node.size[0], sz[0]), Math.max(node.size[1], sz[1])]);
+    }
+}
+
+function createPinSelector({ node, allPins, defaultPins, propName, direction, syncFn }) {
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:4px;padding:4px 6px;font-size:11px;color:#ddd;pointer-events:auto;");
 
@@ -88,13 +162,31 @@ function createPinSelector({ node, allPins, defaultPins, propName, direction }) 
 
     let selected;
     try {
-        const raw = hiddenWidget?.value ?? node.properties[propName] ?? JSON.stringify(defaultPins);
+        let raw;
+        if (hiddenWidget && hiddenWidget.value) {
+            raw = typeof hiddenWidget.value === "string" ? hiddenWidget.value : JSON.stringify(hiddenWidget.value);
+        } else if (node.properties[propName]) {
+            raw = typeof node.properties[propName] === "string" ? node.properties[propName] : JSON.stringify(node.properties[propName]);
+        } else {
+            raw = JSON.stringify(defaultPins);
+        }
         selected = JSON.parse(raw);
         if (!Array.isArray(selected)) selected = [...defaultPins];
     } catch {
         selected = [...defaultPins];
     }
+
+    for (const name of selected) {
+        if (!allPins.find(p => p.name === name)) {
+            selected = selected.filter(n => n !== name);
+        }
+    }
+    if (selected.length === 0) selected = [...defaultPins];
+
     node.properties[propName] = [...selected];
+    if (hiddenWidget) {
+        hiddenWidget.value = JSON.stringify(selected);
+    }
 
     const row = document.createElement("div");
     css(row, "display:flex;gap:4px;align-items:center;");
@@ -138,7 +230,7 @@ function createPinSelector({ node, allPins, defaultPins, propName, direction }) 
         }
         node.properties[propName] = [...selected];
 
-        applyPinVisibility(node, selected, direction, allPins);
+        syncFn(node, selected);
 
         pinList.replaceChildren();
         if (selected.length === 0) {
@@ -203,9 +295,10 @@ export function setupFlakeDataSplitSelect(node) {
         defaultPins: DEFAULT_SPLIT_PINS,
         propName: "_selected_split_pins",
         direction: "output",
+        syncFn: syncSplitOutputs,
     });
 
-    hidePinsWidget(node, "selected_pins");
+    hideWidget(node, "selected_pins");
 
     node.addDOMWidget("pin_selector_ui", "div", container, {
         serialize: false,
@@ -228,9 +321,10 @@ export function setupIntoFlakeDataSelect(node) {
         defaultPins: DEFAULT_INTO_PINS,
         propName: "_selected_into_pins",
         direction: "input",
+        syncFn: syncIntoInputs,
     });
 
-    hidePinsWidget(node, "active_pins");
+    hideWidget(node, "active_pins");
 
     node.addDOMWidget("pin_selector_ui", "div", container, {
         serialize: false,
