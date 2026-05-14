@@ -48,8 +48,8 @@ const INTO_PIN_TYPES = {
     sampler_name: "COMBO_SAMPLER", scheduler: "COMBO_SCHEDULER",
 };
 
-const DEFAULT_SPLIT_PINS = ["model"];
-const DEFAULT_INTO_PINS = ["model"];
+export const DEFAULT_SPLIT_PINS = ["model"];
+export const DEFAULT_INTO_PINS = ["model"];
 
 function applyPinVisibility(node, selected, direction, allPins) {
     if (direction === "output") {
