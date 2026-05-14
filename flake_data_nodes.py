@@ -24,8 +24,8 @@ _ALL_PINS = [
     ("height", "INT"),
     ("steps", "INT"),
     ("cfg", "FLOAT"),
-    ("sampler_name", _SAMPLER_TYPES[0]),
-    ("scheduler", _SAMPLER_TYPES[1]),
+    ("sampler_name", "SAMPLER"),
+    ("scheduler", "SCHEDULER"),
 ]
 
 
