@@ -27,17 +27,7 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         title.textContent = mode === "create" ? "New Model Preset" : `Edit ${name}`;
         content.appendChild(title);
 
-        const FAMILY_OPTIONS = [
-            { value: "SDXL/Base", label: "SDXL/Base" },
-            { value: "SDXL/Illustrious", label: "SDXL/Illustrious" },
-            { value: "SDXL/Pony", label: "SDXL/Pony" },
-            { value: "ZImage/Base", label: "ZImage/Base" },
-            { value: "ZImage/Turbo", label: "ZImage/Turbo" },
-            { value: "Common", label: "Common" },
-        ];
-
         let pathInput = null;
-        let familyDropdown = null;
         let nameInput = null;
         let filenamePrefixInput = null;
         let baseRootDropdown = null;
@@ -53,13 +43,6 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
             common: "Common",
         };
 
-        function inferFamilyFromPath(p) {
-            const parts = p.replace(/\\/g, "/").split("/");
-            if (parts[0] === "img" && parts.length >= 2 && FAMILY_FROM_FOLDER[parts[1]]) return FAMILY_FROM_FOLDER[parts[1]];
-            if (parts.length >= 2 && FAMILY_FROM_FOLDER[parts[0]]) return FAMILY_FROM_FOLDER[parts[0]];
-            return "";
-        }
-
         function stripPresetPrefix(p) {
             const parts = p.replace(/\\/g, "/").split("/");
             if (parts[0] === "img" && parts.length >= 3 && FAMILY_FROM_FOLDER[parts[1]]) return parts.slice(2).join("/");
@@ -67,54 +50,21 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
             return p;
         }
 
-        if (mode === "create") {
-            const nameFamilyRow = document.createElement("div");
-            css(nameFamilyRow, "display:flex;gap:8px;align-items:flex-start;");
-            const familyWrap = document.createElement("div");
-            css(familyWrap, "flex:0 0 auto;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            familyWrap.appendChild(makeComfyLabel("Model family"));
-            familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, family);
-            familyWrap.appendChild(familyDropdown.container);
-            nameFamilyRow.appendChild(familyWrap);
-            const nameWrap = document.createElement("div");
-            css(nameWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            nameWrap.appendChild(makeComfyLabel("Preset name"));
-            nameInput = makeComfyInput("", "e.g. WAI Illustrious V17");
-            nameWrap.appendChild(nameInput);
-            nameFamilyRow.appendChild(nameWrap);
-            const prefixWrap = document.createElement("div");
-            css(prefixWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            prefixWrap.appendChild(makeComfyLabel("Filename prefix"));
-            filenamePrefixInput = makeComfyInput("", "wai_illustrious_v17");
-            prefixWrap.appendChild(filenamePrefixInput);
-            nameFamilyRow.appendChild(prefixWrap);
-            content.appendChild(nameFamilyRow);
-        } else {
-            const inferredFamily = inferFamilyFromPath(name || "");
-            const effectiveFamily = family || inferredFamily;
-
-            const nameFamilyRow = document.createElement("div");
-            css(nameFamilyRow, "display:flex;gap:8px;align-items:flex-start;");
-            const familyWrap = document.createElement("div");
-            css(familyWrap, "flex:0 0 auto;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            familyWrap.appendChild(makeComfyLabel("Model family"));
-            familyDropdown = makeComfyDropdown(FAMILY_OPTIONS, effectiveFamily);
-            familyWrap.appendChild(familyDropdown.container);
-            nameFamilyRow.appendChild(familyWrap);
-            const nameWrap = document.createElement("div");
-            css(nameWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            nameWrap.appendChild(makeComfyLabel("Preset name"));
-            nameInput = makeComfyInput(data?.display_name || name, "");
-            nameWrap.appendChild(nameInput);
-            nameFamilyRow.appendChild(nameWrap);
-            const prefixWrap = document.createElement("div");
-            css(prefixWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            prefixWrap.appendChild(makeComfyLabel("Filename prefix"));
-            filenamePrefixInput = makeComfyInput(data?.filename_prefix || "", "wai_illustrious_v17");
-            prefixWrap.appendChild(filenamePrefixInput);
-            nameFamilyRow.appendChild(prefixWrap);
-            content.appendChild(nameFamilyRow);
-        }
+        const nameRow = document.createElement("div");
+        css(nameRow, "display:flex;gap:8px;align-items:flex-start;");
+        const nameWrap = document.createElement("div");
+        css(nameWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        nameWrap.appendChild(makeComfyLabel("Preset name"));
+        nameInput = makeComfyInput(mode === "create" ? "" : (data?.display_name || name), mode === "create" ? "e.g. WAI Illustrious V17" : "");
+        nameWrap.appendChild(nameInput);
+        nameRow.appendChild(nameWrap);
+        const prefixWrap = document.createElement("div");
+        css(prefixWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        prefixWrap.appendChild(makeComfyLabel("Filename prefix"));
+        filenamePrefixInput = makeComfyInput(data?.filename_prefix || "", "wai_illustrious_v17");
+        prefixWrap.appendChild(filenamePrefixInput);
+        nameRow.appendChild(prefixWrap);
+        content.appendChild(nameRow);
 
         // Base path + output path on same line.
         const pathRow = document.createElement("div");
@@ -146,7 +96,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
             const rootIdx = parseInt(baseRootSelect?.value || "0", 10);
             const root = availableRoots[rootIdx] || availableRoots[0];
             const rootPart = root ? (root.path || "").replace(/\\/g, "/").replace(/\/+$/, "") + "/" : "C:/<comfy>/model_presets/";
-            const folder = familyFolderLocal(familyDropdown?.element?.value || family);
+            const folder = familyFolderLocal(family);
             const familyPrefix = folder ? `img/${folder}/` : "";
             const fullPath = `${rootPart}${familyPrefix}${raw}.yaml`;
             resolvedPathLabel.textContent = fullPath;
@@ -179,7 +129,6 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
             updateResolvedPath();
         }
         nameInput.addEventListener("input", syncOutputPath);
-        if (familyDropdown) familyDropdown.element.addEventListener("change", () => { syncOutputPath(); updateResolvedPath(); });
 
         // Seed output path from the existing preset name in edit mode.
         if (mode !== "create" && name) {
@@ -556,7 +505,6 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
             try {
                 const outputPath = (pathInput.value || "").trim();
                 if (!outputPath) { window.alert("Output path is required"); return; }
-                const family = familyDropdown?.element?.value || "";
                 const baseRootIndex = parseInt(baseRootSelect.value, 10);
                 const body = {
                     name: outputPath,
