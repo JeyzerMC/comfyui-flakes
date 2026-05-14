@@ -323,8 +323,9 @@ export function makeComfySlider(value, min, max, step) {
     plusBtn.addEventListener("click", () => update(current + step));
 
     let didDrag = false;
-    valSpan.addEventListener("dblclick", (e) => {
+    valSpan.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (didDrag) { didDrag = false; return; }
         if (valSpan.contentEditable === "true") return;
         valSpan.contentEditable = "true";
         valSpan.style.userSelect = "text";
