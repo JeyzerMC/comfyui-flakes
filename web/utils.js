@@ -617,7 +617,7 @@ export function makeGridItemOverlay({
         triangleBtn = document.createElement("button");
         triangleBtn.innerHTML = "&#9662;";
         const triSize = Math.round(18 * 1.3);
-        css(triangleBtn, `position:absolute;bottom:30%;left:50%;transform:translateX(-50%);background:transparent;color:#fff;border:none;padding:0;font-size:${triSize}px;line-height:1;cursor:pointer;z-index:2;opacity:0;pointer-events:auto;`);
+        css(triangleBtn, `position:absolute;bottom:30%;left:50%;transform:translateX(-50%);background:transparent;color:#fff;border:none;padding:0;font-size:${triSize}px;line-height:1;cursor:pointer;z-index:4;opacity:0;pointer-events:auto;`);
         triangleBtn.addEventListener("click", (e) => { e.stopPropagation(); });
         triangleBtn.addEventListener("dblclick", (e) => e.stopPropagation());
         triangleBtn.addEventListener("mousedown", (e) => e.stopPropagation());
