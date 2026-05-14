@@ -398,16 +398,13 @@ class FlakeGenerate:
         saver = SaveImage()
         save_result = saver.save_images(images, filename_prefix=filename_prefix)
 
-        preview_data = {}
         model_bundle, generation_data, sampling_preset = flake_data
         meta = {}
         if generation_data is not None and len(generation_data) > 7 and isinstance(generation_data[7], dict):
             meta = generation_data[7]
 
+        # ── Models overlay: checkpoint, vae, text encoder, loras, resolution, sampling ──
         models_info = {}
-        prompts_info = {}
-        params_info = {}
-        meta_info = {}
 
         if model_bundle is not None:
             m, c, v = model_bundle
@@ -425,54 +422,45 @@ class FlakeGenerate:
                 models_info["VAE"] = "(loaded)" if v is not None else "none"
 
             te_name = meta.get("text_encoder")
-            if te_name is not None:
-                models_info["Text Encoder"] = te_name if te_name != "baked-in" else "baked-in"
-            else:
-                models_info["Text Encoder"] = "(loaded)" if c is not None else "none"
+            if te_name is not None and te_name != "baked-in":
+                models_info["Text Encoder"] = te_name
 
             loras = meta.get("loras", [])
             for i, lr in enumerate(loras):
                 lr_display = lr.get("name", "") or lr.get("path", "") or f"LoRA #{i + 1}"
                 lr_strength = lr.get("strength", 1.0)
-                models_info[lr_display] = f"strength: {lr_strength}"
+                models_info[f"LoRA: {lr_display}"] = f"strength: {lr_strength}"
 
+        gen_width = generation_data[3] if generation_data and len(generation_data) > 3 else None
+        gen_height = generation_data[4] if generation_data and len(generation_data) > 4 else None
+        if gen_width is not None:
+            models_info["Width"] = str(gen_width)
+        if gen_height is not None:
+            models_info["Height"] = str(gen_height)
+
+        if sampling_preset is not None:
+            models_info["Steps"] = str(steps)
+            models_info["CFG"] = str(cfg)
+            models_info["Sampler"] = str(sampler_name)
+            models_info["Scheduler"] = str(scheduler)
+
+        # ── Inputs overlay: prompts (grouped by BREAK) + controlnet info ──
+        inputs_info = {}
         if generation_data is not None:
             pos_text = generation_data[5] if len(generation_data) > 5 else ""
             neg_text = generation_data[6] if len(generation_data) > 6 else ""
-            if pos_text:
-                prompts_info["Positive"] = str(pos_text)
-            if neg_text:
-                prompts_info["Negative"] = str(neg_text)
-
-        if sampling_preset is not None:
-            params_info["Steps"] = str(steps)
-            params_info["CFG"] = str(cfg)
-            params_info["Sampler"] = str(sampler_name)
-            params_info["Scheduler"] = str(scheduler)
-
-        if generation_data is not None:
-            width = generation_data[3] if len(generation_data) > 3 else None
-            height = generation_data[4] if len(generation_data) > 4 else None
-            if width is not None:
-                meta_info["Width"] = str(width)
-            if height is not None:
-                meta_info["Height"] = str(height)
-            preset = meta.get("preset", "")
-            stems = meta.get("stems", [])
-            fname_parts = []
-            if preset:
-                fname_parts.append(preset)
-            if stems:
-                fname_parts.append("/".join(stems))
-            fname = "/".join(fname_parts) if fname_parts else ""
-            if fname:
-                meta_info["Filename Prefix"] = fname
+            pos_segments = [s.strip() for s in pos_text.split(" BREAK ") if s.strip()] if pos_text else []
+            neg_segments = [s.strip() for s in neg_text.split(", ") if s.strip()] if neg_text else []
+            if pos_segments:
+                for i, seg in enumerate(pos_segments):
+                    label = f"Positive {i + 1}" if len(pos_segments) > 1 else "Positive"
+                    inputs_info[label] = seg
+            if neg_segments:
+                inputs_info["Negative"] = ", ".join(neg_segments)
 
         preview_data = {
             "Models": models_info,
-            "Prompts": prompts_info,
-            "Parameters": params_info,
-            "Metadata": meta_info,
+            "Inputs": inputs_info,
         }
 
         ui_data = dict(save_result.get("ui", {}))

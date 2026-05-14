@@ -1,23 +1,20 @@
 import { css } from "../utils.js";
 import { openOverlay } from "../modal.js";
 
-export const CATEGORIES = ["Models", "Prompts", "Parameters", "Metadata"];
+export const CATEGORIES = ["Models", "Inputs"];
 
 export const CATEGORY_STYLE = {
-    Models: { icon: "\uD83D\uDCBB", color: "#4a9eff" },
-    Prompts: { icon: "\uD83D\uDCDD", color: "#4aff9e" },
-    Parameters: { icon: "\u2699\uFE0F", color: "#ff9e4a" },
-    Metadata: { icon: "\uD83D\uDCCB", color: "#9e4aff" },
+    Models: { icon: "💻", color: "#4a9eff" },
+    Inputs: { icon: "📝", color: "#4aff9e" },
 };
 
 export function makeOverlay(category, data) {
-    const info = CATEGORY_STYLE[category];
+    const info = CATEGORY_STYLE[category] || { icon: "📋", color: "#aaa" };
     const entries = Object.entries(data);
     const accent = info.color;
 
     const { content, footer, close } = openOverlay();
 
-    // Header
     const header = document.createElement("div");
     css(header, "display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-shrink:0;padding-bottom:10px;border-bottom:1px solid #333;");
     const iconEl = document.createElement("span");
@@ -40,7 +37,7 @@ export function makeOverlay(category, data) {
         css(list, "display:flex;flex-direction:column;gap:6px;");
         for (const [key, value] of entries) {
             const row = document.createElement("div");
-            css(row, `background:#181818;border:1px solid #333;border-radius:6px;padding:8px 10px;`);
+            css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:8px 10px;");
             const keyEl = document.createElement("div");
             keyEl.textContent = key;
             css(keyEl, `font-size:11px;color:${accent};font-weight:600;margin-bottom:3px;`);
@@ -55,7 +52,6 @@ export function makeOverlay(category, data) {
         content.appendChild(list);
     }
 
-    // Close button in footer
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "Close";
     css(closeBtn, "padding:6px 18px;background:#333;color:#ddd;border:1px solid #555;border-radius:6px;cursor:pointer;font-size:13px;");
@@ -63,11 +59,10 @@ export function makeOverlay(category, data) {
     footer.appendChild(closeBtn);
 }
 
-export function makeButton(category, info, hasData, onClick, title = "") {
+export function makeButton(category, info, hasData, onClick) {
     const btn = document.createElement("div");
     const accent = info.color;
-    const disabledStyle = hasData ? "" : "opacity:0.35;cursor:default;";
-    css(btn, `position:relative;background:#222;border:1px solid ${hasData ? accent + "44" : "#333"};border-radius:8px;padding:8px 6px;cursor:${hasData ? "pointer" : "default"};transition:border-color 0.15s,background 0.15s;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:54px;box-sizing:border-box;${disabledStyle}`);
+    css(btn, `position:relative;background:#222;border:1px solid ${hasData ? accent + "44" : "#333"};border-radius:8px;padding:8px 6px;cursor:${hasData ? "pointer" : "default"};transition:border-color 0.15s,background 0.15s;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:54px;box-sizing:border-box;${hasData ? "" : "opacity:0.35;"}`);
 
     if (hasData) {
         btn.addEventListener("mouseenter", () => {
@@ -77,6 +72,10 @@ export function makeButton(category, info, hasData, onClick, title = "") {
         btn.addEventListener("mouseleave", () => {
             btn.style.borderColor = accent + "44";
             btn.style.background = "#222";
+        });
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            onClick(category);
         });
     }
 
@@ -90,13 +89,6 @@ export function makeButton(category, info, hasData, onClick, title = "") {
     css(label, `font-size:11px;font-weight:600;color:${hasData ? accent : "#666"};`);
     btn.appendChild(label);
 
-    if (hasData) {
-        btn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            onClick(category);
-        });
-    }
-
     return btn;
 }
 
@@ -105,7 +97,7 @@ export function setupPreviewFlakeDataWidget(node) {
     node.properties._preview_data = null;
 
     const container = document.createElement("div");
-    css(container, "position:relative;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:6px;font-size:12px;color:#ddd;min-height:130px;");
+    css(container, "position:relative;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:6px;font-size:12px;color:#ddd;min-height:80px;");
 
     let currentData = null;
 
@@ -150,15 +142,11 @@ export function setupPreviewFlakeDataWidget(node) {
     };
 
     node._preview_update = function () {
-        if (currentData) {
-            render(currentData);
-        } else {
-            render(null);
-        }
+        render(currentData ?? null);
     };
 
     const previewWidget = node.addDOMWidget("preview_ui", "div", container, { serialize: false, margin: 4 });
-    previewWidget.computeSize = () => [node.size[0], 140];
+    previewWidget.computeSize = () => [node.size[0], 88];
 
     render(null);
 }
