@@ -117,7 +117,6 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
                 setupFlakeDataSplitSelect(this);
-                removeHiddenInputs(this, ["selected_pins"]);
                 if (!this._configured) {
                     setDefaultSize(this, 260);
                 }
@@ -128,21 +127,11 @@ app.registerExtension({
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
                 this._configured = true;
-                removeHiddenInputs(this, ["selected_pins"]);
                 if (!this.properties) this.properties = {};
-                let savedPins;
-                try {
-                    const raw = this.properties._selected_split_pins;
-                    savedPins = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
-                } catch { savedPins = null; }
-                if (!Array.isArray(savedPins)) {
-                    const w = this.widgets?.find(w => w.name === "selected_pins");
-                    try {
-                        savedPins = w && w.value ? JSON.parse(w.value) : null;
-                    } catch { savedPins = null; }
+                // Migrate old property name
+                if (!this.properties._split_pins && this.properties._selected_split_pins) {
+                    this.properties._split_pins = this.properties._selected_split_pins;
                 }
-                if (!Array.isArray(savedPins)) savedPins = [...DEFAULT_SPLIT_PINS];
-                this.properties._selected_split_pins = [...savedPins];
                 this._splitPinUpdate?.();
                 return r;
             };
@@ -152,7 +141,6 @@ app.registerExtension({
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
                 setupIntoFlakeDataSelect(this);
-                removeHiddenInputs(this, ["active_pins"]);
                 if (!this._configured) {
                     setDefaultSize(this, 260);
                 }
@@ -163,21 +151,12 @@ app.registerExtension({
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
                 this._configured = true;
-                removeHiddenInputs(this, ["active_pins"]);
                 if (!this.properties) this.properties = {};
-                let savedPins;
-                try {
-                    const raw = this.properties._selected_into_pins;
-                    savedPins = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
-                } catch { savedPins = null; }
-                if (!Array.isArray(savedPins)) {
-                    const w = this.widgets?.find(w => w.name === "active_pins");
-                    try {
-                        savedPins = w && w.value ? JSON.parse(w.value) : null;
-                    } catch { savedPins = null; }
+                // Migrate old property name
+                if (!this.properties._into_pins && this.properties._selected_into_pins) {
+                    this.properties._into_pins = this.properties._selected_into_pins;
                 }
-                if (!Array.isArray(savedPins)) savedPins = [...DEFAULT_INTO_PINS];
-                this.properties._selected_into_pins = [...savedPins];
+                setupIntoFlakeDataSelect(this);
                 this._intoPinUpdate?.();
                 return r;
             };

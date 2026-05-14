@@ -84,14 +84,13 @@ class FlakeDataSplitAll:
 
 class FlakeDataSplitSelect:
     """Splits FLAKE_DATA into individually selectable output pins.
-    Use the dropdown and +/- buttons on the node to add or remove output pins."""
+    Use the dropdown and [+] button on the node to add output pins."""
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "flake_data": ("FLAKE_DATA",),
-                "selected_pins": ("STRING", {"multiline": False, "default": '["model"]'}),
             },
         }
 
@@ -101,7 +100,7 @@ class FlakeDataSplitSelect:
     CATEGORY = "flakes"
     DESCRIPTION = "Split FLAKE_DATA into individually selectable output pins. Use the dropdown and +/- buttons to add or remove pins."
 
-    def execute(self, flake_data, selected_pins='["model"]'):
+    def execute(self, flake_data):
         parts = _split_flake_data(flake_data)
         return tuple(parts[n] for n, _ in _ALL_PINS)
 
@@ -159,15 +158,14 @@ class IntoFlakeDataAll:
 
 class IntoFlakeDataSelect:
     """Selectively override fields of an incoming FLAKE_DATA with individual values.
-    Use the dropdown and +/- buttons to add or remove input pins.
-    Only activated pins override the incoming data; all others pass through unchanged."""
+    Use the dropdown and [+] button to add input pins dynamically.
+    Only connected pins override the incoming data; all others pass through unchanged."""
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "flake_data": ("FLAKE_DATA",),
-                "active_pins": ("STRING", {"multiline": False, "default": '["model"]'}),
             },
             "optional": {
                 "model": ("MODEL",),
@@ -190,17 +188,12 @@ class IntoFlakeDataSelect:
     RETURN_NAMES = ("flake_data",)
     FUNCTION = "execute"
     CATEGORY = "flakes"
-    DESCRIPTION = "Override individual fields of an incoming FLAKE_DATA. Use the dropdown and +/- buttons to add/remove input pins. Only activated pins override the original data."
+    DESCRIPTION = "Override individual fields of an incoming FLAKE_DATA. Use the dropdown and [+] button to add input pins. Only connected pins override the original data."
 
-    def execute(self, flake_data, active_pins='["model"]', model=None, clip=None, vae=None,
+    def execute(self, flake_data, model=None, clip=None, vae=None,
                 positive=None, negative=None, latent=None,
-                filename_prefix="", width=1024, height=1024,
-                steps=20, cfg=7.0, sampler_name="euler", scheduler="normal"):
-        try:
-            active = set(json.loads(active_pins)) if active_pins else set()
-        except (json.JSONDecodeError, TypeError):
-            active = set()
-
+                filename_prefix=None, width=None, height=None,
+                steps=None, cfg=None, sampler_name=None, scheduler=None):
         orig_model_bundle, orig_generation_data, orig_sampling_preset = flake_data
         orig_model, orig_clip, orig_vae = orig_model_bundle
         orig_positive, orig_negative, orig_latent, orig_width, orig_height = orig_generation_data[:5]
@@ -210,30 +203,31 @@ class IntoFlakeDataSelect:
             orig_filename_state = orig_generation_data[7]
         orig_steps, orig_cfg, orig_sampler, orig_scheduler = orig_sampling_preset
 
-        new_model = model if ("model" in active and model is not None) else orig_model
-        new_clip = clip if ("clip" in active and clip is not None) else orig_clip
-        new_vae = vae if ("vae" in active and vae is not None) else orig_vae
-        new_positive = positive if ("positive" in active and positive is not None) else orig_positive
-        new_negative = negative if ("negative" in active and negative is not None) else orig_negative
-        new_latent = latent if ("latent" in active and latent is not None) else orig_latent
-        new_width = width if "width" in active else orig_width
-        new_height = height if "height" in active else orig_height
-        new_steps = steps if "steps" in active else orig_steps
-        new_cfg = cfg if "cfg" in active else orig_cfg
-        new_sampler = sampler_name if "sampler_name" in active else orig_sampler
-        new_scheduler = scheduler if "scheduler" in active else orig_scheduler
-
+        new_model_bundle = (
+            model if model is not None else orig_model,
+            clip if clip is not None else orig_clip,
+            vae if vae is not None else orig_vae,
+        )
         new_filename_state = dict(orig_filename_state)
-        if "filename_prefix" in active and filename_prefix:
+        if filename_prefix is not None:
             new_filename_state["preset"] = filename_prefix
 
-        new_model_bundle = (new_model, new_clip, new_vae)
         new_generation_data = (
-            new_positive, new_negative, new_latent,
-            new_width, new_height, orig_pos_text, orig_neg_text,
+            positive if positive is not None else orig_positive,
+            negative if negative is not None else orig_negative,
+            latent if latent is not None else orig_latent,
+            width if width is not None else orig_width,
+            height if height is not None else orig_height,
+            orig_pos_text,
+            orig_neg_text,
             new_filename_state,
         )
-        new_sampling_preset = (new_steps, new_cfg, new_sampler, new_scheduler)
+        new_sampling_preset = (
+            steps if steps is not None else orig_steps,
+            cfg if cfg is not None else orig_cfg,
+            sampler_name if sampler_name is not None else orig_sampler,
+            scheduler if scheduler is not None else orig_scheduler,
+        )
 
         return ((new_model_bundle, new_generation_data, new_sampling_preset),)
 
