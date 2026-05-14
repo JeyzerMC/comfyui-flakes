@@ -9,7 +9,7 @@ const BROWSE_TYPE_LABELS = {
     inputs: "input",
 };
 
-export async function openFileLoadPicker({ flakes, directories, family = "" }) {
+export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {} }) {
     // Exclude model_presets from everything
     const allFlakes = flakes.filter(n => {
         const norm = n.replace(/\\/g, "/");
@@ -181,11 +181,12 @@ export async function openFileLoadPicker({ flakes, directories, family = "" }) {
             css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;");
             thumb.appendChild(overlay);
 
-            const nameAfterSlash = name.includes("/") ? name.split("/").pop() : name;
+            const displayName = displayNames[name] || "";
+            const label = displayName || (name.includes("/") ? name.split("/").pop() : name);
             const nameEl = document.createElement("div");
             nameEl.title = name;
             css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
-            nameEl.textContent = nameAfterSlash;
+            nameEl.textContent = label;
             thumb.appendChild(nameEl);
 
             thumb.addEventListener("click", () => {

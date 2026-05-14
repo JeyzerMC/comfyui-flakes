@@ -429,8 +429,8 @@ export function setupFlakeWidget(node) {
 
     async function handleReplace(idx) {
         if (idx === 0) return;
-        const { flakes, directories } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily() });
+        const { flakes, directories, display_names } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names });
         if (!result || !result.name) return;
         const arr = readEntries();
         let has_lora = false;
@@ -509,8 +509,8 @@ export function setupFlakeWidget(node) {
     }
 
     async function handleLoad() {
-        const { flakes, directories } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily() });
+        const { flakes, directories, display_names } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names });
         if (!result || !result.name) return;
         const arr = readEntries();
         let has_lora = false;

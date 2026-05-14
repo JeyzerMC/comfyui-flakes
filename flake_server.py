@@ -34,10 +34,11 @@ async def _list_flakes(request: web.Request) -> web.Response:
     try:
         names = flake_io.list_flakes(family=family)
         dirs = flake_io.list_dirs(family=family)
+        display_names = flake_io.list_flake_display_names(family=family)
     except Exception as exc:
         logging.exception("[flakes] failed to list flakes")
         return _server_error(str(exc))
-    return web.json_response({"flakes": names, "directories": dirs})
+    return web.json_response({"flakes": names, "directories": dirs, "display_names": display_names})
 
 
 @routes.get("/flakes/meta")

@@ -12,6 +12,7 @@ export async function fetchList(family = "") {
         LIST_PROMISE = fetch(`/flakes/list${query}`).then(r => r.json()).then(d => ({
             flakes: Array.isArray(d.flakes) ? d.flakes : [],
             directories: Array.isArray(d.directories) ? d.directories : [],
+            display_names: d.display_names || {},
         }));
     }
     return LIST_PROMISE;

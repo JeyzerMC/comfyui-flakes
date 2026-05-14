@@ -207,6 +207,20 @@ def list_flakes(family: str | None = None) -> list[str]:
     return sorted(names)
 
 
+def list_flake_display_names(family: str | None = None) -> dict[str, str]:
+    names = list_flakes(family=family)
+    display_names: dict[str, str] = {}
+    for name in names:
+        try:
+            raw = read_flake_raw(name)
+            dn = raw.get("name") or ""
+            if dn:
+                display_names[name] = dn
+        except Exception:
+            pass
+    return display_names
+
+
 def list_dirs(family: str | None = None) -> list[str]:
     dirs: set[str] = set()
     for root in _flakes_roots():
