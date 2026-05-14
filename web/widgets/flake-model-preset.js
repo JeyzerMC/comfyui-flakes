@@ -121,7 +121,7 @@ export function setupFlakeModelPresetWidget(node) {
     css(selectedWrap, "display:none;flex-direction:column;align-items:center;gap:4px;width:100%;position:relative;");
 
     const imgWrap = document.createElement("div");
-    css(imgWrap, "position:relative;width:100%;max-width:200px;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:#1a1a1a;border:1px solid #444;cursor:pointer;");
+    css(imgWrap, "position:relative;width:100%;aspect-ratio:2/3;border-radius:6px;overflow:hidden;background:#1a1a1a;border:1px solid #444;cursor:pointer;");
 
     const coverImg = document.createElement("img");
     css(coverImg, "width:100%;height:100%;object-fit:cover;display:block;");
@@ -296,7 +296,13 @@ export function setupFlakeModelPresetWidget(node) {
         };
     }
 
-    node.addDOMWidget("preset_ui", "div", container, { serialize: false });
+    const presetUiWidget = node.addDOMWidget("preset_ui", "div", container, { serialize: false });
+    // Make the image scale with the node width: height = width * (3/2) + label + padding
+    presetUiWidget.computeSize = () => {
+        const w = node.size[0];
+        const imgHeight = w * (3 / 2);
+        return [w, imgHeight + 40];
+    };
     render();
 
     const origOnRemoved = node.onRemoved;
