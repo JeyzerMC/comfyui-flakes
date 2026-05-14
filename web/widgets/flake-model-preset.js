@@ -179,7 +179,7 @@ export function setupFlakeModelPresetWidget(node) {
             window.alert(`Failed to load preset '${current}': ${err.message || err}`);
             return;
         }
-        const result = await openPresetEditModal({ mode: "edit", name: current, data });
+        const result = await openPresetEditModal({ mode: "edit", name: current, data, family: getFamily() });
         if (result) {
             await refreshPresetOptions();
             render();
@@ -220,7 +220,7 @@ export function setupFlakeModelPresetWidget(node) {
             window.alert(`Failed to load preset '${current}': ${err.message || err}`);
             return;
         }
-        const result = await openPresetEditModal({ mode: "edit", name: current, data });
+        const result = await openPresetEditModal({ mode: "edit", name: current, data, family: getFamily() });
         if (result) {
             await refreshPresetOptions();
             render();

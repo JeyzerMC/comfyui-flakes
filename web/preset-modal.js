@@ -734,6 +734,7 @@ export async function handlePresetButton(e) {
             mode: "edit",
             name: current,
             data,
+            family: currentFamily,
         });
         if (result) refreshPresetOptions(currentFamily);
     }
