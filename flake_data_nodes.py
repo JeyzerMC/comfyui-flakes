@@ -474,6 +474,10 @@ class FlakeGenerate:
         }
 
         ui_data = dict(save_result.get("ui", {}))
+        # Rename "images" to "flake_images" so ComfyUI's default image renderer
+        # doesn't display a duplicate; the custom JS widget reads "flake_images".
+        if "images" in ui_data:
+            ui_data["flake_images"] = ui_data.pop("images")
         ui_data["preview_data"] = [preview_data]
         ui_data["seed"] = [seed]
 

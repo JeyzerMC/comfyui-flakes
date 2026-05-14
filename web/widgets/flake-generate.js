@@ -52,8 +52,8 @@ export function setupFlakeGenerateWidget(node) {
     node.onExecuted = function (output) {
         const r = origOnExecuted?.apply(this, arguments);
         if (output) {
-            if (output.images && output.images.length > 0) {
-                const img = output.images[0];
+            if (output.flake_images && output.flake_images.length > 0) {
+                const img = output.flake_images[0];
                 const subfolder = img.subfolder ? `${encodeURIComponent(img.subfolder)}/` : "";
                 const type = img.type || "output";
                 imageEl.src = `/view?filename=${encodeURIComponent(img.filename)}&type=${type}&subfolder=${encodeURIComponent(img.subfolder || "")}`;
