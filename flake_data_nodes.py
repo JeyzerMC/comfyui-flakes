@@ -24,9 +24,17 @@ _ALL_PINS = [
     ("height", "INT"),
     ("steps", "INT"),
     ("cfg", "FLOAT"),
-    ("sampler_name", _SAMPLER_TYPES[0]),
-    ("scheduler", _SAMPLER_TYPES[1]),
+    # Use STRING for outputs — COMBO lists are input-only in ComfyUI and would
+    # prevent node registration when used as RETURN_TYPES.
+    ("sampler_name", "STRING"),
+    ("scheduler", "STRING"),
 ]
+
+# Separate pin definitions for input types (used by IntoFlakeDataSelect/IntoFlakeDataAll)
+_ALL_INPUT_TYPES = {
+    "sampler_name": _SAMPLER_TYPES[0],
+    "scheduler": _SAMPLER_TYPES[1],
+}
 
 
 def _split_flake_data(flake_data):
