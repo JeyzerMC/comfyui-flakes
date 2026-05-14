@@ -133,8 +133,9 @@ export function setupPreviewFlakeDataWidget(node) {
     const origOnExecuted = node.onExecuted;
     node.onExecuted = function (output) {
         const r = origOnExecuted?.apply(this, arguments);
-        if (output && output.preview_data) {
-            currentData = output.preview_data;
+        const payload = output?.preview_data ?? output?.ui?.preview_data;
+        if (payload) {
+            currentData = payload;
             node.properties._preview_data = currentData;
             render(currentData);
         }
