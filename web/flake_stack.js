@@ -3,7 +3,7 @@ import { setupFlakeWidget } from "./widgets/flake-stack.js";
 import { setupFlakeComboWidget } from "./widgets/flake-combo.js";
 import { setupFlakeModelPresetWidget } from "./widgets/flake-model-preset.js";
 import { setupFlakeModelComboWidget } from "./widgets/flake-model-combo.js";
-import { setupFlakeDataSplitSelect, setupIntoFlakeDataSelect } from "./widgets/flake-data-select.js";
+import { setupFlakeDataSplitSelect, setupIntoFlakeDataSelect, DEFAULT_SPLIT_PINS, DEFAULT_INTO_PINS } from "./widgets/flake-data-select.js";
 import { setupPreviewFlakeDataWidget } from "./widgets/flake-preview.js";
 import "./queue.js";
 
@@ -124,20 +124,28 @@ app.registerExtension({
             };
 
             const origOnConfigure = nodeType.prototype.onConfigure;
-            nodeType.prototype.onConfigure = function (info) {
+            nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
                 this._configured = true;
                 removeHiddenInputs(this, ["selected_pins"]);
                 if (!this.properties) this.properties = {};
-                let saved = DEFAULT_SPLIT_PINS;
+                let savedPins;
                 try {
                     const raw = this.properties._selected_split_pins;
-                    if (raw) saved = typeof raw === "string" ? JSON.parse(raw) : raw;
-                } catch { /* keep default */ }
-                while (this.outputs.length > 0) {
-                    this.removeOutput(0);
+                    savedPins = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
+                } catch { savedPins = null; }
+                if (!Array.isArray(savedPins)) {
+                    const w = this.widgets?.find(w => w.name === "selected_pins");
+                    try {
+                        savedPins = w && w.value ? JSON.parse(w.value) : null;
+                    } catch { savedPins = null; }
                 }
-                this.properties._selected_split_pins = [...saved];
+                if (!Array.isArray(savedPins)) savedPins = [...DEFAULT_SPLIT_PINS];
+                for (let i = this.outputs.length - 1; i >= 0; i--) {
+                    this.disconnectOutputs(i);
+                    this.removeOutput(i);
+                }
+                this.properties._selected_split_pins = [...savedPins];
                 this._splitPinUpdate?.();
                 return r;
             };
@@ -160,11 +168,18 @@ app.registerExtension({
                 this._configured = true;
                 removeHiddenInputs(this, ["active_pins"]);
                 if (!this.properties) this.properties = {};
-                let saved = DEFAULT_INTO_PINS;
+                let savedPins;
                 try {
                     const raw = this.properties._selected_into_pins;
-                    if (raw) saved = typeof raw === "string" ? JSON.parse(raw) : raw;
-                } catch { /* keep default */ }
+                    savedPins = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : null;
+                } catch { savedPins = null; }
+                if (!Array.isArray(savedPins)) {
+                    const w = this.widgets?.find(w => w.name === "active_pins");
+                    try {
+                        savedPins = w && w.value ? JSON.parse(w.value) : null;
+                    } catch { savedPins = null; }
+                }
+                if (!Array.isArray(savedPins)) savedPins = [...DEFAULT_INTO_PINS];
                 const fixedNames = new Set(["flake_data", "active_pins"]);
                 for (let i = this.inputs.length - 1; i >= 0; i--) {
                     if (!fixedNames.has(this.inputs[i].name)) {
@@ -174,7 +189,7 @@ app.registerExtension({
                         this.removeInput(i);
                     }
                 }
-                this.properties._selected_into_pins = [...saved];
+                this.properties._selected_into_pins = [...savedPins];
                 this._intoPinUpdate?.();
                 return r;
             };

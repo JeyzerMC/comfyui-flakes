@@ -1,37 +1,5 @@
 import { css } from "../utils.js";
 
-const SPLIT_PIN_TYPES = {
-    model: "MODEL",
-    clip: "CLIP",
-    vae: "VAE",
-    positive: "CONDITIONING",
-    negative: "CONDITIONING",
-    latent: "LATENT",
-    filename_prefix: "STRING",
-    width: "INT",
-    height: "INT",
-    steps: "INT",
-    cfg: "FLOAT",
-    sampler_name: "COMBO_SAMPLER",
-    scheduler: "COMBO_SCHEDULER",
-};
-
-const INTO_PIN_TYPES = {
-    model: "MODEL",
-    clip: "CLIP",
-    vae: "VAE",
-    positive: "CONDITIONING",
-    negative: "CONDITIONING",
-    latent: "LATENT",
-    filename_prefix: "STRING",
-    width: "INT",
-    height: "INT",
-    steps: "INT",
-    cfg: "FLOAT",
-    sampler_name: "COMBO_SAMPLER",
-    scheduler: "COMBO_SCHEDULER",
-};
-
 const ALL_SPLIT_PINS = [
     { name: "model", label: "Model" },
     { name: "clip", label: "Clip" },
@@ -64,30 +32,62 @@ const ALL_INTO_PINS = [
     { name: "scheduler", label: "Scheduler" },
 ];
 
+const SPLIT_PIN_TYPES = {
+    model: "MODEL", clip: "CLIP", vae: "VAE",
+    positive: "CONDITIONING", negative: "CONDITIONING", latent: "LATENT",
+    filename_prefix: "STRING", width: "INT", height: "INT",
+    steps: "INT", cfg: "FLOAT",
+    sampler_name: "COMBO_SAMPLER", scheduler: "COMBO_SCHEDULER",
+};
+
+const INTO_PIN_TYPES = {
+    model: "MODEL", clip: "CLIP", vae: "VAE",
+    positive: "CONDITIONING", negative: "CONDITIONING", latent: "LATENT",
+    filename_prefix: "STRING", width: "INT", height: "INT",
+    steps: "INT", cfg: "FLOAT",
+    sampler_name: "COMBO_SAMPLER", scheduler: "COMBO_SCHEDULER",
+};
+
 const DEFAULT_SPLIT_PINS = ["model"];
 const DEFAULT_INTO_PINS = ["model"];
 
-function hideWidget(node, widgetName) {
-    const w = node.widgets?.find(w => w.name === widgetName);
-    if (!w) return;
-    w.computeSize = () => [0, -4];
-    w.type = "hidden";
-    w.hidden = true;
-    if (w.element) { w.element.remove(); w.element = null; }
-    if (w.inputEl) { w.inputEl.remove(); w.inputEl = null; }
+function applyPinVisibility(node, selected, direction, allPins) {
+    if (direction === "output") {
+        for (let i = node.outputs.length - 1; i >= 0; i--) {
+            const pinDef = allPins.find(p => p.name === node.outputs[i].name);
+            if (!pinDef) continue;
+            const wasHidden = node.outputs[i].hidden;
+            const shouldHide = !selected.includes(pinDef.name);
+            node.outputs[i].hidden = shouldHide;
+            if (shouldHide && !wasHidden) {
+                node.disconnectOutputs(i);
+            }
+        }
+    } else {
+        const fixedNames = new Set(["flake_data", "active_pins"]);
+        for (let i = node.inputs.length - 1; i >= 0; i--) {
+            const input = node.inputs[i];
+            if (fixedNames.has(input.name)) continue;
+            const pinDef = allPins.find(p => p.name === input.name);
+            if (!pinDef) continue;
+            const wasHidden = input.hidden;
+            const shouldHide = !selected.includes(input.name);
+            input.hidden = shouldHide;
+            if (shouldHide && !wasHidden && input.link != null) {
+                node.disconnectInput(i);
+            }
+        }
+    }
+    node.setDirtyCanvas(true, true);
+    const sz = node.computeSize();
+    if (node.size[0] < sz[0] || node.size[1] < sz[1]) {
+        node.setSize([Math.max(node.size[0], sz[0]), Math.max(node.size[1], sz[1])]);
+    }
 }
-
-const SPLIT_OUTPUT_ORDER = ALL_SPLIT_PINS.map(p => p.name);
-const INTO_INPUT_ORDER = ALL_INTO_PINS.map(p => p.name);
 
 function addDynamicOutput(node, pinName) {
     const type = SPLIT_PIN_TYPES[pinName] || "*";
-    const pinDef = ALL_SPLIT_PINS.find(p => p.name === pinName);
-    const label = pinDef ? pinDef.label : pinName;
-    node.addOutput(label, type);
-    const outIdx = node.outputs.length - 1;
-    node.outputs[outIdx].name = pinName;
-    return outIdx;
+    node.addOutput(pinName, type);
 }
 
 function removeDynamicOutput(node, pinName) {
@@ -101,7 +101,6 @@ function removeDynamicOutput(node, pinName) {
 
 function addDynamicInput(node, pinName) {
     const type = INTO_PIN_TYPES[pinName] || "*";
-    const pinDef = ALL_INTO_PINS.find(p => p.name === pinName);
     node.addInput(pinName, type, { shape: 6 });
 }
 
@@ -115,13 +114,13 @@ function removeDynamicInput(node, pinName) {
 }
 
 function syncSplitOutputs(node, selected) {
-    const current = node.outputs.map(o => o.name);
-    const toRemove = current.filter(n => !selected.includes(n));
+    const currentNames = node.outputs.map(o => o.name);
+    const toRemove = currentNames.filter(n => !selected.includes(n));
     for (const name of toRemove) {
         removeDynamicOutput(node, name);
     }
     for (const name of selected) {
-        if (!current.includes(name)) {
+        if (!currentNames.includes(name)) {
             addDynamicOutput(node, name);
         }
     }
@@ -151,13 +150,22 @@ function syncIntoInputs(node, selected) {
     }
 }
 
-function createPinSelector({ node, allPins, defaultPins, propName, direction, syncFn }) {
+function hideWidget(node, widgetName) {
+    const w = node.widgets?.find(w => w.name === widgetName);
+    if (!w) return;
+    w.computeSize = () => [0, -4];
+    w.type = "hidden";
+    w.hidden = true;
+    if (w.element) { w.element.remove(); w.element = null; }
+    if (w.inputEl) { w.inputEl.remove(); w.inputEl = null; }
+}
+
+function createPinSelector({ node, allPins, defaultPins, propName, hiddenName, direction, syncFn }) {
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:4px;padding:4px 6px;font-size:11px;color:#ddd;pointer-events:auto;");
 
     if (!node.properties) node.properties = {};
 
-    const hiddenName = direction === "output" ? "selected_pins" : "active_pins";
     const hiddenWidget = node.widgets?.find(w => w.name === hiddenName);
 
     let selected;
@@ -288,12 +296,34 @@ function createPinSelector({ node, allPins, defaultPins, propName, direction, sy
     return { container, refresh };
 }
 
+function removeInitialPins(node, allPins, direction) {
+    if (direction === "output") {
+        for (let i = node.outputs.length - 1; i >= 0; i--) {
+            node.disconnectOutputs(i);
+            node.removeOutput(i);
+        }
+    } else {
+        const fixedNames = new Set(["flake_data", "active_pins"]);
+        for (let i = node.inputs.length - 1; i >= 0; i--) {
+            if (!fixedNames.has(node.inputs[i].name)) {
+                if (node.inputs[i].link != null) {
+                    node.disconnectInput(i);
+                }
+                node.removeInput(i);
+            }
+        }
+    }
+}
+
 export function setupFlakeDataSplitSelect(node) {
+    removeInitialPins(node, ALL_SPLIT_PINS, "output");
+
     const { container, refresh } = createPinSelector({
         node,
         allPins: ALL_SPLIT_PINS,
         defaultPins: DEFAULT_SPLIT_PINS,
         propName: "_selected_split_pins",
+        hiddenName: "selected_pins",
         direction: "output",
         syncFn: syncSplitOutputs,
     });
@@ -307,19 +337,20 @@ export function setupFlakeDataSplitSelect(node) {
 
     node._splitPinUpdate = refresh;
 
-    requestAnimationFrame(() => {
-        refresh();
-        const sz = node.computeSize();
-        node.setSize([Math.max(node.size[0], sz[0], 260), Math.max(node.size[1], sz[1])]);
-    });
+    refresh();
+    const sz = node.computeSize();
+    node.setSize([Math.max(node.size[0], sz[0], 260), Math.max(node.size[1], sz[1])]);
 }
 
 export function setupIntoFlakeDataSelect(node) {
+    removeInitialPins(node, ALL_INTO_PINS, "input");
+
     const { container, refresh } = createPinSelector({
         node,
         allPins: ALL_INTO_PINS,
         defaultPins: DEFAULT_INTO_PINS,
         propName: "_selected_into_pins",
+        hiddenName: "active_pins",
         direction: "input",
         syncFn: syncIntoInputs,
     });
@@ -333,9 +364,7 @@ export function setupIntoFlakeDataSelect(node) {
 
     node._intoPinUpdate = refresh;
 
-    requestAnimationFrame(() => {
-        refresh();
-        const sz = node.computeSize();
-        node.setSize([Math.max(node.size[0], sz[0], 260), Math.max(node.size[1], sz[1])]);
-    });
+    refresh();
+    const sz = node.computeSize();
+    node.setSize([Math.max(node.size[0], sz[0], 260), Math.max(node.size[1], sz[1])]);
 }

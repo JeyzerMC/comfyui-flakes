@@ -98,7 +98,6 @@ class FlakeDataSplitSelect:
     FUNCTION = "execute"
     CATEGORY = "flakes"
     DESCRIPTION = "Split FLAKE_DATA into individually selectable output pins. Use the dropdown and +/- buttons to add or remove pins."
-    OUTPUT_NODE = True
 
     def execute(self, flake_data, selected_pins='["model"]'):
         parts = _split_flake_data(flake_data)
