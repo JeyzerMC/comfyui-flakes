@@ -587,7 +587,7 @@ export function svgIcon(d, w = 14) {
     return tpl.content.firstChild;
 }
 
-const HOVER_BTN_SIZE = 33;
+const HOVER_BTN_SIZE = 26;
 const HOVER_BTN_CSS = `width:${HOVER_BTN_SIZE}px;height:${HOVER_BTN_SIZE}px;padding:0;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.92);color:#222;border:none;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);`;
 
 export function makeGridItemOverlay({
@@ -603,7 +603,7 @@ export function makeGridItemOverlay({
     let hoverWrap = null;
     if (showHoverButtons && buttons.length > 0) {
         hoverWrap = document.createElement("div");
-        css(hoverWrap, "position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:6px;z-index:3;background:rgba(0,0,0,0.35);border-radius:3px;");
+        css(hoverWrap, "position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:4px;z-index:3;background:rgba(0,0,0,0.35);border-radius:3px;padding:4px;box-sizing:border-box;");
         for (const btn of buttons) {
             hoverWrap.appendChild(btn);
         }
@@ -616,13 +616,13 @@ export function makeGridItemOverlay({
     if (showTriangle) {
         triangleBtn = document.createElement("button");
         triangleBtn.innerHTML = "&#9662;";
-        const triSize = Math.round(12 * 1.5);
-        css(triangleBtn, `position:absolute;bottom:2px;left:50%;transform:translateX(-50%);background:transparent;color:rgba(180,180,180,0.6);border:none;padding:0;font-size:${triSize}px;line-height:1;cursor:pointer;z-index:2;display:none;`);
+        const triSize = Math.round(18 * 1.3);
+        css(triangleBtn, `position:absolute;bottom:30%;left:50%;transform:translateX(-50%);background:transparent;color:#fff;border:none;padding:0;font-size:${triSize}px;line-height:1;cursor:pointer;z-index:2;opacity:0;pointer-events:auto;`);
         triangleBtn.addEventListener("click", (e) => { e.stopPropagation(); });
         triangleBtn.addEventListener("dblclick", (e) => e.stopPropagation());
         triangleBtn.addEventListener("mousedown", (e) => e.stopPropagation());
         block.appendChild(triangleBtn);
-        block.addEventListener("mouseenter", () => { if (triangleBtn.style.display !== "none") triangleBtn.style.opacity = "1"; });
+        block.addEventListener("mouseenter", () => { triangleBtn.style.opacity = "1"; });
         block.addEventListener("mouseleave", () => { triangleBtn.style.opacity = "0"; });
     }
 
