@@ -130,12 +130,10 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             pathRow.appendChild(pathLabel);
             pathInput = makeComfyInput("", "characters/musashi");
             pathRow.appendChild(pathInput);
-            const resolvedPathLabel = document.createElement("div");
-            css(resolvedPathLabel, "font-size:11px;color:#666;word-break:break-all;min-height:0;");
-            pathRow.appendChild(resolvedPathLabel);
 
             let currentRootPath = "";
             let rootsCache = [];
+            let resolvedPathLabel = null;
 
             function getOutputPrefix() {
                 const folder = familyFolder(currentFamily);
@@ -152,6 +150,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             }
 
             function updateResolvedPath() {
+                if (!resolvedPathLabel) return;
                 const raw = (pathInput?.value || "").trim();
                 if (!raw) {
                     resolvedPathLabel.textContent = "";
@@ -344,6 +343,14 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             };
         }
         content.appendChild(topSection);
+
+        const resolvedPathRow = document.createElement("div");
+        resolvedPathLabel = document.createElement("div");
+        css(resolvedPathLabel, "font-size:11px;color:#666;word-break:break-all;min-height:0;");
+        resolvedPathRow.appendChild(resolvedPathLabel);
+        if (mode !== "default") {
+            content.appendChild(resolvedPathRow);
+        }
 
         // ---- Separator ----
         const sep = document.createElement("div");

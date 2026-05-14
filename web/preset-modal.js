@@ -76,16 +76,19 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         css(baseRootSelect, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;box-sizing:border-box;");
         basePathWrap.appendChild(baseRootSelect);
         pathRow.appendChild(basePathWrap);
-        const pathWrap = document.createElement("div");
-        css(pathWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+    const pathWrap = document.createElement("div");
+    css(pathWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
 pathWrap.appendChild(makeComfyLabel("Output path"));
             pathInput = makeComfyInput("", "nova_anime_xl_v18");
             pathWrap.appendChild(pathInput);
-            resolvedPathLabel = document.createElement("div");
-            css(resolvedPathLabel, "font-size:10px;color:#666;margin-top:2px;word-break:break-all;");
-            pathWrap.appendChild(resolvedPathLabel);
             pathRow.appendChild(pathWrap);
         content.appendChild(pathRow);
+
+        const resolvedPathRow = document.createElement("div");
+        css(resolvedPathRow, "font-size:10px;color:#666;margin-top:2px;word-break:break-all;");
+        resolvedPathLabel = document.createElement("div");
+        resolvedPathRow.appendChild(resolvedPathLabel);
+        content.appendChild(resolvedPathRow);
 
         function updateResolvedPath() {
             const raw = (pathInput?.value || "").trim();
