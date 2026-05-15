@@ -7,7 +7,7 @@ import {
     familyFolder,
 } from "./utils.js";
 import {
-    getCoverUrl, uploadCover, fetchLoras, fetchCnModels, fetchCnTypes, fetchInputs,
+    getCoverUrl, getVariantImageUrl, uploadCover, fetchLoras, fetchCnModels, fetchCnTypes, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
 } from "./api.js";
@@ -1032,6 +1032,50 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
                                 const choice = fieldState.variants[groupName][choiceName] || {};
 
+                                // --- Variant choice image (optional) ---
+                                const imgRow = document.createElement("div");
+                                css(imgRow, "display:flex;gap:6px;align-items:center;");
+                                const imgPreview = document.createElement("img");
+                                css(imgPreview, "width:32px;height:32px;object-fit:cover;border-radius:3px;border:1px solid #333;display:none;flex-shrink:0;");
+                                const imgPathLabel = document.createElement("span");
+                                css(imgPathLabel, "flex:1;font-size:11px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
+                                const pickImgBtn = makeSmallButton("Image");
+                                const clearImgBtn = makeSmallButton("✕");
+
+                                function refreshChoiceImage() {
+                                    const cur = fieldState.variants[groupName][choiceName] || {};
+                                    if (cur.image) {
+                                        imgPathLabel.textContent = cur.image;
+                                        imgPreview.src = (mode !== "create" && name)
+                                            ? getVariantImageUrl(name, groupName, choiceName)
+                                            : `/view?filename=${encodeURIComponent(cur.image)}&type=input`;
+                                        imgPreview.style.display = "block";
+                                        clearImgBtn.style.display = "";
+                                    } else {
+                                        imgPathLabel.textContent = "No variant image";
+                                        imgPreview.style.display = "none";
+                                        clearImgBtn.style.display = "none";
+                                    }
+                                }
+                                pickImgBtn.addEventListener("click", async () => {
+                                    const result = await openFileBrowser({ type: "inputs" });
+                                    if (!result || !result.file) return;
+                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                    fieldState.variants[groupName][choiceName].image = result.file;
+                                    refreshChoiceImage();
+                                });
+                                clearImgBtn.addEventListener("click", () => {
+                                    const cur = fieldState.variants[groupName][choiceName];
+                                    if (cur) delete cur.image;
+                                    refreshChoiceImage();
+                                });
+                                imgRow.appendChild(imgPreview);
+                                imgRow.appendChild(imgPathLabel);
+                                imgRow.appendChild(pickImgBtn);
+                                imgRow.appendChild(clearImgBtn);
+                                choiceCard.appendChild(imgRow);
+                                refreshChoiceImage();
+
                                 const choiceBtnRow = document.createElement("div");
                                 css(choiceBtnRow, "display:flex;gap:8px;align-items:center;");
                                 const choicePosBtn = makeSmallButton("+ positive");
@@ -1040,11 +1084,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 choiceBtnRow.appendChild(choiceNegBtn);
                                 choiceCard.appendChild(choiceBtnRow);
 
+                                const promptsWrap = document.createElement("div");
+                                css(promptsWrap, "display:flex;flex-direction:column;gap:4px;");
+                                choiceCard.appendChild(promptsWrap);
+
                                 function renderChoicePrompts() {
-                                    // Remove existing prompt textareas (they come after the button row)
-                                    while (choiceCard.children.length > 2) {
-                                        choiceCard.removeChild(choiceCard.lastChild);
-                                    }
+                                    promptsWrap.replaceChildren();
                                     if (choice.positive != null) {
                                         const posRow = document.createElement("div");
                                         css(posRow, "display:flex;gap:4px;align-items:flex-start;");
@@ -1056,16 +1101,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         });
                                         const rmPos = makeSmallButton("\u2715");
                                         rmPos.addEventListener("click", () => {
-                                            if (choice.negative == null) {
-                                                fieldState.variants[groupName][choiceName] = {};
-                                            } else {
-                                                delete fieldState.variants[groupName][choiceName].positive;
-                                            }
+                                            delete fieldState.variants[groupName][choiceName].positive;
                                             renderChoicePrompts();
                                         });
                                         posRow.appendChild(cPos);
                                         posRow.appendChild(rmPos);
-                                        choiceCard.appendChild(posRow);
+                                        promptsWrap.appendChild(posRow);
                                     }
                                     if (choice.negative != null) {
                                         const negRow = document.createElement("div");
@@ -1078,16 +1119,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         });
                                         const rmNeg = makeSmallButton("\u2715");
                                         rmNeg.addEventListener("click", () => {
-                                            if (choice.positive == null) {
-                                                fieldState.variants[groupName][choiceName] = {};
-                                            } else {
-                                                delete fieldState.variants[groupName][choiceName].negative;
-                                            }
+                                            delete fieldState.variants[groupName][choiceName].negative;
                                             renderChoicePrompts();
                                         });
                                         negRow.appendChild(cNeg);
                                         negRow.appendChild(rmNeg);
-                                        choiceCard.appendChild(negRow);
+                                        promptsWrap.appendChild(negRow);
                                     }
                                 }
                                 renderChoicePrompts();

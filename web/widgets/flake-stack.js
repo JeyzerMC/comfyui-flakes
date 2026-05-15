@@ -3,7 +3,7 @@ import {
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider, variantSuffix,
 } from "../utils.js";
-import { fetchList, fetchFlake, getCoverUrl, fetchFlakeMeta, invalidateList } from "../api.js";
+import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, invalidateList } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 
@@ -20,8 +20,28 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
     };border:1px solid ${
         isDefault ? "#3a5a8a" : isBypassed ? "#333" : "#444"
     };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;${
-        hasCover ? `background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;` : ""
+        hasCover ? "background-size:cover;background-position:center;" : ""
     }${isBypassed ? "opacity:0.45;" : ""}`);
+
+    // Cover image — swap to a selected variant choice's image when it has one,
+    // otherwise fall back to the flake's base cover.
+    function refreshCover() {
+        if (!hasCover) return;
+        const baseUrl = getCoverUrl(entry.name);
+        const variant = entry.variant || {};
+        const sel = Object.entries(variant).find(([, c]) => c != null && c !== "");
+        if (!sel) {
+            block.style.backgroundImage = `url(${baseUrl})`;
+            return;
+        }
+        const [group, choice] = sel;
+        const variantUrl = getVariantImageUrl(entry.name, group, choice);
+        const probe = new Image();
+        probe.onload = () => { block.style.backgroundImage = `url(${variantUrl})`; };
+        probe.onerror = () => { block.style.backgroundImage = `url(${baseUrl})`; };
+        probe.src = variantUrl;
+    }
+    refreshCover();
 
     // Type ribbon + bypass (clicking toggles bypass)
     if (!isDefault) {
@@ -86,7 +106,9 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
     block.addEventListener("dragleave", () => { block.style.outline = ""; block.style.boxShadow = ""; });
     block.addEventListener("drop", (e) => onDrop(e, idx, block));
 
-    return { block, triangleBtn, refreshName };
+    function refreshVisuals() { refreshName(); refreshCover(); }
+
+    return { block, triangleBtn, refreshName, refreshVisuals };
 }
 
 function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVariantChange) {
@@ -319,7 +341,7 @@ export function setupFlakeWidget(node) {
             indicator.remove();
         }
         for (let i = 0; i < entries.length; i++) {
-            const { block: blk, triangleBtn, refreshName } = makeBlock({
+            const { block: blk, triangleBtn, refreshVisuals } = makeBlock({
                 entry: entries[i],
                 idx: i,
                 onEdit: handleEdit,
@@ -356,7 +378,7 @@ export function setupFlakeWidget(node) {
                     _hideAllDropIndicators();
                 },
             });
-            makeInstanceControls(blk, entries[i], i, () => writeEntries(entries), triangleBtn, refreshName);
+            makeInstanceControls(blk, entries[i], i, () => writeEntries(entries), triangleBtn, refreshVisuals);
             grid.appendChild(blk);
         }
         if (grid._addBlock) grid.appendChild(grid._addBlock);

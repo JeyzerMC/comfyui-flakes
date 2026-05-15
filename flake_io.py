@@ -580,6 +580,47 @@ def read_cover(name: str) -> tuple[bytes, str] | None:
     with open(path, "rb") as f:
         return f.read(), mime
 
+
+def _resolve_input_image(image_source: str) -> tuple[bytes, str] | None:
+    """Resolve an image path relative to the ComfyUI input directory."""
+    input_dir = folder_paths.get_input_directory()
+    if not input_dir:
+        return None
+    candidate = os.path.normpath(os.path.join(input_dir, image_source))
+    try:
+        _ensure_inside(candidate, input_dir)
+    except ValueError:
+        return None
+    if not os.path.isfile(candidate):
+        return None
+    ext = os.path.splitext(candidate)[1].lower()
+    mime = _COVER_MIME_MAP.get(ext)
+    if not mime:
+        return None
+    with open(candidate, "rb") as f:
+        return f.read(), mime
+
+
+def read_variant_image(name: str, group: str, choice: str) -> tuple[bytes, str] | None:
+    """Return (data, mime_type) for a variant choice's ``image`` path, or None.
+
+    The ``image`` value is resolved either as a path under the ComfyUI input
+    directory (where the image picker sources from) or, like ``cover_image``,
+    a path under the LoRA tree (or a legacy weight path with a sibling image)."""
+    try:
+        raw = read_flake_raw(name)
+    except Exception:
+        return None
+    variants = raw.get("variants") or raw.get("options") or {}
+    choice_data = (variants.get(group) or {}).get(choice)
+    if not isinstance(choice_data, dict):
+        return None
+    image_source = choice_data.get("image")
+    if not image_source:
+        return None
+    return _resolve_input_image(image_source) or _resolve_cover_source(image_source)
+
+
 # ---------------------------------------------------------------------------
 # Preset helpers
 # ---------------------------------------------------------------------------

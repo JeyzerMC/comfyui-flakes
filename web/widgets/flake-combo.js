@@ -3,7 +3,7 @@ import {
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider, variantSuffix,
 } from "../utils.js";
-import { fetchList, fetchFlake, getCoverUrl, fetchFlakeMeta } from "../api.js";
+import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 
@@ -17,8 +17,28 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onT
     css(block, `position:relative;height:80px;background:${
         isBypassed ? "#1a1a1a" : "#2a2a2a"
     };border:1px solid #444;border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;${
-        hasCover ? `background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;` : ""
+        hasCover ? "background-size:cover;background-position:center;" : ""
     }${isBypassed ? "opacity:0.45;" : ""}`);
+
+    // Cover image — swap to a selected variant choice's image when it has one,
+    // otherwise fall back to the flake's base cover.
+    function refreshCover() {
+        if (!hasCover) return;
+        const baseUrl = getCoverUrl(entry.name);
+        const variant = entry.variant || {};
+        const sel = Object.entries(variant).find(([, c]) => c != null && c !== "");
+        if (!sel) {
+            block.style.backgroundImage = `url(${baseUrl})`;
+            return;
+        }
+        const [group, choice] = sel;
+        const variantUrl = getVariantImageUrl(entry.name, group, choice);
+        const probe = new Image();
+        probe.onload = () => { block.style.backgroundImage = `url(${variantUrl})`; };
+        probe.onerror = () => { block.style.backgroundImage = `url(${baseUrl})`; };
+        probe.src = variantUrl;
+    }
+    refreshCover();
 
     // Type ribbon — clickable to toggle bypass
     const ribbon = makeTypeRibbon(entry, isBypassed, onToggleBypass, idx);
@@ -74,7 +94,9 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onT
     block.addEventListener("dragleave", () => { block.style.outline = ""; block.style.boxShadow = ""; });
     block.addEventListener("drop", (e) => onDrop(e, idx, block));
 
-    return { block, triangleBtn, refreshName };
+    function refreshVisuals() { refreshName(); refreshCover(); }
+
+    return { block, triangleBtn, refreshName, refreshVisuals };
 }
 
 function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVariantChange) {
@@ -289,7 +311,7 @@ export function setupFlakeComboWidget(node) {
         grid.replaceChildren();
 
         for (let i = 0; i < flakes.length; i++) {
-            const { block: blk, triangleBtn, refreshName } = makeComboBlock({
+            const { block: blk, triangleBtn, refreshVisuals } = makeComboBlock({
                 entry: flakes[i],
                 idx: i,
                 isActive: i === activeIdx,
@@ -332,7 +354,7 @@ export function setupFlakeComboWidget(node) {
                     _hideAllDropIndicators();
                 },
             });
-            makeInstanceControls(blk, flakes[i], i, () => writeAllFlakes(flakes), triangleBtn, refreshName);
+            makeInstanceControls(blk, flakes[i], i, () => writeAllFlakes(flakes), triangleBtn, refreshVisuals);
             grid.appendChild(blk);
         }
 

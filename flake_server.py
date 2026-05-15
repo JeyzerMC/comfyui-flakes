@@ -285,6 +285,26 @@ async def _get_cover(request: web.Request) -> web.Response:
     return web.Response(body=data, content_type=mime)
 
 
+@routes.get("/flakes/variant_image")
+async def _get_variant_image(request: web.Request) -> web.Response:
+    name = request.query.get("name", "").strip()
+    group = request.query.get("group", "").strip()
+    choice = request.query.get("choice", "").strip()
+    if not name or not group or not choice:
+        return _bad_request("missing 'name', 'group' or 'choice' query param")
+    try:
+        result = flake_io.read_variant_image(name, group, choice)
+    except ValueError as exc:
+        return _bad_request(str(exc))
+    except Exception as exc:
+        logging.exception("[flakes] failed to read variant image for %s/%s/%s", name, group, choice)
+        return _server_error(str(exc))
+    if result is None:
+        return _not_found(f"no variant image for '{name}' {group}/{choice}")
+    data, mime = result
+    return web.Response(body=data, content_type=mime)
+
+
 @routes.post("/flakes/cover")
 async def _upload_cover(request: web.Request) -> web.Response:
     reader = await request.multipart()

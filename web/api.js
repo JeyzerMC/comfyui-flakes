@@ -127,6 +127,10 @@ export function getCoverUrl(name) {
     return `/flakes/cover?name=${encodeURIComponent(name)}`;
 }
 
+export function getVariantImageUrl(name, group, choice) {
+    return `/flakes/variant_image?name=${encodeURIComponent(name)}&group=${encodeURIComponent(group)}&choice=${encodeURIComponent(choice)}`;
+}
+
 export function loraSiblingImageUrl(path) {
     return `/flakes/lora_sibling_image?path=${encodeURIComponent(path)}`;
 }
