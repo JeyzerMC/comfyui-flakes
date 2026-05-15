@@ -57,6 +57,11 @@ export function setupFlakeGenerateWidget(node) {
         return chain.reverse();
     }
 
+    // Strip img/<family>/ prefix from a LoRA path for cleaner display
+    function stripLoraPrefix(path) {
+        return path.replace(/^img\/[^/]+\//, "");
+    }
+
     async function buildPreviewFromUpstream() {
         const flakeInput = node.inputs?.find(i => i.name === "flake_data");
         if (!flakeInput?.link) return;
@@ -69,8 +74,14 @@ export function setupFlakeGenerateWidget(node) {
 
         const chain = collectUpstreamChain(upstreamNode);
 
+        // Collect individual fields; we'll group them before storing
+        let checkpoint = null, vae = null, textEncoder = null;
+        let clipSkip = null, width = null, height = null;
+        let steps = null, cfg = null, sampler = null, scheduler = null;
+        const loraRows = []; // [{label, strength, path}]
         const modelsInfo = {};
         const inputsInfo = {};
+        let filenamePrefix = null;
 
         for (const { type, node: chainNode } of chain) {
             if (type === "FlakeModelPreset") {
@@ -80,16 +91,17 @@ export function setupFlakeGenerateWidget(node) {
                 try {
                     const data = await fetchPreset(presetName);
                     const label = data.display_name || presetName.split("/").pop() || presetName;
-                    if (data.checkpoint) modelsInfo["Checkpoint"] = data.checkpoint;
-                    if (data.vae && data.vae !== "baked-in") modelsInfo["VAE"] = data.vae;
-                    if (data.text_encoder && data.text_encoder !== "baked-in") modelsInfo["Text Encoder"] = data.text_encoder;
-                    if (data.clip_skip) modelsInfo["Clip Skip"] = String(data.clip_skip);
-                    if (data.width) modelsInfo["Width"] = String(data.width);
-                    if (data.height) modelsInfo["Height"] = String(data.height);
-                    if (data.steps) modelsInfo["Steps"] = String(data.steps);
-                    if (data.cfg) modelsInfo["CFG"] = String(data.cfg);
-                    if (data.sampler) modelsInfo["Sampler"] = data.sampler;
-                    if (data.scheduler) modelsInfo["Scheduler"] = data.scheduler;
+                    if (data.checkpoint) checkpoint = data.checkpoint;
+                    if (data.vae && data.vae !== "baked-in") vae = data.vae;
+                    if (data.text_encoder && data.text_encoder !== "baked-in") textEncoder = data.text_encoder;
+                    if (data.clip_skip) clipSkip = String(data.clip_skip);
+                    if (data.width) width = String(data.width);
+                    if (data.height) height = String(data.height);
+                    if (data.steps) steps = String(data.steps);
+                    if (data.cfg) cfg = String(data.cfg);
+                    if (data.sampler) sampler = data.sampler;
+                    if (data.scheduler) scheduler = data.scheduler;
+                    if (data.filename_prefix) filenamePrefix = data.filename_prefix;
                     // Preset prompts
                     const pos = (data.prompt?.positive || "").trim();
                     const neg = (data.prompt?.negative || "").trim();
@@ -97,10 +109,15 @@ export function setupFlakeGenerateWidget(node) {
                     if (neg) inputsInfo[`${label} · Negative`] = neg;
                 } catch { /* skip */ }
             } else if (type === "FlakeStack" || type === "FlakeCombo") {
-                const flakesWidget = chainNode.widgets?.find(w => w.name === "flakes_json");
-                if (!flakesWidget) continue;
+                // For FlakeCombo, read the full list from properties (flakes_json only holds the active entry)
                 let entries;
-                try { entries = JSON.parse(flakesWidget.value || "[]"); } catch { continue; }
+                if (type === "FlakeCombo") {
+                    entries = chainNode.properties?._combo_flakes || [];
+                } else {
+                    const flakesWidget = chainNode.widgets?.find(w => w.name === "flakes_json");
+                    if (!flakesWidget) continue;
+                    try { entries = JSON.parse(flakesWidget.value || "[]"); } catch { continue; }
+                }
                 if (!Array.isArray(entries)) continue;
 
                 for (const entry of entries) {
@@ -109,22 +126,21 @@ export function setupFlakeGenerateWidget(node) {
                         const data = await fetchFlake(entry.name);
                         const label = entry.display_name || data.name || entry.name.split("/").pop() || entry.name;
 
-                        // LoRAs (with runtime strength override from entry.loras)
+                        // LoRAs — collect for grouped display
                         if (Array.isArray(data.loras)) {
                             data.loras.forEach((lr, i) => {
-                                const lrName = lr.name || lr.path || `LoRA #${i + 1}`;
+                                const rawPath = lr.name || lr.path || `LoRA #${i + 1}`;
                                 const strength = entry.loras?.[i] ?? lr.strength ?? 1;
-                                modelsInfo[`LoRA: ${lrName}`] = `strength: ${strength}`;
+                                loraRows.push({ label, strength, path: rawPath });
                             });
                         }
                         // Resolution override
-                        if (data.width) modelsInfo["Width"] = String(data.width);
-                        if (data.height) modelsInfo["Height"] = String(data.height);
+                        if (data.width) width = String(data.width);
+                        if (data.height) height = String(data.height);
 
                         // Prompts
                         const pos = (data.positive_prompt || "").trim();
                         const neg = (data.negative_prompt || "").trim();
-                        // Apply selected variant if any
                         const variant = entry.variant || {};
                         let posExtra = "";
                         let negExtra = "";
@@ -151,10 +167,40 @@ export function setupFlakeGenerateWidget(node) {
             }
         }
 
-        const hasAny = [modelsInfo, inputsInfo].some(o => Object.keys(o).length > 0);
+        // Build grouped Models rows
+        if (checkpoint) modelsInfo["Checkpoint"] = checkpoint;
+        // Group: Width · Height · Clip Skip · Steps · CFG on one line
+        const row1Parts = [
+            width && `W: ${width}`,
+            height && `H: ${height}`,
+            clipSkip && `Skip: ${clipSkip}`,
+            steps && `Steps: ${steps}`,
+            cfg && `CFG: ${cfg}`,
+        ].filter(Boolean);
+        if (row1Parts.length) modelsInfo["Resolution & Sampling"] = row1Parts.join("  ·  ");
+        // Group: VAE · Text Encoder · Sampler · Scheduler on one line
+        const row2Parts = [
+            vae && `VAE: ${vae}`,
+            textEncoder && `TE: ${textEncoder}`,
+            sampler && `Sampler: ${sampler}`,
+            scheduler && `Sched: ${scheduler}`,
+        ].filter(Boolean);
+        if (row2Parts.length) modelsInfo["Pipeline"] = row2Parts.join("  ·  ");
+        // LoRA rows: "LoRA [strength]" → "stripped/path"
+        for (const lr of loraRows) {
+            const strengthStr = Number.isInteger(lr.strength) ? String(lr.strength) : lr.strength.toFixed(2);
+            modelsInfo[`LoRA [${strengthStr}]`] = stripLoraPrefix(lr.path);
+        }
+
+        // Build Inputs with filename prefix as the first field
+        const orderedInputs = {};
+        if (filenamePrefix) orderedInputs["Filename Prefix"] = filenamePrefix;
+        Object.assign(orderedInputs, inputsInfo);
+
+        const hasAny = Object.keys(modelsInfo).length > 0 || Object.keys(orderedInputs).length > 0;
         if (!hasAny) return;
 
-        currentPreviewData = { Models: modelsInfo, Inputs: inputsInfo };
+        currentPreviewData = { Models: modelsInfo, Inputs: orderedInputs };
         node.properties._preview_data = currentPreviewData;
         renderPreviewGrid(currentPreviewData);
     }
@@ -238,6 +284,8 @@ export function setupFlakeGenerateWidget(node) {
         } else {
             renderPreviewGrid(null);
         }
+        // Rebuild from the graph after links are restored so both buttons stay active
+        setTimeout(() => buildPreviewFromUpstream(), 0);
         return r;
     };
 
