@@ -221,6 +221,39 @@ export function setupFlakeGenerateWidget(node) {
     noImageLabel.textContent = "No image generated yet";
     imageContainer.appendChild(noImageLabel);
 
+    // Read-only output path field (path relative to ComfyUI's outputs/ folder)
+    const pathField = document.createElement("input");
+    pathField.type = "text";
+    pathField.readOnly = true;
+    css(pathField, "width:100%;box-sizing:border-box;background:#1a1a1a;color:#aaa;border:1px solid #333;border-radius:4px;padding:4px 6px;font-size:10px;font-family:monospace;display:none;outline:none;cursor:text;");
+    imageContainer.appendChild(pathField);
+
+    function outputRelPath(img) {
+        if (!img || (img.type && img.type !== "output")) return "";
+        const sub = (img.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+        return sub ? `${sub}/${img.filename}` : img.filename;
+    }
+
+    function showImage(img) {
+        imageEl.src = `/view?filename=${encodeURIComponent(img.filename)}&type=${img.type || "output"}&subfolder=${encodeURIComponent(img.subfolder || "")}`;
+        imageEl.style.display = "block";
+        noImageLabel.style.display = "none";
+        const rel = outputRelPath(img);
+        if (rel) {
+            pathField.value = rel;
+            pathField.title = rel;
+            pathField.style.display = "block";
+        } else {
+            pathField.style.display = "none";
+        }
+    }
+
+    function clearImage() {
+        imageEl.style.display = "none";
+        noImageLabel.style.display = "block";
+        pathField.style.display = "none";
+    }
+
     container.appendChild(imageContainer);
 
     // ── Add DOM widget ──
@@ -248,13 +281,10 @@ export function setupFlakeGenerateWidget(node) {
         if (output) {
             if (output.flake_images && output.flake_images.length > 0) {
                 const img = output.flake_images[0];
-                imageEl.src = `/view?filename=${encodeURIComponent(img.filename)}&type=${img.type || "output"}&subfolder=${encodeURIComponent(img.subfolder || "")}`;
-                imageEl.style.display = "block";
-                noImageLabel.style.display = "none";
+                showImage(img);
                 node.properties._last_image = img;
             } else {
-                imageEl.style.display = "none";
-                noImageLabel.style.display = "block";
+                clearImage();
             }
             if (output.preview_data) {
                 currentPreviewData = Array.isArray(output.preview_data) ? output.preview_data[0] : output.preview_data;
@@ -270,13 +300,9 @@ export function setupFlakeGenerateWidget(node) {
         const r = origOnConfigure?.apply(this, arguments);
         node._configured = true;
         if (node.properties?._last_image) {
-            const img = node.properties._last_image;
-            imageEl.src = `/view?filename=${encodeURIComponent(img.filename)}&type=${img.type || "output"}&subfolder=${encodeURIComponent(img.subfolder || "")}`;
-            imageEl.style.display = "block";
-            noImageLabel.style.display = "none";
+            showImage(node.properties._last_image);
         } else {
-            imageEl.style.display = "none";
-            noImageLabel.style.display = "block";
+            clearImage();
         }
         if (node.properties?._preview_data) {
             currentPreviewData = node.properties._preview_data;
