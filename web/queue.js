@@ -8,6 +8,31 @@ export function getComboPresets(node) {
     return node.properties?._combo_presets || [];
 }
 
+// Active (non-bypassed) flakes for a FlakeCombo node.
+function activeComboFlakes(node) {
+    return getComboFlakes(node).filter(f => !f.bypassed);
+}
+
+// Number of prompts a generation will queue: the product of each
+// FlakeCombo's active-flake count and each FlakeModelCombo's preset count.
+// Returns 1 when there are combo nodes but a single combination, or 1 when
+// there are no combo nodes at all (a normal single queue).
+export function computeJobCount(graph) {
+    const g = graph || app.graph;
+    if (!g) return 1;
+    let count = 1;
+    for (const node of g.nodes) {
+        if (node.type === "FlakeCombo") {
+            const n = activeComboFlakes(node).length;
+            if (n > 0) count *= n;
+        } else if (node.type === "FlakeModelCombo") {
+            const n = getComboPresets(node).length;
+            if (n > 0) count *= n;
+        }
+    }
+    return count;
+}
+
 export function cartesianProduct(arrays) {
     if (arrays.length === 0) return [[]];
     const result = [];
@@ -72,10 +97,6 @@ app.queuePrompt = async function(number, batchCount = 1) {
     const combinations = cartesianProduct(optionsArrays);
     if (combinations.length === 0) {
         return _originalQueuePrompt.call(this, number, batchCount);
-    }
-
-    if (!window.confirm(`This will queue ${combinations.length} prompt(s). Continue?`)) {
-        return;
     }
 
     // Save original widget values (once per unique node)

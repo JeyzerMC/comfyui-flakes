@@ -1,12 +1,36 @@
 import { css } from "../utils.js";
 import { CATEGORIES, CATEGORY_STYLE, makeOverlay, makeButton } from "./flake-preview.js";
 import { fetchFlake, fetchPreset } from "../api.js";
+import { computeJobCount } from "../queue.js";
 
 export function setupFlakeGenerateWidget(node) {
     if (!node.properties) node.properties = {};
 
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:4px;padding:4px 6px;font-size:12px;color:#ddd;");
+
+    // ── Jobs label (left of the preview buttons) ──
+    const jobsRow = document.createElement("div");
+    css(jobsRow, "display:flex;align-items:center;gap:8px;font-size:12px;color:#ddd;");
+    const jobsLabel = document.createElement("span");
+    css(jobsLabel, "font-size:11px;font-weight:600;color:#4a9eff;");
+    jobsRow.appendChild(jobsLabel);
+    container.appendChild(jobsRow);
+
+    let lastJobCount = -1;
+    function refreshJobCount() {
+        const n = computeJobCount(node.graph);
+        if (n === lastJobCount) return;
+        lastJobCount = n;
+        jobsLabel.textContent = `Jobs: ${n}`;
+    }
+    refreshJobCount();
+    const jobsPoll = setInterval(refreshJobCount, 200);
+    const origOnRemoved = node.onRemoved;
+    node.onRemoved = function () {
+        clearInterval(jobsPoll);
+        return origOnRemoved?.apply(this, arguments);
+    };
 
     // ── Preview Grid (1x2 — 2 buttons) ──
     const gridContainer = document.createElement("div");
