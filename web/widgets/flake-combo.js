@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
-    makePanelDropdown, makeSmallValueSlider,
+    makePanelDropdown, makeSmallValueSlider, variantSuffix,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, fetchFlakeMeta } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
@@ -41,12 +41,16 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onT
         showTriangle: !!entry.name,
     });
 
-    // Name — show full display name with word wrapping
-    const fullName = entry.display_name || entry.name || "(missing)";
+    // Name — show full display name with word wrapping, plus selected variant
+    const baseName = entry.display_name || entry.name || "(missing)";
     const nameEl = document.createElement("div");
-    nameEl.title = fullName;
     css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;border-radius:3px;");
-    nameEl.textContent = fullName;
+    function refreshName() {
+        const displayed = baseName + variantSuffix(entry);
+        nameEl.title = displayed;
+        nameEl.textContent = displayed;
+    }
+    refreshName();
     block.appendChild(nameEl);
 
     // Draggable for reorder
@@ -70,10 +74,10 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onT
     block.addEventListener("dragleave", () => { block.style.outline = ""; block.style.boxShadow = ""; });
     block.addEventListener("drop", (e) => onDrop(e, idx, block));
 
-    return { block, triangleBtn };
+    return { block, triangleBtn, refreshName };
 }
 
-function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
+function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVariantChange) {
     if (entry.inline) return { toggleOptionsPanel: () => {} };
 
     // Options panel (hidden by default)
@@ -151,6 +155,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
                         if (entry.variant) delete entry.variant[group];
                     }
                     onChanged();
+                    if (onVariantChange) onVariantChange();
                 });
                 row.appendChild(dd.container);
                 panel.appendChild(row);
@@ -284,7 +289,7 @@ export function setupFlakeComboWidget(node) {
         grid.replaceChildren();
 
         for (let i = 0; i < flakes.length; i++) {
-            const { block: blk, triangleBtn } = makeComboBlock({
+            const { block: blk, triangleBtn, refreshName } = makeComboBlock({
                 entry: flakes[i],
                 idx: i,
                 isActive: i === activeIdx,
@@ -327,7 +332,7 @@ export function setupFlakeComboWidget(node) {
                     _hideAllDropIndicators();
                 },
             });
-            makeInstanceControls(blk, flakes[i], i, () => writeAllFlakes(flakes), triangleBtn);
+            makeInstanceControls(blk, flakes[i], i, () => writeAllFlakes(flakes), triangleBtn, refreshName);
             grid.appendChild(blk);
         }
 

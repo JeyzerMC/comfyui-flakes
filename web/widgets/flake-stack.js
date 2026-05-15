@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
-    makePanelDropdown, makeSmallValueSlider,
+    makePanelDropdown, makeSmallValueSlider, variantSuffix,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, fetchFlakeMeta, invalidateList } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
@@ -34,13 +34,17 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
         block.appendChild(makeBypassStrike());
     }
 
-    // Name — show portion after / with word wrapping
+    // Name — show portion after / with word wrapping, plus selected variant
     const fullName = isDefault ? "Default" : (entry.display_name || entry.name || "(missing)");
     const nameAfterSlash = fullName.includes("/") ? fullName.split("/").pop() : fullName;
     const nameEl = document.createElement("div");
-    nameEl.title = fullName;
     css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
-    nameEl.textContent = nameAfterSlash;
+    function refreshName() {
+        const suffix = isDefault ? "" : variantSuffix(entry);
+        nameEl.title = fullName + suffix;
+        nameEl.textContent = nameAfterSlash + suffix;
+    }
+    refreshName();
     block.appendChild(nameEl);
 
     // Whole block is draggable for reorder. The browser only initiates a
@@ -82,10 +86,10 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
     block.addEventListener("dragleave", () => { block.style.outline = ""; block.style.boxShadow = ""; });
     block.addEventListener("drop", (e) => onDrop(e, idx, block));
 
-    return { block, triangleBtn };
+    return { block, triangleBtn, refreshName };
 }
 
-function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
+function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVariantChange) {
     if (entry.inline) return { toggleOptionsPanel: () => {} };
 
     // Options panel (hidden by default)
@@ -182,6 +186,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
                         if (entry.variant) delete entry.variant[group];
                     }
                     onChanged();
+                    if (onVariantChange) onVariantChange();
                 });
                 row.appendChild(dd.container);
                 panel.appendChild(row);
@@ -314,7 +319,7 @@ export function setupFlakeWidget(node) {
             indicator.remove();
         }
         for (let i = 0; i < entries.length; i++) {
-            const { block: blk, triangleBtn } = makeBlock({
+            const { block: blk, triangleBtn, refreshName } = makeBlock({
                 entry: entries[i],
                 idx: i,
                 onEdit: handleEdit,
@@ -351,7 +356,7 @@ export function setupFlakeWidget(node) {
                     _hideAllDropIndicators();
                 },
             });
-            makeInstanceControls(blk, entries[i], i, () => writeEntries(entries), triangleBtn);
+            makeInstanceControls(blk, entries[i], i, () => writeEntries(entries), triangleBtn, refreshName);
             grid.appendChild(blk);
         }
         if (grid._addBlock) grid.appendChild(grid._addBlock);

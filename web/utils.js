@@ -654,6 +654,15 @@ export function makeTypeRibbon(entry, isBypassed, onToggleBypass, idx) {
     return ribbon;
 }
 
+// Format a flake's selected variant choices as a " (Choice, Choice)" suffix.
+// Returns "" when no variant choice is selected.
+export function variantSuffix(entry) {
+    const variant = entry?.variant;
+    if (!variant || typeof variant !== "object") return "";
+    const choices = Object.values(variant).filter(v => v != null && v !== "");
+    return choices.length ? ` (${choices.join(", ")})` : "";
+}
+
 export function makeBypassStrike() {
     const strike = document.createElement("div");
     css(strike, "position:absolute;top:50%;left:10%;right:10%;height:2.5px;background:rgba(230,90,90,0.85);transform:translateY(-50%) rotate(-30deg);z-index:4;pointer-events:none;");
