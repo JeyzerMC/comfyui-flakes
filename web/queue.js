@@ -38,7 +38,16 @@ app.queuePrompt = async function(number, batchCount = 1) {
             window.alert("FlakeCombo node has no flakes selected.");
             return;
         }
-        optionsArrays.push(flakes.map((flake, i) => ({
+        // Bypassed (crossed-out) flakes are excluded from the combinatorial
+        // job set — only active flakes contribute to the queue.
+        const activeFlakes = flakes
+            .map((flake, i) => ({ flake, i }))
+            .filter(({ flake }) => !flake.bypassed);
+        if (activeFlakes.length === 0) {
+            window.alert("FlakeCombo node has no active (non-bypassed) flakes.");
+            return;
+        }
+        optionsArrays.push(activeFlakes.map(({ flake, i }) => ({
             node,
             type: "combo",
             value: flake,
