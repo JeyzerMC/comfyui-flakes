@@ -16,7 +16,7 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onO
 
     css(block, `position:relative;height:80px;background:${
         isBypassed ? "#1a1a1a" : "#2a2a2a"
-    };border:1px solid #444;border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;${
+    };border:1px solid #444;border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;${
         hasCover ? `background-image:url(${getCoverUrl(entry.name)});background-size:cover;background-position:center;` : ""
     }${isBypassed ? "opacity:0.45;" : ""}`);
 
