@@ -454,9 +454,8 @@ def resolve(entry: dict[str, Any]) -> Flake:
             flake.negative = f"{flake.negative}, {extra_neg}" if flake.negative else extra_neg
 
     # Runtime output_stem override from the option panel (not persisted to disk)
-    pending = entry.get("_pendingData") or {}
-    if "output_stem" in pending:
-        flake.output_stem = pending["output_stem"] or None
+    if "_output_stem_override" in entry:
+        flake.output_stem = entry["_output_stem_override"] or None
 
     return flake
 

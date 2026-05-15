@@ -639,7 +639,7 @@ export function makeHoverButton({ svg, title, onClick }) {
 }
 
 export function makeTypeRibbon(entry, isBypassed, onToggleBypass, idx) {
-    const typeTag = entry._pendingData?.flake_type || entry.flake_type || "Other";
+    const typeTag = entry.flake_type || "Other";
     const color = TYPE_COLORS[typeTag] || TYPE_COLORS.Other;
     const ribbon = document.createElement("div");
     ribbon.textContent = typeTag[0];

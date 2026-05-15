@@ -7,7 +7,7 @@ import { fetchList, fetchFlake, getCoverUrl, fetchFlakeMeta } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 
-function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onOverride, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const hasCover = !!entry.name;
     const isBypassed = !!entry.bypassed;
     const block = document.createElement("div");
@@ -65,16 +65,6 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onO
         onDragEnd(block);
     });
 
-    // Override button (always pinned top-right, even when not hovered)
-    if (entry._pendingData) {
-        const ov = document.createElement("button");
-        ov.textContent = "\uD83D\uDCBE";
-        ov.title = "Save changes to disk";
-        css(ov, "position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(0,0,0,0.5);color:#ddd;border:1px solid #555;border-radius:2px;cursor:pointer;padding:0;z-index:4;");
-        ov.addEventListener("click", (e) => { e.stopPropagation(); onOverride(idx); });
-        block.appendChild(ov);
-    }
-
     block.addEventListener("dblclick", () => onEdit(idx));
     block.addEventListener("dragover", (e) => onDragOver(e, idx, block));
     block.addEventListener("dragleave", () => { block.style.outline = ""; block.style.boxShadow = ""; });
@@ -100,7 +90,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
     function rebuildPanel() {
         panel.replaceChildren();
 
-        const lorasMeta = entry._pendingData?.loras || flakeData?.loras || [];
+        const lorasMeta = flakeData?.loras || [];
         if (entry.loras.length > lorasMeta.length) {
             entry.loras.length = lorasMeta.length;
         }
@@ -285,7 +275,6 @@ export function setupFlakeComboWidget(node) {
                 onEdit: handleEdit,
                 onRemove: handleRemove,
                 onReplace: handleReplace,
-                onOverride: handleOverride,
                 onToggleBypass: handleToggleBypass,
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
@@ -334,7 +323,7 @@ export function setupFlakeComboWidget(node) {
         const entry = entries[idx];
         let data;
         try {
-            data = entry._pendingData ? JSON.parse(JSON.stringify(entry._pendingData)) : await fetchFlake(entry.name);
+            data = await fetchFlake(entry.name);
         } catch (err) {
             window.alert(`Failed to load ${entry.name}: ${err.message || err}`);
             return;
@@ -360,8 +349,9 @@ export function setupFlakeComboWidget(node) {
             render();
         } else if (result.saved || result.defaultUpdated) {
             const arr = readAllFlakes();
+            // The modal already persisted the flake to disk; just refresh the
+            // entry's display metadata to reflect the new defaults.
             if (result.name && result.name !== arr[idx].name) arr[idx].name = result.name;
-            arr[idx]._pendingData = result.data;
             arr[idx]._edited_at = Date.now();
             arr[idx].flake_type = result.data?.flake_type || null;
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
@@ -416,28 +406,8 @@ export function setupFlakeComboWidget(node) {
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
         arr[idx] = { ...arr[idx], name: result.name, loras, variant: {}, has_lora, display_name, flake_type };
-        delete arr[idx]._pendingData;
         writeAllFlakes(arr);
         render();
-    }
-
-    async function handleOverride(idx) {
-        const entries = readAllFlakes();
-        const entry = entries[idx];
-        if (!entry.name || !entry._pendingData) {
-            window.alert("No pending changes to save.");
-            return;
-        }
-        try {
-            await saveFlakeApi(entry.name, entry._pendingData);
-            const arr = readAllFlakes();
-            delete arr[idx]._pendingData;
-            arr[idx].has_lora = !!(entry._pendingData && (entry._pendingData.path || (entry._pendingData.loras && entry._pendingData.loras.length > 0)));
-            writeAllFlakes(arr);
-            render();
-        } catch (err) {
-            window.alert(`Save failed: ${err.message || err}`);
-        }
     }
 
     async function handleNew() {

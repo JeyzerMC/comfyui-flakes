@@ -3,11 +3,11 @@ import {
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider,
 } from "../utils.js";
-import { fetchList, fetchFlake, saveFlakeApi, getCoverUrl, fetchFlakeMeta, invalidateList } from "../api.js";
+import { fetchList, fetchFlake, getCoverUrl, fetchFlakeMeta, invalidateList } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 
-function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const isDefault = !!entry.inline;
     const isBypassed = !!entry.bypassed;
     const hasCover = !isDefault && entry.name;
@@ -65,15 +65,6 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onOverride, onTogg
         });
     }
 
-    // Override button (always pinned top-right, even when not hovered)
-    if (!isDefault && entry._pendingData) {
-        const ov = document.createElement("button");
-        ov.textContent = "\uD83D\uDCBE";
-        ov.title = "Save changes to disk";
-        css(ov, "position:absolute;top:2px;right:2px;width:16px;height:16px;line-height:14px;text-align:center;font-size:10px;background:rgba(0,0,0,0.5);color:#ddd;border:1px solid #555;border-radius:2px;cursor:pointer;padding:0;z-index:4;");
-        ov.addEventListener("click", (e) => { e.stopPropagation(); onOverride(idx); });
-        block.appendChild(ov);
-    }
 
     const { triangleBtn } = makeGridItemOverlay({
         block,
@@ -111,7 +102,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
     function rebuildPanel() {
         panel.replaceChildren();
 
-        const lorasMeta = entry._pendingData?.loras || flakeData?.loras || [];
+        const lorasMeta = flakeData?.loras || [];
         // Sync override array length to match the YAML
         if (entry.loras.length > lorasMeta.length) {
             entry.loras.length = lorasMeta.length;
@@ -126,8 +117,8 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
             triangleBtn.style.display = "block";
         }
 
-        // 1. Output Stem (top)
-        const outputStem = (entry._pendingData?.output_stem ?? flakeData?.output_stem ?? "") || "";
+        // 1. Output Stem (top) — per-instance runtime override
+        const outputStem = (entry._output_stem_override ?? flakeData?.output_stem ?? "") || "";
         const opLabel = document.createElement("div");
         opLabel.textContent = "Output Stem";
         css(opLabel, "font-size:9px;opacity:0.7;text-align:center;");
@@ -138,8 +129,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
         opInput.placeholder = "e.g. musashi/";
         css(opInput, "width:100%;box-sizing:border-box;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:2px 4px;border-radius:3px;font-size:10px;outline:none;");
         opInput.addEventListener("input", () => {
-            if (!entry._pendingData) entry._pendingData = flakeData ? JSON.parse(JSON.stringify(flakeData)) : {};
-            entry._pendingData.output_stem = opInput.value || null;
+            entry._output_stem_override = opInput.value || null;
             onChanged();
         });
         panel.appendChild(opInput);
@@ -314,7 +304,6 @@ export function setupFlakeWidget(node) {
                 onEdit: handleEdit,
                 onRemove: handleRemove,
                 onReplace: handleReplace,
-                onOverride: handleOverride,
                 onToggleBypass: handleToggleBypass,
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
@@ -362,7 +351,7 @@ export function setupFlakeWidget(node) {
             data = JSON.parse(JSON.stringify(entry.content || {}));
         } else {
             try {
-                data = entry._pendingData ? JSON.parse(JSON.stringify(entry._pendingData)) : await fetchFlake(entry.name);
+                data = await fetchFlake(entry.name);
             } catch (err) {
                 window.alert(`Failed to load ${entry.name}: ${err.message || err}`);
                 return;
@@ -392,10 +381,9 @@ export function setupFlakeWidget(node) {
             render();
         } else if (result.saved) {
             const arr = readEntries();
-            // If the flake was moved on disk, update the entry's name to point
-            // at the new location.
+            // The modal already persisted the flake to disk; just refresh the
+            // entry's display metadata to reflect the new defaults.
             if (result.name && result.name !== arr[idx].name) arr[idx].name = result.name;
-            arr[idx]._pendingData = result.data;
             arr[idx]._edited_at = Date.now();
             arr[idx].flake_type = result.data?.flake_type || null;
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
@@ -453,25 +441,6 @@ export function setupFlakeWidget(node) {
         arr[idx] = { name: result.name, loras, variant: {}, has_lora, display_name, flake_type };
         writeEntries(arr);
         render();
-    }
-
-    async function handleOverride(idx) {
-        const entries = readEntries();
-        const entry = entries[idx];
-        if (!entry.name || !entry._pendingData) {
-            window.alert("No pending changes to save.");
-            return;
-        }
-        try {
-            await saveFlakeApi(entry.name, entry._pendingData);
-            const arr = readEntries();
-            delete arr[idx]._pendingData;
-            arr[idx].has_lora = !!(entry._pendingData && (entry._pendingData.path || (entry._pendingData.loras && entry._pendingData.loras.length > 0)));
-            writeEntries(arr);
-            render();
-        } catch (err) {
-            window.alert(`Save failed: ${err.message || err}`);
-        }
     }
 
     async function handleNew() {
