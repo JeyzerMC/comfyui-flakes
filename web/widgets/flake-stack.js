@@ -208,14 +208,30 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn) {
         } catch { /* ignore */ }
     }
 
+    let outsideHandler = null;
+
+    function closeOptionsPanel() {
+        panel.style.display = "none";
+        if (triangleBtn) triangleBtn.textContent = "▾";
+        if (outsideHandler) {
+            document.removeEventListener("mousedown", outsideHandler);
+            outsideHandler = null;
+        }
+    }
+
     async function toggleOptionsPanel() {
         if (panel.style.display === "flex") {
-            panel.style.display = "none";
-            if (triangleBtn) triangleBtn.innerHTML = "&#9662;";
+            closeOptionsPanel();
             return;
         }
         panel.style.display = "flex";
-        if (triangleBtn) triangleBtn.innerHTML = "&#9652;";
+        if (triangleBtn) triangleBtn.textContent = "▴";
+        if (!outsideHandler) {
+            outsideHandler = (e) => {
+                if (!block.contains(e.target)) closeOptionsPanel();
+            };
+            document.addEventListener("mousedown", outsideHandler);
+        }
 
         if (!optionsLoaded && entry.name) {
             panel.textContent = "";
