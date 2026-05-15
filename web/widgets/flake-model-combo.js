@@ -5,11 +5,15 @@ import {
 import { openPresetPicker } from "../pickers.js";
 import { fetchPreset } from "../api.js";
 
-export function makeModelComboBlock({ preset, display_name, idx, isActive, onActivate, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
+export function makeModelComboBlock({ preset, display_name, idx, isActive, isGenerating, onActivate, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const block = document.createElement("div");
     block.dataset.idx = String(idx);
 
-    css(block, `position:relative;height:80px;background:#2a2a2a;border:1px solid #444;border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(preset)});background-size:cover;background-position:center;`);
+    css(block, `position:relative;height:80px;background:#2a2a2a;border:${
+        isGenerating ? "2px solid #4a9eff" : "1px solid #444"
+    };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(preset)});background-size:cover;background-position:center;${
+        isGenerating ? "box-shadow:inset 0 0 0 2px rgba(74,158,255,0.7);" : ""
+    }`);
 
     // Dark overlay, hover buttons — using shared helper (no triangle for model combo)
     makeGridItemOverlay({
@@ -109,6 +113,7 @@ export function setupFlakeModelComboWidget(node) {
     function render() {
         const presets = readPresets();
         const activeIdx = node.properties._combo_active_index || 0;
+        const generatingIdx = node._model_combo_generating_index;
         grid.replaceChildren();
 
         for (let i = 0; i < presets.length; i++) {
@@ -118,6 +123,7 @@ export function setupFlakeModelComboWidget(node) {
                 display_name: displayName,
                 idx: i,
                 isActive: i === activeIdx,
+                isGenerating: generatingIdx != null && i === generatingIdx,
                 onActivate: (idx) => {
                     node.properties._combo_active_index = idx;
                     updateActivePreset();

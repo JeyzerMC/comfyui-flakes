@@ -7,7 +7,7 @@ import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta 
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 
-function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, onReplace, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const hasCover = !!entry.name;
     const isBypassed = !!entry.bypassed;
     const block = document.createElement("div");
@@ -16,9 +16,11 @@ function makeComboBlock({ entry, idx, isActive, onEdit, onRemove, onReplace, onT
 
     css(block, `position:relative;height:80px;background:${
         isBypassed ? "#1a1a1a" : "#2a2a2a"
-    };border:1px solid #444;border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;${
+    };border:${
+        isGenerating ? "2px solid #4a9eff" : "1px solid #444"
+    };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;${
         hasCover ? "background-size:cover;background-position:center;" : ""
-    }${isBypassed ? "opacity:0.45;" : ""}`);
+    }${isGenerating ? "box-shadow:0 0 8px 1px rgba(74,158,255,0.7);" : ""}${isBypassed ? "opacity:0.45;" : ""}`);
 
     // Cover image — swap to a selected variant choice's image when it has one,
     // otherwise fall back to the flake's base cover.
@@ -308,6 +310,7 @@ export function setupFlakeComboWidget(node) {
     function render() {
         const flakes = readAllFlakes();
         const activeIdx = node.properties._combo_active_index || 0;
+        const generatingIdx = node._combo_generating_index;
         grid.replaceChildren();
 
         for (let i = 0; i < flakes.length; i++) {
@@ -315,6 +318,7 @@ export function setupFlakeComboWidget(node) {
                 entry: flakes[i],
                 idx: i,
                 isActive: i === activeIdx,
+                isGenerating: generatingIdx != null && i === generatingIdx,
                 onEdit: handleEdit,
                 onRemove: handleRemove,
                 onReplace: handleReplace,

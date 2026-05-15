@@ -119,9 +119,14 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 if (item.type === "combo") {
                     const w = item.node.widgets?.find(w => w.name === "flakes_json");
                     if (w) w.value = JSON.stringify([item.value]);
+                    // Highlight the flake being generated on its combo node
+                    item.node._combo_generating_index = item.index;
+                    item.node._combo_render?.();
                 } else {
                     const w = item.node.widgets?.find(w => w.name === "preset");
                     if (w) w.value = item.value;
+                    item.node._model_combo_generating_index = item.index;
+                    item.node._model_combo_render?.();
                 }
             }
             await _originalQueuePrompt.call(this, number, 1);
@@ -131,8 +136,14 @@ app.queuePrompt = async function(number, batchCount = 1) {
             if (orig.widget) orig.widget.value = orig.value;
         }
         for (const n of app.graph.nodes) {
-            if (n.type === "FlakeCombo") n._combo_render?.();
-            if (n.type === "FlakeModelCombo") n._model_combo_render?.();
+            if (n.type === "FlakeCombo") {
+                delete n._combo_generating_index;
+                n._combo_render?.();
+            }
+            if (n.type === "FlakeModelCombo") {
+                delete n._model_combo_generating_index;
+                n._model_combo_render?.();
+            }
         }
     }
 };
