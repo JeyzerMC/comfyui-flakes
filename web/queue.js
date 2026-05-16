@@ -113,6 +113,8 @@ app.queuePrompt = async function(number, batchCount = 1) {
         }
     }
 
+    const flakeGenerateNodes = app.graph.nodes.filter(n => n.type === "FlakeGenerate");
+
     try {
         for (const combination of combinations) {
             for (const item of combination) {
@@ -129,6 +131,15 @@ app.queuePrompt = async function(number, batchCount = 1) {
                     item.node._model_combo_render?.();
                 }
             }
+            // Stamp the active combination key (order-independent: combo node
+            // id : selected index, sorted by node id) so FlakeGenerate can map
+            // the resulting image to this combination in its data overlay.
+            const comboKey = combination
+                .map(it => [it.node.id, it.index])
+                .sort((a, b) => a[0] - b[0])
+                .map(([id, idx]) => `${id}:${idx}`)
+                .join("|");
+            for (const fg of flakeGenerateNodes) fg._pending_combination_key = comboKey;
             await _originalQueuePrompt.call(this, number, 1);
         }
     } finally {
