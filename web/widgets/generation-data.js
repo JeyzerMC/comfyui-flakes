@@ -269,134 +269,264 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
         return;
     }
 
-    const split = document.createElement("div");
-    css(split, "display:flex;gap:14px;align-items:flex-start;");
-    content.appendChild(split);
+    const hasCombos = model.axes.length > 0;
 
-    // Left half: one horizontal scroll grid per combo axis
-    const left = document.createElement("div");
-    css(left, "flex:1;display:flex;flex-direction:column;gap:12px;min-width:0;");
-    const right = document.createElement("div");
-    css(right, "flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;max-height:60vh;overflow:auto;");
-    split.appendChild(left);
-    split.appendChild(right);
+    if (hasCombos) {
+        const split = document.createElement("div");
+        css(split, "display:flex;gap:14px;align-items:flex-start;");
+        content.appendChild(split);
 
-    // selection state: index per axis
-    const selIdx = model.axes.map(() => 0);
+        // Left half: combo axis grids + combo-specific fields below
+        const left = document.createElement("div");
+        css(left, "flex:1;display:flex;flex-direction:column;gap:12px;min-width:0;max-height:60vh;overflow:auto;");
+        // Right half: composite image + common data sections
+        const right = document.createElement("div");
+        css(right, "flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;max-height:60vh;overflow:auto;");
+        split.appendChild(left);
+        split.appendChild(right);
 
-    function currentSelection() {
-        return model.axes.map((axis, i) => axis.items[selIdx[i]]);
-    }
+        // selection state: index per axis
+        const selIdx = model.axes.map(() => 0);
 
-    const cards = []; // per-axis: array of card elements (to update selected ring)
+        function currentSelection() {
+            return model.axes.map((axis, i) => axis.items[selIdx[i]]);
+        }
 
-    model.axes.forEach((axis, ai) => {
-        const section = document.createElement("div");
-        const lbl = document.createElement("div");
-        lbl.textContent = axis.label;
-        css(lbl, "font-size:11px;font-weight:600;color:#aaa;margin-bottom:4px;");
-        section.appendChild(lbl);
+        const cards = []; // per-axis: array of card elements (to update selected ring)
 
-        const scroll = document.createElement("div");
-        css(scroll, "display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;");
-        const axisCards = [];
-        axis.items.forEach((item, ii) => {
-            const card = document.createElement("div");
-            css(card, `position:relative;flex:0 0 auto;width:72px;height:80px;border-radius:4px;cursor:pointer;background:#2a2a2a;background-image:url(${item.coverUrl});background-size:cover;background-position:center;border:2px solid ${ii === selIdx[ai] ? ACCENT : "transparent"};box-sizing:border-box;`);
-            const cap = document.createElement("div");
-            cap.textContent = item.label;
-            cap.title = item.label;
-            css(cap, "position:absolute;left:0;right:0;bottom:0;font-size:9px;color:#fff;background:rgba(0,0,0,0.6);padding:1px 3px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:0 0 2px 2px;");
-            card.appendChild(cap);
-            card.addEventListener("click", () => {
-                selIdx[ai] = ii;
-                axisCards.forEach((c, k) => { c.style.borderColor = k === ii ? ACCENT : "transparent"; });
-                refreshRight();
+        // Left: combo axis grids
+        model.axes.forEach((axis, ai) => {
+            const section = document.createElement("div");
+            const lbl = document.createElement("div");
+            lbl.textContent = axis.label;
+            css(lbl, "font-size:11px;font-weight:600;color:#aaa;margin-bottom:4px;");
+            section.appendChild(lbl);
+
+            const scroll = document.createElement("div");
+            css(scroll, "display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;");
+            const axisCards = [];
+            axis.items.forEach((item, ii) => {
+                const card = document.createElement("div");
+                css(card, `position:relative;flex:0 0 auto;width:72px;height:80px;border-radius:4px;cursor:pointer;background:#2a2a2a;background-size:cover;background-position:center;border:2px solid ${ii === selIdx[ai] ? ACCENT : "transparent"};box-sizing:border-box;`);
+                if (item.coverUrl) {
+                    card.style.backgroundImage = `url(${item.coverUrl})`;
+                }
+                const cap = document.createElement("div");
+                cap.textContent = item.label;
+                cap.title = item.label;
+                css(cap, "position:absolute;left:0;right:0;bottom:0;font-size:9px;color:#fff;background:rgba(0,0,0,0.6);padding:1px 3px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:0 0 2px 2px;");
+                card.appendChild(cap);
+                card.addEventListener("click", () => {
+                    selIdx[ai] = ii;
+                    axisCards.forEach((c, k) => { c.style.borderColor = k === ii ? ACCENT : "transparent"; });
+                    refreshRight();
+                });
+                axisCards.push(card);
+                scroll.appendChild(card);
             });
-            axisCards.push(card);
-            scroll.appendChild(card);
+            cards.push(axisCards);
+            section.appendChild(scroll);
+            left.appendChild(section);
         });
-        cards.push(axisCards);
-        section.appendChild(scroll);
-        left.appendChild(section);
-    });
 
-    // Right half: composite image + label + data sections
-    const compositeWrap = document.createElement("div");
-    css(compositeWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
-    const compositeImg = document.createElement("img");
-    css(compositeImg, "width:256px;height:256px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
-    const compositeLabel = document.createElement("div");
-    css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
-    compositeWrap.appendChild(compositeImg);
-    compositeWrap.appendChild(compositeLabel);
-    right.appendChild(compositeWrap);
+        // Left: combo-specific fields container (below grids)
+        const leftDataWrap = document.createElement("div");
+        css(leftDataWrap, "display:flex;flex-direction:column;gap:10px;");
+        left.appendChild(leftDataWrap);
 
-    const dataWrap = document.createElement("div");
-    css(dataWrap, "display:flex;flex-direction:column;gap:10px;");
-    right.appendChild(dataWrap);
+        // Right: composite image + common data sections
+        const compositeWrap = document.createElement("div");
+        css(compositeWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
+        const compositeImg = document.createElement("img");
+        css(compositeImg, "width:256px;height:256px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
+        const compositeLabel = document.createElement("div");
+        css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
+        compositeWrap.appendChild(compositeImg);
+        compositeWrap.appendChild(compositeLabel);
+        right.appendChild(compositeWrap);
 
-    function section(titleText, rows) {
-        if (!rows.length) return null;
-        const wrap = document.createElement("div");
-        const h = document.createElement("div");
-        h.textContent = titleText;
-        css(h, `font-size:11px;font-weight:600;color:${ACCENT};margin-bottom:4px;`);
-        wrap.appendChild(h);
-        const list = document.createElement("div");
-        css(list, "display:flex;flex-direction:column;gap:4px;");
-        for (const [k, v] of rows) {
-            const row = document.createElement("div");
-            css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:6px 8px;");
-            const ke = document.createElement("div");
-            ke.textContent = k;
-            css(ke, "font-size:10px;color:#888;margin-bottom:2px;");
-            const ve = document.createElement("div");
-            ve.textContent = typeof v === "string" ? v : String(v);
-            css(ve, "font-size:12px;color:#ddd;word-break:break-word;white-space:pre-wrap;");
-            row.appendChild(ke);
-            row.appendChild(ve);
-            list.appendChild(row);
+        const dataWrap = document.createElement("div");
+        css(dataWrap, "display:flex;flex-direction:column;gap:10px;");
+        right.appendChild(dataWrap);
+
+        function section(titleText, rows) {
+            if (!rows.length) return null;
+            const wrap = document.createElement("div");
+            const h = document.createElement("div");
+            h.textContent = titleText;
+            css(h, `font-size:11px;font-weight:600;color:${ACCENT};margin-bottom:4px;`);
+            wrap.appendChild(h);
+            const list = document.createElement("div");
+            css(list, "display:flex;flex-direction:column;gap:4px;");
+            for (const [k, v] of rows) {
+                const row = document.createElement("div");
+                css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:6px 8px;");
+                const ke = document.createElement("div");
+                ke.textContent = k;
+                css(ke, "font-size:10px;color:#888;margin-bottom:2px;");
+                const ve = document.createElement("div");
+                ve.textContent = typeof v === "string" ? v : String(v);
+                css(ve, "font-size:12px;color:#ddd;word-break:break-word;white-space:pre-wrap;");
+                row.appendChild(ke);
+                row.appendChild(ve);
+                list.appendChild(row);
+            }
+            wrap.appendChild(list);
+            return wrap;
         }
-        wrap.appendChild(list);
-        return wrap;
+
+        let refreshToken = 0;
+        async function refreshRight() {
+            const token = ++refreshToken;
+            const sel = currentSelection();
+            const key = combinationKeyFor(model, selIdx);
+            const data = await combinationData(model, sel);
+            if (token !== refreshToken) return;
+
+            // Composite (or generated output if we have one for this combination)
+            const generated = lastImagesByCombo && lastImagesByCombo[key];
+            if (generated) {
+                compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
+                const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+                compositeLabel.textContent = sub ? `${sub}/${generated.filename}` : generated.filename;
+            } else {
+                compositeLabel.textContent = "No image generated yet";
+                const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
+                compositeImg.src = await buildComposite(urls);
+            }
+
+            // Common fields go on the right (model preset, fixed stack flakes)
+            dataWrap.replaceChildren();
+            const s1 = section("Model", data.modelRows);
+            const s2 = section("Output", data.outputRows);
+            const s3 = section("LoRAs", data.loraRows);
+            const s4 = section("Prompts", data.promptRows);
+            for (const s of [s1, s2, s3, s4]) if (s) dataWrap.appendChild(s);
+            if (!s1 && !s2 && !s3 && !s4) {
+                const empty = document.createElement("div");
+                css(empty, "font-size:12px;color:#555;text-align:center;padding:20px;");
+                empty.textContent = "No data for this combination";
+                dataWrap.appendChild(empty);
+            }
+
+            // Combo-specific fields on the left below grids
+            leftDataWrap.replaceChildren();
+            const comboFlake = sel[model.axes.findIndex(a => a.kind === "flake")];
+            if (comboFlake && comboFlake.entry) {
+                try {
+                    const d = await fetchFlake(comboFlake.entry.name);
+                    const label = comboFlake.entry.display_name || d.name || comboFlake.entry.name.split("/").pop() || comboFlake.entry.name;
+                    const choices = Object.values(comboFlake.entry.variant || {}).filter(Boolean);
+                    const vLabel = label + (choices.length ? ` (${choices.join(", ")})` : "");
+                    const comboLoraRows = [];
+                    if (Array.isArray(d.loras)) {
+                        d.loras.forEach((lr, idx) => {
+                            const p = (lr.name || lr.path || `LoRA #${idx + 1}`).replace(/^img\/[^/]+\//, "");
+                            const s = comboFlake.entry.loras?.[idx] ?? lr.strength ?? 1;
+                            comboLoraRows.push([`LoRA [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`, p]);
+                        });
+                    }
+                    const comboPromptRows = [];
+                    const pos = (d.positive_prompt || "").trim();
+                    const neg = (d.negative_prompt || "").trim();
+                    let posX = "", negX = "";
+                    for (const [g, c] of Object.entries(comboFlake.entry.variant || {})) {
+                        const v = d.variants?.[g]?.[c];
+                        if (v?.positive) posX += (posX ? ", " : "") + v.positive;
+                        if (v?.negative) negX += (negX ? ", " : "") + v.negative;
+                    }
+                    const fp = [pos, posX].filter(Boolean).join(", ");
+                    const fn = [neg, negX].filter(Boolean).join(", ");
+                    if (fp) comboPromptRows.push([`${vLabel} · Positive`, fp]);
+                    if (fn) comboPromptRows.push([`${vLabel} · Negative`, fn]);
+                    const cs1 = section("LoRAs", comboLoraRows);
+                    const cs2 = section("Prompts", comboPromptRows);
+                    if (cs1) leftDataWrap.appendChild(cs1);
+                    if (cs2) leftDataWrap.appendChild(cs2);
+                } catch { /* skip */ }
+            }
+        }
+
+        refreshRight();
+    } else {
+        // No combo nodes: single centered panel
+        const singleWrap = document.createElement("div");
+        css(singleWrap, "display:flex;flex-direction:column;align-items:center;gap:10px;max-width:520px;margin:0 auto;max-height:60vh;overflow:auto;");
+        content.appendChild(singleWrap);
+
+        const compositeWrap = document.createElement("div");
+        css(compositeWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
+        const compositeImg = document.createElement("img");
+        css(compositeImg, "width:256px;height:256px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
+        const compositeLabel = document.createElement("div");
+        css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
+        compositeWrap.appendChild(compositeImg);
+        compositeWrap.appendChild(compositeLabel);
+        singleWrap.appendChild(compositeWrap);
+
+        const dataWrap = document.createElement("div");
+        css(dataWrap, "display:flex;flex-direction:column;gap:10px;width:100%;");
+        singleWrap.appendChild(dataWrap);
+
+        function section(titleText, rows) {
+            if (!rows.length) return null;
+            const wrap = document.createElement("div");
+            const h = document.createElement("div");
+            h.textContent = titleText;
+            css(h, `font-size:11px;font-weight:600;color:${ACCENT};margin-bottom:4px;`);
+            wrap.appendChild(h);
+            const list = document.createElement("div");
+            css(list, "display:flex;flex-direction:column;gap:4px;");
+            for (const [k, v] of rows) {
+                const row = document.createElement("div");
+                css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:6px 8px;");
+                const ke = document.createElement("div");
+                ke.textContent = k;
+                css(ke, "font-size:10px;color:#888;margin-bottom:2px;");
+                const ve = document.createElement("div");
+                ve.textContent = typeof v === "string" ? v : String(v);
+                css(ve, "font-size:12px;color:#ddd;word-break:break-word;white-space:pre-wrap;");
+                row.appendChild(ke);
+                row.appendChild(ve);
+                list.appendChild(row);
+            }
+            wrap.appendChild(list);
+            return wrap;
+        }
+
+        let refreshToken = 0;
+        async function refreshRight() {
+            const token = ++refreshToken;
+            const data = await combinationData(model, []);
+            if (token !== refreshToken) return;
+
+            const generated = lastImagesByCombo && lastImagesByCombo[""];
+            if (generated) {
+                compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
+                const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+                compositeLabel.textContent = sub ? `${sub}/${generated.filename}` : generated.filename;
+            } else {
+                compositeLabel.textContent = "No image generated yet";
+                const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
+                compositeImg.src = await buildComposite(urls);
+            }
+
+            dataWrap.replaceChildren();
+            const s1 = section("Model", data.modelRows);
+            const s2 = section("Output", data.outputRows);
+            const s3 = section("LoRAs", data.loraRows);
+            const s4 = section("Prompts", data.promptRows);
+            for (const s of [s1, s2, s3, s4]) if (s) dataWrap.appendChild(s);
+            if (!s1 && !s2 && !s3 && !s4) {
+                const empty = document.createElement("div");
+                css(empty, "font-size:12px;color:#555;text-align:center;padding:20px;");
+                empty.textContent = "No data for this combination";
+                dataWrap.appendChild(empty);
+            }
+        }
+
+        refreshRight();
     }
-
-    let refreshToken = 0;
-    async function refreshRight() {
-        const token = ++refreshToken;
-        const sel = currentSelection();
-        const key = combinationKeyFor(model, selIdx);
-        const data = await combinationData(model, sel);
-        if (token !== refreshToken) return; // a newer selection superseded this
-
-        // Composite (or generated output if we have one for this combination)
-        const generated = lastImagesByCombo && lastImagesByCombo[key];
-        if (generated) {
-            compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
-            const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-            compositeLabel.textContent = sub ? `${sub}/${generated.filename}` : generated.filename;
-        } else {
-            compositeLabel.textContent = "No image generated yet";
-            const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
-            compositeImg.src = await buildComposite(urls);
-        }
-
-        dataWrap.replaceChildren();
-        const s1 = section("Model", data.modelRows);
-        const s2 = section("Output", data.outputRows);
-        const s3 = section("LoRAs", data.loraRows);
-        const s4 = section("Prompts", data.promptRows);
-        for (const s of [s1, s2, s3, s4]) if (s) dataWrap.appendChild(s);
-        if (!s1 && !s2 && !s3 && !s4) {
-            const empty = document.createElement("div");
-            css(empty, "font-size:12px;color:#555;text-align:center;padding:20px;");
-            empty.textContent = "No data for this combination";
-            dataWrap.appendChild(empty);
-        }
-    }
-
-    refreshRight();
 
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "Close";
