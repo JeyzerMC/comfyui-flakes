@@ -161,6 +161,21 @@ class FlakeModelPreset:
         "Outputs a single bundled flake_data pin for wiring into FlakeStack / FlakeCombo nodes."
     )
 
+    @classmethod
+    def IS_CHANGED(cls, model_family: str, preset: str):
+        # Re-run whenever the preset file's contents change on disk, even if the
+        # selected preset name (the node input) stays the same. Without this,
+        # ComfyUI caches the output and edits to Steps/CFG/etc. are ignored.
+        preset_name = preset.strip() if preset else ""
+        if not preset_name or preset_name in ("Select a preset...", "No model preset is selected"):
+            return preset_name
+        try:
+            path = flake_io._resolve_preset_file(preset_name)
+            st = os.stat(path)
+            return f"{path}:{st.st_mtime_ns}:{st.st_size}"
+        except Exception:
+            return float("nan")
+
     def execute(self, model_family: str, preset: str):
         preset_name = preset.strip() if preset else ""
         if not preset_name or preset_name in ("Select a preset...", "No model preset is selected"):
