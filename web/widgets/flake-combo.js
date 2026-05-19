@@ -2,6 +2,7 @@ import {
     css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider, variantSuffix,
+    _registerOpenPanel, _unregisterOpenPanel,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
@@ -223,6 +224,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             document.removeEventListener("mousedown", outsideHandler);
             outsideHandler = null;
         }
+        _unregisterOpenPanel(closeOptionsPanel);
     }
 
     async function toggleOptionsPanel() {
@@ -230,6 +232,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             closeOptionsPanel();
             return;
         }
+        _registerOpenPanel(closeOptionsPanel);
         panel.style.display = "flex";
         if (triangleBtn) triangleBtn.textContent = "▴";
         if (!outsideHandler) {

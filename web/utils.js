@@ -13,6 +13,23 @@ export function familyFolder(family) {
     return FAMILY_FOLDERS[family] || null;
 }
 
+// Global registry for mutually-exclusive option panels (flake combo/stack dropdowns).
+// Each panel registers a close function; opening a new panel closes all others.
+const _openPanels = new Set();
+
+export function _registerOpenPanel(closeFn) {
+    _closeAllPanels();
+    _openPanels.add(closeFn);
+}
+
+export function _unregisterOpenPanel(closeFn) {
+    _openPanels.delete(closeFn);
+}
+
+function _closeAllPanels() {
+    for (const fn of _openPanels) fn();
+}
+
 // ---------- Zoom scaling for native <select> in DOM widgets ----------
 
 
