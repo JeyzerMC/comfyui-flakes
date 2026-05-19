@@ -68,12 +68,14 @@ export function setupFlakeGenerateWidget(node) {
     noImageLabel.textContent = "No image generated yet";
     imageContainer.appendChild(noImageLabel);
 
-    // Read-only output path field (path relative to ComfyUI's outputs/ folder)
-    const pathField = document.createElement("input");
-    pathField.type = "text";
-    pathField.readOnly = true;
-    css(pathField, "width:100%;box-sizing:border-box;background:transparent;color:#aaa;border:none;padding:0 4px;font-size:12px;font-family:inherit;text-align:center;text-overflow:ellipsis;display:none;outline:none;cursor:text;");
-    imageContainer.appendChild(pathField);
+    // Read-only filename label (filename only, full path in tooltip) + dimensions
+    const filenameLabel = document.createElement("div");
+    css(filenameLabel, "width:100%;box-sizing:border-box;color:#ccc;padding:0 4px;font-size:12px;font-family:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:none;cursor:default;");
+    imageContainer.appendChild(filenameLabel);
+
+    const dimensionsLabel = document.createElement("div");
+    css(dimensionsLabel, "width:100%;box-sizing:border-box;color:#888;padding:0 4px;font-size:11px;font-family:inherit;text-align:center;display:none;");
+    imageContainer.appendChild(dimensionsLabel);
 
     function outputRelPath(img) {
         if (!img || (img.type && img.type !== "output")) return "";
@@ -87,18 +89,30 @@ export function setupFlakeGenerateWidget(node) {
         noImageLabel.style.display = "none";
         const rel = outputRelPath(img);
         if (rel) {
-            pathField.value = rel;
-            pathField.title = rel;
-            pathField.style.display = "block";
+            const fileName = img.filename;
+            filenameLabel.textContent = fileName;
+            filenameLabel.title = rel;
+            filenameLabel.style.display = "block";
         } else {
-            pathField.style.display = "none";
+            filenameLabel.style.display = "none";
+        }
+        imageEl.onload = () => {
+            if (imageEl.naturalWidth && imageEl.naturalHeight) {
+                dimensionsLabel.textContent = `${imageEl.naturalWidth} × ${imageEl.naturalHeight}`;
+                dimensionsLabel.style.display = "block";
+            }
+        };
+        if (imageEl.complete && imageEl.naturalWidth) {
+            dimensionsLabel.textContent = `${imageEl.naturalWidth} × ${imageEl.naturalHeight}`;
+            dimensionsLabel.style.display = "block";
         }
     }
 
     function clearImage() {
         imageEl.style.display = "none";
         noImageLabel.style.display = "block";
-        pathField.style.display = "none";
+        filenameLabel.style.display = "none";
+        dimensionsLabel.style.display = "none";
     }
 
     container.appendChild(imageContainer);
