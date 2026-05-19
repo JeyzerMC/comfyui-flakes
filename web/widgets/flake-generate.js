@@ -72,7 +72,7 @@ export function setupFlakeGenerateWidget(node) {
     const pathField = document.createElement("input");
     pathField.type = "text";
     pathField.readOnly = true;
-    css(pathField, "width:100%;box-sizing:border-box;background:#1a1a1a;color:#aaa;border:1px solid #333;border-radius:4px;padding:4px 6px;font-size:10px;font-family:monospace;display:none;outline:none;cursor:text;");
+    css(pathField, "width:100%;box-sizing:border-box;background:transparent;color:#aaa;border:none;padding:0 4px;font-size:12px;font-family:inherit;text-align:center;text-overflow:ellipsis;display:none;outline:none;cursor:text;");
     imageContainer.appendChild(pathField);
 
     function outputRelPath(img) {
