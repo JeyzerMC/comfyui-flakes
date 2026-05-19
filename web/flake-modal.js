@@ -853,12 +853,33 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             }
 
                             imgBox.addEventListener("click", async () => {
-                                const result = await openFileBrowser({ type: "inputs", defaultPath: "" });
-                                if (result && result.file) {
-                                    arr[i].image = result.file;
-                                    updateCnImgPreview(`/view?filename=${encodeURIComponent(result.file)}&type=input`);
-                                    if (!coverFile && !coverSourcePath && setCoverFromCnImage) setCoverFromCnImage(result.file);
-                                }
+                                const fileInput = document.createElement("input");
+                                fileInput.type = "file";
+                                fileInput.accept = ".png,.jpg,.jpeg,.webp,.gif,.bmp";
+                                fileInput.style.display = "none";
+                                document.body.appendChild(fileInput);
+                                fileInput.click();
+                                await new Promise((resolve) => {
+                                    fileInput.addEventListener("change", async () => {
+                                        const file = fileInput.files?.[0];
+                                        if (file) {
+                                            try {
+                                                const form = new FormData();
+                                                form.append("image", file);
+                                                form.append("type", "input");
+                                                form.append("overwrite", "true");
+                                                const resp = await fetch("/upload/image", { method: "POST", body: form });
+                                                const result = await resp.json();
+                                                const fileName = result.name || file.name;
+                                                arr[i].image = fileName;
+                                                updateCnImgPreview(`/view?filename=${encodeURIComponent(fileName)}&type=input`);
+                                                if (!coverFile && !coverSourcePath && setCoverFromCnImage) setCoverFromCnImage(fileName);
+                                            } catch { /* ignore */ }
+                                        }
+                                        document.body.removeChild(fileInput);
+                                        resolve();
+                                    });
+                                });
                             });
 
                             imgFileInput.addEventListener("change", () => {
@@ -1054,9 +1075,13 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     const cur = fieldState.variants[groupName][choiceName] || {};
                                     if (cur.image) {
                                         imgPathLabel.textContent = cur.image;
-                                        imgPreview.src = (mode !== "create" && name)
-                                            ? getVariantImageUrl(name, groupName, choiceName)
-                                            : `/view?filename=${encodeURIComponent(cur.image)}&type=input`;
+                                        if (cur._uploaded) {
+                                            imgPreview.src = `/view?filename=${encodeURIComponent(cur.image)}&type=input`;
+                                        } else if (mode !== "create" && name) {
+                                            imgPreview.src = getVariantImageUrl(name, groupName, choiceName);
+                                        } else {
+                                            imgPreview.src = `/view?filename=${encodeURIComponent(cur.image)}&type=input`;
+                                        }
                                         imgPreview.style.display = "block";
                                         imgBoxLabel.style.display = "none";
                                         clearImgBtn.style.display = "";
@@ -1068,11 +1093,33 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     }
                                 }
                                 imgBox.addEventListener("click", async () => {
-                                    const result = await openFileBrowser({ type: "inputs" });
-                                    if (!result || !result.file) return;
-                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
-                                    fieldState.variants[groupName][choiceName].image = result.file;
-                                    refreshChoiceImage();
+                                    const fileInput = document.createElement("input");
+                                    fileInput.type = "file";
+                                    fileInput.accept = ".png,.jpg,.jpeg,.webp,.gif,.bmp";
+                                    fileInput.style.display = "none";
+                                    document.body.appendChild(fileInput);
+                                    fileInput.click();
+                                    await new Promise((resolve) => {
+                                        fileInput.addEventListener("change", async () => {
+                                            const file = fileInput.files?.[0];
+                                            if (!file) { document.body.removeChild(fileInput); resolve(); return; }
+                                            try {
+                                                const form = new FormData();
+                                                form.append("image", file);
+                                                form.append("type", "input");
+                                                form.append("overwrite", "true");
+                                                const resp = await fetch("/upload/image", { method: "POST", body: form });
+                                                const result = await resp.json();
+                                                const fileName = result.name || file.name;
+                                                fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                                fieldState.variants[groupName][choiceName].image = fileName;
+                                                fieldState.variants[groupName][choiceName]._uploaded = true;
+                                                refreshChoiceImage();
+                                            } catch { /* ignore */ }
+                                            document.body.removeChild(fileInput);
+                                            resolve();
+                                        });
+                                    });
                                 });
                                 clearImgBtn.addEventListener("click", () => {
                                     const cur = fieldState.variants[groupName][choiceName];
