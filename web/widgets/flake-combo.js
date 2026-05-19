@@ -129,10 +129,30 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
         const hasOptionGroups = hasOptions && Object.keys(hasOptions).length > 0;
 
         if (triangleBtn) {
-            triangleBtn.style.display = (hasLoras || hasOptionGroups) ? "block" : "none";
+            triangleBtn.style.display = "block";
         }
 
+        // 1. Output Stem (top) — per-instance runtime override
+        const outputStem = (entry._output_stem_override ?? flakeData?.output_stem ?? "") || "";
+        const opLabel = document.createElement("div");
+        opLabel.textContent = "Output Stem";
+        css(opLabel, "font-size:9px;opacity:0.7;text-align:center;");
+        panel.appendChild(opLabel);
+        const opInput = document.createElement("input");
+        opInput.type = "text";
+        opInput.value = outputStem;
+        opInput.placeholder = "e.g. musashi/";
+        css(opInput, "width:100%;box-sizing:border-box;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:2px 4px;border-radius:3px;font-size:10px;outline:none;");
+        opInput.addEventListener("input", () => {
+            entry._output_stem_override = opInput.value || null;
+            onChanged();
+        });
+        panel.appendChild(opInput);
+
         if (hasLoras) {
+            const sep = document.createElement("div");
+            css(sep, "border-top:1px solid #333;margin:2px 0;");
+            panel.appendChild(sep);
             for (let i = 0; i < lorasMeta.length; i++) {
                 const sliderRow = document.createElement("div");
                 css(sliderRow, "padding:2px 0;");
@@ -150,14 +170,10 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             }
         }
 
-        if (!hasOptionGroups) {
-            if (!hasLoras) {
-                const empty = document.createElement("div");
-                css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
-                empty.textContent = "no variants";
-                panel.appendChild(empty);
-            }
-        } else {
+        if (hasOptionGroups) {
+            const sep = document.createElement("div");
+            css(sep, "border-top:1px solid #333;margin:2px 0;");
+            panel.appendChild(sep);
             for (const group of Object.keys(hasOptions)) {
                 const row = document.createElement("div");
                 css(row, "display:flex;flex-direction:column;gap:2px;");
