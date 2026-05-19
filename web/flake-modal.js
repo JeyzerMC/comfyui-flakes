@@ -1035,11 +1035,19 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 // --- Variant choice image (optional) ---
                                 const imgRow = document.createElement("div");
                                 css(imgRow, "display:flex;gap:6px;align-items:center;");
+
+                                const imgBox = document.createElement("div");
+                                css(imgBox, "width:80px;height:80px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex:0 0 auto;");
                                 const imgPreview = document.createElement("img");
-                                css(imgPreview, "width:32px;height:32px;object-fit:cover;border-radius:3px;border:1px solid #333;display:none;flex-shrink:0;");
+                                css(imgPreview, "width:100%;height:100%;object-fit:cover;display:none;");
+                                imgBox.appendChild(imgPreview);
+                                const imgBoxLabel = document.createElement("span");
+                                imgBoxLabel.textContent = "image";
+                                css(imgBoxLabel, "font-size:10px;color:#666;pointer-events:none;");
+                                imgBox.appendChild(imgBoxLabel);
+
                                 const imgPathLabel = document.createElement("span");
                                 css(imgPathLabel, "flex:1;font-size:11px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
-                                const pickImgBtn = makeSmallButton("Image");
                                 const clearImgBtn = makeSmallButton("✕");
 
                                 function refreshChoiceImage() {
@@ -1050,14 +1058,16 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                             ? getVariantImageUrl(name, groupName, choiceName)
                                             : `/view?filename=${encodeURIComponent(cur.image)}&type=input`;
                                         imgPreview.style.display = "block";
+                                        imgBoxLabel.style.display = "none";
                                         clearImgBtn.style.display = "";
                                     } else {
                                         imgPathLabel.textContent = "No variant image";
                                         imgPreview.style.display = "none";
+                                        imgBoxLabel.style.display = "block";
                                         clearImgBtn.style.display = "none";
                                     }
                                 }
-                                pickImgBtn.addEventListener("click", async () => {
+                                imgBox.addEventListener("click", async () => {
                                     const result = await openFileBrowser({ type: "inputs" });
                                     if (!result || !result.file) return;
                                     fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
@@ -1069,9 +1079,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     if (cur) delete cur.image;
                                     refreshChoiceImage();
                                 });
-                                imgRow.appendChild(imgPreview);
+                                imgRow.appendChild(imgBox);
                                 imgRow.appendChild(imgPathLabel);
-                                imgRow.appendChild(pickImgBtn);
                                 imgRow.appendChild(clearImgBtn);
                                 choiceCard.appendChild(imgRow);
                                 refreshChoiceImage();
