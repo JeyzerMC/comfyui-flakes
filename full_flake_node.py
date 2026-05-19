@@ -18,6 +18,8 @@ def _build_filename_prefix(preset_name: str, stems: list[str]) -> str:
     folder_parts = []
     file_parts = []
     for stem in stems:
+        if not stem:
+            continue
         if "/" in stem:
             folder_parts.append(stem)
         else:
