@@ -28,8 +28,8 @@ def _build_filename_prefix(preset_name: str, stems: list[str]) -> str:
     if folder_parts:
         path += "".join(folder_parts)
     now = datetime.now()
-    path += now.strftime("%Y-%m-%d") + "/"
-    filename = now.strftime("%H-%M-%S")
+    path += now.strftime("%y%m%d") + "/"
+    filename = now.strftime("%H%M%S")
     if file_parts:
         filename += "_" + "_".join(file_parts)
     return path + filename
@@ -122,8 +122,8 @@ def _load_preset_bundle(preset_name: str):
 
     model_bundle = (model, clip, vae)
     filename_state = {
-        "preset": preset_data.filename_prefix or preset_name,
-        "stems": [],
+        "preset": preset_name,
+        "stems": [preset_data.filename_prefix] if preset_data.filename_prefix else [],
         "checkpoint": preset_data.checkpoint,
         "vae": preset_data.vae or "baked-in",
         "text_encoder": preset_data.text_encoder or "baked-in",

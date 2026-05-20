@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 try:
     from comfy.samplers import KSampler as _KSampler
@@ -8,6 +9,7 @@ try:
 except Exception:
     _SAMPLER_TYPES = ("STRING", "STRING")
 
+import folder_paths
 from nodes import KSampler, VAEDecode, SaveImage
 
 from .full_flake_node import _build_filename_prefix
@@ -397,6 +399,23 @@ class FlakeGenerate:
 
         saver = SaveImage()
         save_result = saver.save_images(images, filename_prefix=filename_prefix)
+
+        # Remove the trailing underscore before the file extension that ComfyUI's
+        # SaveImage hardcodes (e.g. "..._00001_.png" -> "..._00001.png").
+        output_dir = folder_paths.get_output_directory()
+        if "ui" in save_result and "images" in save_result["ui"]:
+            for img_info in save_result["ui"]["images"]:
+                old_name = img_info["filename"]
+                if old_name.endswith("_.png"):
+                    new_name = old_name[:-5] + ".png"
+                    old_path = os.path.join(output_dir, img_info.get("subfolder", ""), old_name)
+                    new_path = os.path.join(output_dir, img_info.get("subfolder", ""), new_name)
+                    try:
+                        if os.path.exists(old_path):
+                            os.rename(old_path, new_path)
+                            img_info["filename"] = new_name
+                    except OSError:
+                        pass
 
         model_bundle, generation_data, sampling_preset = flake_data
         meta = {}
