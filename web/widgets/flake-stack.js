@@ -311,6 +311,64 @@ export function setupFlakeWidget(node) {
         return familyWidget?.value || "SDXL/Base";
     }
 
+    // Hide model_family widget when flake_data input is connected, and infer
+    // the family value from the upstream node.
+    let _familyWidgetVisible = true;
+    function _getFamilyWidgetEl() {
+        if (!familyWidget) return null;
+        if (familyWidget.element) return familyWidget.element;
+        if (familyWidget.inputEl) return familyWidget.inputEl;
+        const nodeEl = node.htmlEl || node.element;
+        if (!nodeEl) return null;
+        const allEls = nodeEl.querySelectorAll("label, span, div");
+        for (const el of allEls) {
+            const text = el.textContent || "";
+            if (text.includes("model_family") || text.includes("Model Family") || text.includes("model family")) {
+                const container = el.closest(".comfy-widget, .litegraph-widget, [class*='widget']");
+                return container || el;
+            }
+        }
+        return null;
+    }
+    function _updateFamilyVisibility() {
+        if (!familyWidget) return;
+        const flakeDataInput = node.inputs.find(i => i.name === "flake_data");
+        const isConnected = flakeDataInput && flakeDataInput.link != null;
+        if (isConnected) {
+            const link = node.graph.links[flakeDataInput.link];
+            if (link) {
+                const upstreamNode = node.graph.getNodeById(link.origin_id);
+                if (upstreamNode) {
+                    const upstreamFamily = upstreamNode.widgets?.find(w => w.name === "model_family");
+                    if (upstreamFamily && upstreamFamily.value !== familyWidget.value) {
+                        familyWidget.value = upstreamFamily.value;
+                        if (familyWidget.callback) familyWidget.callback(upstreamFamily.value);
+                    }
+                }
+            }
+        }
+        if (isConnected === _familyWidgetVisible) return;
+        _familyWidgetVisible = isConnected;
+        const el = _getFamilyWidgetEl();
+        if (el) {
+            el.style.display = isConnected ? "none" : "";
+            const parent = el.closest(".comfy-widget, .litegraph-widget, [class*='widget']");
+            if (parent && parent !== el) parent.style.display = isConnected ? "none" : "";
+        }
+        if (isConnected) {
+            familyWidget.computeSize = () => [0, -4];
+            familyWidget.type = "hidden";
+            familyWidget.hidden = true;
+        } else {
+            familyWidget.computeSize = undefined;
+            familyWidget.type = "combo";
+            familyWidget.hidden = false;
+        }
+        node.setSize(node.computeSize());
+        node.setDirtyCanvas(true, true);
+    }
+    const _familyPoll = setInterval(_updateFamilyVisibility, 200);
+
     function readEntries() {
         try {
             const arr = JSON.parse(flakesHidden.value || "[]");
@@ -594,4 +652,10 @@ export function setupFlakeWidget(node) {
     };
     writeEntries(readEntries());
     render();
+
+    const origOnRemoved = node.onRemoved;
+    node.onRemoved = function () {
+        clearInterval(_familyPoll);
+        return origOnRemoved?.apply(this, arguments);
+    };
 }
