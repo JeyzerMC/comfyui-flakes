@@ -793,10 +793,18 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     const row = document.createElement("div");
                     css(row, "display:flex;gap:8px;align-items:center;");
                     const wInput = makeComfyNumberInput(fieldState.resolution?.[0] || "", "width", 64);
+                    wInput.addEventListener("change", () => {
+                        if (!fieldState.resolution) fieldState.resolution = [1024, 1024];
+                        fieldState.resolution[0] = parseInt(wInput.value) || 1024;
+                    });
                     const xLabel = document.createElement("span");
                     xLabel.textContent = "\u00d7";
                     css(xLabel, "color:#888;font-size:13px;");
                     const hInput = makeComfyNumberInput(fieldState.resolution?.[1] || "", "height", 64);
+                    hInput.addEventListener("change", () => {
+                        if (!fieldState.resolution) fieldState.resolution = [1024, 1024];
+                        fieldState.resolution[1] = parseInt(hInput.value) || 1024;
+                    });
                     row.appendChild(wInput);
                     row.appendChild(xLabel);
                     row.appendChild(hInput);
