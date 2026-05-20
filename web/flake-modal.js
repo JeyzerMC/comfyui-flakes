@@ -719,22 +719,24 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
                 if (fieldType === "prompt") {
                     const promptBox = document.createElement("div");
-                    css(promptBox, "display:flex;flex-direction:column;gap:6px;");
+                    css(promptBox, "display:flex;gap:8px;align-items:stretch;");
                     fieldWrap.appendChild(promptBox);
 
-                    const btnRow = document.createElement("div");
-                    css(btnRow, "display:flex;gap:8px;align-items:center;");
-                    const posBtn = makeSmallButton("+ positive");
-                    const negBtn = makeSmallButton("+ negative");
-                    btnRow.appendChild(posBtn);
-                    btnRow.appendChild(negBtn);
-                    fieldWrap.insertBefore(btnRow, promptBox);
+                    const posCol = document.createElement("div");
+                    css(posCol, "flex:0 0 70%;display:flex;flex-direction:column;gap:4px;min-width:0;");
+                    promptBox.appendChild(posCol);
+
+                    const negCol = document.createElement("div");
+                    css(negCol, "flex:0 0 30%;display:flex;flex-direction:column;gap:4px;min-width:0;");
+                    promptBox.appendChild(negCol);
 
                     function renderPrompts() {
-                        promptBox.replaceChildren();
+                        posCol.replaceChildren();
+                        negCol.replaceChildren();
+
                         if (fieldState.prompt?.positive != null) {
                             const posRow = document.createElement("div");
-                            css(posRow, "display:flex;gap:4px;align-items:flex-start;");
+                            css(posRow, "display:flex;gap:4px;align-items:flex-start;flex:1;");
                             const posTA = makeTextarea(fieldState.prompt.positive, "positive prompt", 3);
                             css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                             posTA.addEventListener("change", () => { fieldState.prompt.positive = posTA.value; });
@@ -751,11 +753,24 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             });
                             posRow.appendChild(posTA);
                             posRow.appendChild(rmPos);
-                            promptBox.appendChild(posRow);
+                            posCol.appendChild(posRow);
+                        } else {
+                            const posBtn = document.createElement("button");
+                            posBtn.textContent = "+ Positive";
+                            css(posBtn, "flex:1;min-height:60px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;gap:3px;user-select:none;box-sizing:border-box;white-space:nowrap;padding:0 6px;");
+                            posBtn.addEventListener("mouseenter", () => { posBtn.style.background = "#333"; });
+                            posBtn.addEventListener("mouseleave", () => { posBtn.style.background = "#2a2a2a"; });
+                            posBtn.addEventListener("click", () => {
+                                if (!fieldState.prompt) fieldState.prompt = {};
+                                fieldState.prompt.positive = fieldState.prompt.positive ?? "";
+                                renderPrompts();
+                            });
+                            posCol.appendChild(posBtn);
                         }
+
                         if (fieldState.prompt?.negative != null) {
                             const negRow = document.createElement("div");
-                            css(negRow, "display:flex;gap:4px;align-items:flex-start;");
+                            css(negRow, "display:flex;gap:4px;align-items:flex-start;flex:1;");
                             const negTA = makeTextarea(fieldState.prompt.negative, "negative prompt", 2);
                             css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                             negTA.addEventListener("change", () => { fieldState.prompt.negative = negTA.value; });
@@ -772,21 +787,22 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             });
                             negRow.appendChild(negTA);
                             negRow.appendChild(rmNeg);
-                            promptBox.appendChild(negRow);
+                            negCol.appendChild(negRow);
+                        } else {
+                            const negBtn = document.createElement("button");
+                            negBtn.textContent = "+ Negative";
+                            css(negBtn, "flex:1;min-height:60px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;gap:3px;user-select:none;box-sizing:border-box;white-space:nowrap;padding:0 6px;");
+                            negBtn.addEventListener("mouseenter", () => { negBtn.style.background = "#333"; });
+                            negBtn.addEventListener("mouseleave", () => { negBtn.style.background = "#2a2a2a"; });
+                            negBtn.addEventListener("click", () => {
+                                if (!fieldState.prompt) fieldState.prompt = {};
+                                fieldState.prompt.negative = fieldState.prompt.negative ?? "";
+                                renderPrompts();
+                            });
+                            negCol.appendChild(negBtn);
                         }
                     }
                     renderPrompts();
-
-                    posBtn.addEventListener("click", () => {
-                        if (!fieldState.prompt) fieldState.prompt = {};
-                        fieldState.prompt.positive = fieldState.prompt.positive ?? "";
-                        renderPrompts();
-                    });
-                    negBtn.addEventListener("click", () => {
-                        if (!fieldState.prompt) fieldState.prompt = {};
-                        fieldState.prompt.negative = fieldState.prompt.negative ?? "";
-                        renderPrompts();
-                    });
                 }
 
                 if (fieldType === "resolution") {
@@ -1140,23 +1156,25 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 choiceCard.appendChild(imgRow);
                                 refreshChoiceImage();
 
-                                const choiceBtnRow = document.createElement("div");
-                                css(choiceBtnRow, "display:flex;gap:8px;align-items:center;");
-                                const choicePosBtn = makeSmallButton("+ positive");
-                                const choiceNegBtn = makeSmallButton("+ negative");
-                                choiceBtnRow.appendChild(choicePosBtn);
-                                choiceBtnRow.appendChild(choiceNegBtn);
-                                choiceCard.appendChild(choiceBtnRow);
-
                                 const promptsWrap = document.createElement("div");
-                                css(promptsWrap, "display:flex;flex-direction:column;gap:4px;");
+                                css(promptsWrap, "display:flex;gap:8px;align-items:stretch;");
                                 choiceCard.appendChild(promptsWrap);
 
+                                const choicePosCol = document.createElement("div");
+                                css(choicePosCol, "flex:0 0 70%;display:flex;flex-direction:column;gap:4px;min-width:0;");
+                                promptsWrap.appendChild(choicePosCol);
+
+                                const choiceNegCol = document.createElement("div");
+                                css(choiceNegCol, "flex:0 0 30%;display:flex;flex-direction:column;gap:4px;min-width:0;");
+                                promptsWrap.appendChild(choiceNegCol);
+
                                 function renderChoicePrompts() {
-                                    promptsWrap.replaceChildren();
+                                    choicePosCol.replaceChildren();
+                                    choiceNegCol.replaceChildren();
+
                                     if (choice.positive != null) {
                                         const posRow = document.createElement("div");
-                                        css(posRow, "display:flex;gap:4px;align-items:flex-start;");
+                                        css(posRow, "display:flex;gap:4px;align-items:flex-start;flex:1;");
                                         const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
                                         css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                                         cPos.addEventListener("change", () => {
@@ -1170,11 +1188,24 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         });
                                         posRow.appendChild(cPos);
                                         posRow.appendChild(rmPos);
-                                        promptsWrap.appendChild(posRow);
+                                        choicePosCol.appendChild(posRow);
+                                    } else {
+                                        const posBtn = document.createElement("button");
+                                        posBtn.textContent = "+ Positive";
+                                        css(posBtn, "flex:1;min-height:50px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;gap:3px;user-select:none;box-sizing:border-box;white-space:nowrap;padding:0 6px;");
+                                        posBtn.addEventListener("mouseenter", () => { posBtn.style.background = "#333"; });
+                                        posBtn.addEventListener("mouseleave", () => { posBtn.style.background = "#2a2a2a"; });
+                                        posBtn.addEventListener("click", () => {
+                                            fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                            fieldState.variants[groupName][choiceName].positive = fieldState.variants[groupName][choiceName].positive ?? "";
+                                            renderChoicePrompts();
+                                        });
+                                        choicePosCol.appendChild(posBtn);
                                     }
+
                                     if (choice.negative != null) {
                                         const negRow = document.createElement("div");
-                                        css(negRow, "display:flex;gap:4px;align-items:flex-start;");
+                                        css(negRow, "display:flex;gap:4px;align-items:flex-start;flex:1;");
                                         const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
                                         css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                                         cNeg.addEventListener("change", () => {
@@ -1188,21 +1219,22 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         });
                                         negRow.appendChild(cNeg);
                                         negRow.appendChild(rmNeg);
-                                        promptsWrap.appendChild(negRow);
+                                        choiceNegCol.appendChild(negRow);
+                                    } else {
+                                        const negBtn = document.createElement("button");
+                                        negBtn.textContent = "+ Negative";
+                                        css(negBtn, "flex:1;min-height:50px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;gap:3px;user-select:none;box-sizing:border-box;white-space:nowrap;padding:0 6px;");
+                                        negBtn.addEventListener("mouseenter", () => { negBtn.style.background = "#333"; });
+                                        negBtn.addEventListener("mouseleave", () => { negBtn.style.background = "#2a2a2a"; });
+                                        negBtn.addEventListener("click", () => {
+                                            fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                            fieldState.variants[groupName][choiceName].negative = fieldState.variants[groupName][choiceName].negative ?? "";
+                                            renderChoicePrompts();
+                                        });
+                                        choiceNegCol.appendChild(negBtn);
                                     }
                                 }
                                 renderChoicePrompts();
-
-                                choicePosBtn.addEventListener("click", () => {
-                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
-                                    fieldState.variants[groupName][choiceName].positive = fieldState.variants[groupName][choiceName].positive ?? "";
-                                    renderChoicePrompts();
-                                });
-                                choiceNegBtn.addEventListener("click", () => {
-                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
-                                    fieldState.variants[groupName][choiceName].negative = fieldState.variants[groupName][choiceName].negative ?? "";
-                                    renderChoicePrompts();
-                                });
 
                                 groupCard.appendChild(choiceCard);
                             }
