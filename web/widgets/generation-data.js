@@ -242,7 +242,9 @@ export function combinationKeyFor(model, selIdx) {
 // ── Overlay UI ─────────────────────────────────────────────────────────────
 export function openGenerationDataOverlay(model, lastImagesByCombo) {
     const { content, footer, close } = openOverlay();
-    css(content.parentElement, content.parentElement.style.cssText + "width:95vw;max-width:1400px;min-width:760px;");
+    // Let the panel size to its content (capped at viewport) instead of forcing
+    // a fixed 95vw — the background panel should match the content panel size.
+    css(content.parentElement, content.parentElement.style.cssText + "width:auto;max-width:min(1400px,95vw);min-width:0;");
 
     const header = document.createElement("div");
     css(header, "display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #333;");
