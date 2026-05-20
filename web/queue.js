@@ -47,6 +47,89 @@ export function cartesianProduct(arrays) {
 }
 
 const _originalQueuePrompt = app.queuePrompt;
+
+let _batchCleanup = null;
+
+function getPromptIdFromEvent(e) {
+    const detail = e.detail;
+    return typeof detail === "string" ? detail : detail?.prompt_id;
+}
+
+function clearAllHighlights() {
+    for (const n of app.graph.nodes) {
+        if (n.type === "FlakeCombo") {
+            delete n._combo_generating_index;
+            n._combo_render?.();
+        }
+        if (n.type === "FlakeModelCombo") {
+            delete n._model_combo_generating_index;
+            n._model_combo_render?.();
+        }
+    }
+}
+
+function setupBatchTracking(combinations) {
+    const comfyApi = window.comfyAPI?.api?.api;
+    if (!comfyApi || combinations.length === 0) return null;
+
+    const promptIds = []; // insertion order = combo index
+    let completedCount = 0;
+
+    function setComboHighlight(comboIndex) {
+        const combination = combinations[comboIndex];
+        if (!combination) return;
+        for (const item of combination) {
+            if (item.type === "combo") {
+                item.node._combo_generating_index = item.index;
+                item.node._combo_render?.();
+            } else {
+                item.node._model_combo_generating_index = item.index;
+                item.node._model_combo_render?.();
+            }
+        }
+    }
+
+    function maybeFinish() {
+        if (completedCount >= combinations.length) {
+            if (_batchCleanup) {
+                _batchCleanup();
+                _batchCleanup = null;
+            }
+        }
+    }
+
+    const onExecStart = (e) => {
+        const pid = getPromptIdFromEvent(e);
+        if (!pid) return;
+        const idx = promptIds.indexOf(pid);
+        if (idx >= 0) setComboHighlight(idx);
+    };
+
+    const onExecDone = (e) => {
+        const pid = getPromptIdFromEvent(e);
+        if (!pid) return;
+        const idx = promptIds.indexOf(pid);
+        if (idx < 0) return;
+        completedCount++;
+        maybeFinish();
+    };
+
+    comfyApi.addEventListener("execution_start", onExecStart);
+    comfyApi.addEventListener("execution_success", onExecDone);
+    comfyApi.addEventListener("execution_error", onExecDone);
+    comfyApi.addEventListener("execution_interrupted", onExecDone);
+
+    const cleanup = () => {
+        comfyApi.removeEventListener("execution_start", onExecStart);
+        comfyApi.removeEventListener("execution_success", onExecDone);
+        comfyApi.removeEventListener("execution_error", onExecDone);
+        comfyApi.removeEventListener("execution_interrupted", onExecDone);
+        clearAllHighlights();
+    };
+
+    return { promptIds, cleanup };
+}
+
 app.queuePrompt = async function(number, batchCount = 1) {
     const comboNodes = app.graph.nodes.filter(n => n.type === "FlakeCombo");
     const modelComboNodes = app.graph.nodes.filter(n => n.type === "FlakeModelCombo");
@@ -63,8 +146,6 @@ app.queuePrompt = async function(number, batchCount = 1) {
             window.alert("FlakeCombo node has no flakes selected.");
             return;
         }
-        // Bypassed (crossed-out) flakes are excluded from the combinatorial
-        // job set — only active flakes contribute to the queue.
         const activeFlakes = flakes
             .map((flake, i) => ({ flake, i }))
             .filter(({ flake }) => !flake.bypassed);
@@ -115,46 +196,48 @@ app.queuePrompt = async function(number, batchCount = 1) {
 
     const flakeGenerateNodes = app.graph.nodes.filter(n => n.type === "FlakeGenerate");
 
+    // Clean up any previous batch tracking
+    if (_batchCleanup) {
+        _batchCleanup();
+        _batchCleanup = null;
+    }
+
+    const tracker = setupBatchTracking(combinations);
+    if (tracker) {
+        _batchCleanup = tracker.cleanup;
+    }
+
     try {
-        for (const combination of combinations) {
+        for (let comboIdx = 0; comboIdx < combinations.length; comboIdx++) {
+            const combination = combinations[comboIdx];
             for (const item of combination) {
                 if (item.type === "combo") {
                     const w = item.node.widgets?.find(w => w.name === "flakes_json");
                     if (w) w.value = JSON.stringify([item.value]);
-                    // Highlight the flake being generated on its combo node
-                    item.node._combo_generating_index = item.index;
-                    item.node._combo_render?.();
                 } else {
                     const w = item.node.widgets?.find(w => w.name === "preset");
                     if (w) w.value = item.value;
-                    item.node._model_combo_generating_index = item.index;
-                    item.node._model_combo_render?.();
                 }
             }
-            // Stamp the active combination key (order-independent: combo node
-            // id : selected index, sorted by node id) so FlakeGenerate can map
-            // the resulting image to this combination in its data overlay.
             const comboKey = combination
                 .map(it => [it.node.id, it.index])
                 .sort((a, b) => a[0] - b[0])
                 .map(([id, idx]) => `${id}:${idx}`)
                 .join("|");
             for (const fg of flakeGenerateNodes) fg._pending_combination_key = comboKey;
-            await _originalQueuePrompt.call(this, number, 1);
+
+            const result = await _originalQueuePrompt.call(this, number, 1);
+            if (tracker && result?.prompt_id) {
+                tracker.promptIds.push(result.prompt_id);
+            }
         }
     } finally {
         for (const orig of nodeOriginals.values()) {
             if (orig.widget) orig.widget.value = orig.value;
         }
-        for (const n of app.graph.nodes) {
-            if (n.type === "FlakeCombo") {
-                delete n._combo_generating_index;
-                n._combo_render?.();
-            }
-            if (n.type === "FlakeModelCombo") {
-                delete n._model_combo_generating_index;
-                n._model_combo_render?.();
-            }
+        // If no tracker is available, clear highlights immediately as fallback
+        if (!tracker) {
+            clearAllHighlights();
         }
     }
 };
