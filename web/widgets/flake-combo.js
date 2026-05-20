@@ -288,62 +288,48 @@ export function setupFlakeComboWidget(node) {
     }
 
     // Hide model_family widget when flake_data input is connected, and infer
-    // the family value from the upstream node.
-    let _familyWidgetVisible = true;
-    function _getFamilyWidgetEl() {
-        if (!familyWidget) return null;
-        if (familyWidget.element) return familyWidget.element;
-        if (familyWidget.inputEl) return familyWidget.inputEl;
-        const nodeEl = node.htmlEl || node.element;
-        if (!nodeEl) return null;
-        const allEls = nodeEl.querySelectorAll("label, span, div");
-        for (const el of allEls) {
-            const text = el.textContent || "";
-            if (text.includes("model_family") || text.includes("Model Family") || text.includes("model family")) {
-                const container = el.closest(".comfy-widget, .litegraph-widget, [class*='widget']");
-                return container || el;
-            }
-        }
-        return null;
+    // the family value from the upstream node. We detach the widget entirely
+    // from node.widgets so it cannot be rendered by either LiteGraph or the
+    // modern ComfyUI frontend (setting type/hidden alone is not enough on
+    // recent frontend versions).
+    let _familyHidden = false;
+    function _inferUpstreamFamily() {
+        const flakeDataInput = node.inputs?.find(i => i.name === "flake_data");
+        if (!flakeDataInput || flakeDataInput.link == null) return null;
+        const link = node.graph?.links?.[flakeDataInput.link];
+        if (!link) return null;
+        const upstreamNode = node.graph.getNodeById(link.origin_id);
+        if (!upstreamNode) return null;
+        const upstreamFamily = upstreamNode.widgets?.find(w => w.name === "model_family");
+        return upstreamFamily?.value || null;
     }
     function _updateFamilyVisibility() {
         if (!familyWidget) return;
-        const flakeDataInput = node.inputs.find(i => i.name === "flake_data");
-        const isConnected = flakeDataInput && flakeDataInput.link != null;
-        if (isConnected) {
-            const link = node.graph.links[flakeDataInput.link];
-            if (link) {
-                const upstreamNode = node.graph.getNodeById(link.origin_id);
-                if (upstreamNode) {
-                    const upstreamFamily = upstreamNode.widgets?.find(w => w.name === "model_family");
-                    if (upstreamFamily && upstreamFamily.value !== familyWidget.value) {
-                        familyWidget.value = upstreamFamily.value;
-                        if (familyWidget.callback) familyWidget.callback(upstreamFamily.value);
-                    }
-                }
+        const upstream = _inferUpstreamFamily();
+        const shouldHide = upstream !== null;
+        if (shouldHide && upstream !== familyWidget.value) {
+            familyWidget.value = upstream;
+            if (familyWidget.callback) familyWidget.callback(upstream);
+        }
+        if (shouldHide === _familyHidden) return;
+        _familyHidden = shouldHide;
+        if (shouldHide) {
+            const idx = node.widgets?.indexOf(familyWidget) ?? -1;
+            if (idx >= 0) {
+                node._familyWidgetSavedIndex = idx;
+                node.widgets.splice(idx, 1);
             }
-        }
-        if (isConnected === _familyWidgetVisible) return;
-        _familyWidgetVisible = isConnected;
-        const el = _getFamilyWidgetEl();
-        if (el) {
-            el.style.display = isConnected ? "none" : "";
-            const parent = el.closest(".comfy-widget, .litegraph-widget, [class*='widget']");
-            if (parent && parent !== el) parent.style.display = isConnected ? "none" : "";
-        }
-        if (isConnected) {
-            familyWidget.computeSize = () => [0, -4];
-            familyWidget.type = "hidden";
-            familyWidget.hidden = true;
         } else {
-            familyWidget.computeSize = undefined;
-            familyWidget.type = "combo";
-            familyWidget.hidden = false;
+            if (!node.widgets.includes(familyWidget)) {
+                const idx = Math.min(node._familyWidgetSavedIndex ?? 0, node.widgets.length);
+                node.widgets.splice(idx, 0, familyWidget);
+            }
         }
         node.setSize(node.computeSize());
         node.setDirtyCanvas(true, true);
     }
     const _familyPoll = setInterval(_updateFamilyVisibility, 200);
+    _updateFamilyVisibility();
 
     if (!node.properties) node.properties = {};
     if (!node.properties._combo_flakes) node.properties._combo_flakes = [];
