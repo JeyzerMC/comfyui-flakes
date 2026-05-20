@@ -1068,7 +1068,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 const cRow = document.createElement("div");
                                 css(cRow, "display:flex;gap:4px;align-items:center;");
                                 const cNameInput = makeComfyInput(choiceName, "choice name");
-                                cNameInput.style.flex = "1";
+                                cNameInput.style.flex = "1 1 50%";
+                                cNameInput.style.minWidth = "0";
                                 const upBtn = makeSmallButton("\u2191");
                                 const downBtn = makeSmallButton("\u2193");
                                 const removeChoiceBtn = makeSmallButton("\u2715");
@@ -1115,35 +1116,31 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     delete fieldState.variants[groupName][choiceName];
                                     renderOpts();
                                 });
+                                const choice = fieldState.variants[groupName][choiceName] || {};
+
+                                // Output stem lives on the same row as the choice name (per #212).
+                                const stemInput = makeComfyInput(choice.output_stem ?? "", "output stem");
+                                stemInput.style.flex = "1 1 50%";
+                                stemInput.style.minWidth = "0";
+                                stemInput.title = "Output stem (appended to the flake's output path for this variant choice)";
+                                stemInput.addEventListener("change", () => {
+                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                    fieldState.variants[groupName][choiceName].output_stem = stemInput.value || null;
+                                });
+
                                 cRow.appendChild(cNameInput);
+                                cRow.appendChild(stemInput);
                                 cRow.appendChild(upBtn);
                                 cRow.appendChild(downBtn);
                                 cRow.appendChild(removeChoiceBtn);
                                 choiceCard.appendChild(cRow);
 
-                                const choice = fieldState.variants[groupName][choiceName] || {};
-
-                                // Main body: left (stem + prompts) | right (image)
+                                // Main body: left (prompts) | right (image)
                                 const bodyRow = document.createElement("div");
                                 css(bodyRow, "display:flex;gap:10px;align-items:flex-start;");
 
                                 const leftCol = document.createElement("div");
                                 css(leftCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;");
-
-                                // Output stem
-                                const stemRow = document.createElement("div");
-                                css(stemRow, "display:flex;flex-direction:column;gap:2px;");
-                                const stemLabel = document.createElement("div");
-                                stemLabel.textContent = "Output Stem";
-                                css(stemLabel, "font-size:10px;color:#888;");
-                                stemRow.appendChild(stemLabel);
-                                const stemInput = makeComfyInput(choice.output_stem ?? "", "e.g. classic/");
-                                stemInput.addEventListener("change", () => {
-                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
-                                    fieldState.variants[groupName][choiceName].output_stem = stemInput.value || null;
-                                });
-                                stemRow.appendChild(stemInput);
-                                leftCol.appendChild(stemRow);
 
                                 const promptsWrap = document.createElement("div");
                                 css(promptsWrap, "display:flex;gap:8px;align-items:stretch;");
@@ -1161,17 +1158,17 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 css(rightCol, "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;");
 
                                 const imgBox = document.createElement("div");
-                                css(imgBox, "width:80px;height:80px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
+                                css(imgBox, "width:140px;height:140px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
                                 const imgPreview = document.createElement("img");
                                 css(imgPreview, "width:100%;height:100%;object-fit:cover;display:none;");
                                 imgBox.appendChild(imgPreview);
                                 const imgBoxLabel = document.createElement("span");
                                 imgBoxLabel.textContent = "image";
-                                css(imgBoxLabel, "font-size:10px;color:#666;pointer-events:none;");
+                                css(imgBoxLabel, "font-size:11px;color:#666;pointer-events:none;");
                                 imgBox.appendChild(imgBoxLabel);
 
                                 const imgPathLabel = document.createElement("div");
-                                css(imgPathLabel, "font-size:9px;color:#888;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;");
+                                css(imgPathLabel, "font-size:9px;color:#888;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;");
                                 const clearImgBtn = makeSmallButton("✕");
 
                                 function refreshChoiceImage() {
