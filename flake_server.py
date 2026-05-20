@@ -504,12 +504,25 @@ async def _list_roots(request: web.Request) -> web.Response:
         roots = []
     if isinstance(roots, str):
         roots = [roots]
-    entries = []
+    base_path = folder_paths.base_path
+    base_root = None
+    extra_roots = []
     for i, root in enumerate(roots):
         if not root or not isinstance(root, str):
             continue
-        label = "Default" if i == 0 else f"Extra {i}"
-        entries.append({"index": i, "path": root, "label": label})
+        real_root = os.path.realpath(root)
+        real_base = os.path.realpath(base_path)
+        if real_root.startswith(real_base + os.sep) or real_root == real_base:
+            base_root = {"index": i, "path": root, "label": "Comfy Install"}
+        else:
+            extra_roots.append({"index": i, "path": root, "label": ""})
+
+    entries = []
+    if base_root:
+        entries.append(base_root)
+    for idx, extra in enumerate(extra_roots, start=1):
+        extra["label"] = f"Extra Path {idx}"
+        entries.append(extra)
     return web.json_response({"roots": entries})
 
 
