@@ -504,10 +504,20 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
         let refreshToken = 0;
         async function refreshRight() {
             const token = ++refreshToken;
-            const data = await combinationData(model, []);
+            // Even when no axis has multiple options, we may still have one or
+            // more axes with a single item each (e.g. one preset, one combo
+            // flake). combinationData needs an entry per axis, otherwise it
+            // dereferences `undefined` and the composite image stays empty.
+            const sel = model.axes.map(axis => axis.items[0]).filter(Boolean);
+            const data = await combinationData(model, sel);
             if (token !== refreshToken) return;
 
-            const generated = lastImagesByCombo && lastImagesByCombo[""];
+            // Match the key flake-generate.js writes when there's no combo
+            // (queue.js stamps an empty key in that case).
+            const key = model.axes.length === 0
+                ? ""
+                : combinationKeyFor(model, model.axes.map(() => 0));
+            const generated = lastImagesByCombo && (lastImagesByCombo[key] ?? lastImagesByCombo[""]);
             if (generated) {
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
                 const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
