@@ -11,4 +11,4 @@ Repository = "https://github.com/JeyzerMC/comfyui-flakes"
 [tool.comfy]
 PublisherId = "jeyzermc"
 DisplayName = "ComfyUI Flakes"
-Icon = ""
+Icon = "https://raw.githubusercontent.com/JeyzerMC/comfyui-flakes/v0.1.0/assets/img/logo.png"
