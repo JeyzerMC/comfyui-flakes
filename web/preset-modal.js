@@ -97,7 +97,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                 return;
             }
             const rootIdx = parseInt(baseRootSelect?.value || "0", 10);
-            const root = availableRoots[rootIdx] || availableRoots[0];
+            const root = (availableRoots.find(r => r.index === rootIdx)) || availableRoots[0];
             const rootPart = root ? (root.path || "").replace(/\\/g, "/").replace(/\/+$/, "") + "/" : "C:/<comfy>/model_presets/";
             const folder = familyFolderLocal(family);
             const familyPrefix = folder ? `img/${folder}/` : "";

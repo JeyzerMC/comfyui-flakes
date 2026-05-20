@@ -155,7 +155,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     if (roots.length > 1 && mode === "create") {
                         baseRootSelect.value = String(roots[roots.length - 1].index);
                         const rootIdx = parseInt(baseRootSelect.value, 10);
-                        const root = rootsCache[rootIdx] || rootsCache[0];
+                        const root = (rootsCache.find(r => r.index === rootIdx)) || rootsCache[0];
                         currentRootPath = (root?.path || "").replace(/\\/g, "/").replace(/\/+$/, "") + "/";
                     }
                     updateResolvedPath();
@@ -182,7 +182,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     const d = await r.json();
                     rootsCache = d.roots || [];
                     const rootIdx = parseInt(baseRootSelect?.value || "0", 10);
-                    const root = rootsCache[rootIdx] || rootsCache[0];
+                    const root = (rootsCache.find(r => r.index === rootIdx)) || rootsCache[0];
                     currentRootPath = (root?.path || "").replace(/\\/g, "/");
                     if (!currentRootPath.endsWith("/")) currentRootPath += "/";
                     updateResolvedPath();
@@ -191,7 +191,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
 
             baseRootSelect.addEventListener("change", () => {
                 const rootIdx = parseInt(baseRootSelect.value, 10);
-                const root = rootsCache[rootIdx] || rootsCache[0];
+                const root = (rootsCache.find(r => r.index === rootIdx)) || rootsCache[0];
                 currentRootPath = (root?.path || "").replace(/\\/g, "/").replace(/\/+$/, "") + "/";
                 updateResolvedPath();
             });
