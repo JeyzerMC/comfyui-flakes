@@ -165,7 +165,7 @@ async function combinationData(model, selection) {
         if (axis.kind === "model") presetName = selection[i].presetName;
     });
 
-    const out = { modelRows: [], outputRows: [], loraRows: [], promptRows: [], coverUrls: [] };
+    const out = { modelRows: [], loraRows: [], promptRows: [], coverUrls: [], dimensions: null };
 
     if (presetName) {
         try {
@@ -179,13 +179,12 @@ async function combinationData(model, selection) {
             if (d.scheduler) m.push(["Scheduler", d.scheduler]);
             if (d.cfg) m.push(["CFG", String(d.cfg)]);
             if (d.steps) m.push(["Steps", String(d.steps)]);
-            if (d.width || d.height) out.outputRows.push(["Dimensions", `${d.width || "?"} × ${d.height || "?"}`]);
-            if (d.filename_prefix) out.outputRows.push(["Filename", d.filename_prefix]);
+            if (d.width || d.height) out.dimensions = `${d.width || "?"} × ${d.height || "?"}`;
             const label = d.display_name || presetName.split("/").pop() || presetName;
             const pos = (d.prompt?.positive || "").trim();
             const neg = (d.prompt?.negative || "").trim();
-            if (pos) out.promptRows.push([`${label} · Positive`, pos]);
-            if (neg) out.promptRows.push([`${label} · Negative`, neg]);
+            if (pos) out.promptRows.push([`${label} · Positive (Model)`, pos]);
+            if (neg) out.promptRows.push([`${label} · Negative (Model)`, neg]);
         } catch { /* skip */ }
     }
 
@@ -203,23 +202,22 @@ async function combinationData(model, selection) {
             const vLabel = label + (choices.length ? ` (${choices.join(", ")})` : "");
             if (Array.isArray(d.loras)) {
                 d.loras.forEach((lr, idx) => {
-                    const p = (lr.name || lr.path || `LoRA #${idx + 1}`).replace(/^img\/[^/]+\//, "");
+                    const name = lr.name || `LoRA #${idx + 1}`;
+                    const path = lr.path || lr.name || "";
                     const s = entry.loras?.[idx] ?? lr.strength ?? 1;
-                    out.loraRows.push([`LoRA [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`, p]);
+                    const label = `${name} [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`;
+                    out.loraRows.push([label, path]);
                 });
             }
             const pos = (d.positive_prompt || "").trim();
             const neg = (d.negative_prompt || "").trim();
-            let posX = "", negX = "";
+            if (pos) out.promptRows.push([`${vLabel} · Positive`, pos]);
+            if (neg) out.promptRows.push([`${vLabel} · Negative`, neg]);
             for (const [g, c] of Object.entries(entry.variant || {})) {
                 const v = d.variants?.[g]?.[c];
-                if (v?.positive) posX += (posX ? ", " : "") + v.positive;
-                if (v?.negative) negX += (negX ? ", " : "") + v.negative;
+                if (v?.positive) out.promptRows.push([`${vLabel} · ${g} · Positive`, v.positive]);
+                if (v?.negative) out.promptRows.push([`${vLabel} · ${g} · Negative`, v.negative]);
             }
-            const fp = [pos, posX].filter(Boolean).join(", ");
-            const fn = [neg, negX].filter(Boolean).join(", ");
-            if (fp) out.promptRows.push([`${vLabel} · Positive`, fp]);
-            if (fn) out.promptRows.push([`${vLabel} · Negative`, fn]);
         } catch { /* skip */ }
     }
 
@@ -242,7 +240,7 @@ export function combinationKeyFor(model, selIdx) {
 // ── Overlay UI ─────────────────────────────────────────────────────────────
 export function openGenerationDataOverlay(model, lastImagesByCombo) {
     const { content, footer, close } = openOverlay();
-    css(content.parentElement, content.parentElement.style.cssText + "min-width:760px;max-width:920px;");
+    css(content.parentElement, content.parentElement.style.cssText + "width:95vw;max-width:1400px;min-width:760px;");
 
     const header = document.createElement("div");
     css(header, "display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #333;");
@@ -269,7 +267,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
         return;
     }
 
-    const hasCombos = model.axes.length > 0;
+    const hasCombos = model.axes.some(a => a.items.length > 1);
 
     if (hasCombos) {
         const split = document.createElement("div");
@@ -341,8 +339,11 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
         css(compositeImg, "width:256px;height:256px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
+        const compositeDimensions = document.createElement("div");
+        css(compositeDimensions, "font-size:10px;color:#666;text-align:center;");
         compositeWrap.appendChild(compositeImg);
         compositeWrap.appendChild(compositeLabel);
+        compositeWrap.appendChild(compositeDimensions);
         right.appendChild(compositeWrap);
 
         const dataWrap = document.createElement("div");
@@ -354,13 +355,13 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             const wrap = document.createElement("div");
             const h = document.createElement("div");
             h.textContent = titleText;
-            css(h, `font-size:11px;font-weight:600;color:${ACCENT};margin-bottom:4px;`);
+            css(h, `font-size:11px;font-weight:600;color:${ACCENT};margin-bottom:6px;`);
             wrap.appendChild(h);
             const list = document.createElement("div");
-            css(list, "display:flex;flex-direction:column;gap:4px;");
+            css(list, "display:flex;flex-wrap:wrap;gap:6px;");
             for (const [k, v] of rows) {
                 const row = document.createElement("div");
-                css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:6px 8px;");
+                css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:6px 8px;flex:0 1 auto;min-width:140px;max-width:100%;box-sizing:border-box;");
                 const ke = document.createElement("div");
                 ke.textContent = k;
                 css(ke, "font-size:10px;color:#888;margin-bottom:2px;");
@@ -394,15 +395,15 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
                 compositeImg.src = await buildComposite(urls);
             }
+            compositeDimensions.textContent = data.dimensions || "";
 
             // Common fields go on the right (model preset, fixed stack flakes)
             dataWrap.replaceChildren();
             const s1 = section("Model", data.modelRows);
-            const s2 = section("Output", data.outputRows);
-            const s3 = section("LoRAs", data.loraRows);
-            const s4 = section("Prompts", data.promptRows);
-            for (const s of [s1, s2, s3, s4]) if (s) dataWrap.appendChild(s);
-            if (!s1 && !s2 && !s3 && !s4) {
+            const s2 = section("LoRAs", data.loraRows);
+            const s3 = section("Prompts", data.promptRows);
+            for (const s of [s1, s2, s3]) if (s) dataWrap.appendChild(s);
+            if (!s1 && !s2 && !s3) {
                 const empty = document.createElement("div");
                 css(empty, "font-size:12px;color:#555;text-align:center;padding:20px;");
                 empty.textContent = "No data for this combination";
@@ -421,24 +422,23 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
                     const comboLoraRows = [];
                     if (Array.isArray(d.loras)) {
                         d.loras.forEach((lr, idx) => {
-                            const p = (lr.name || lr.path || `LoRA #${idx + 1}`).replace(/^img\/[^/]+\//, "");
+                            const name = lr.name || `LoRA #${idx + 1}`;
+                            const path = lr.path || lr.name || "";
                             const s = comboFlake.entry.loras?.[idx] ?? lr.strength ?? 1;
-                            comboLoraRows.push([`LoRA [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`, p]);
+                            const label = `${name} [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`;
+                            comboLoraRows.push([label, path]);
                         });
                     }
                     const comboPromptRows = [];
                     const pos = (d.positive_prompt || "").trim();
                     const neg = (d.negative_prompt || "").trim();
-                    let posX = "", negX = "";
+                    if (pos) comboPromptRows.push([`${vLabel} · Positive`, pos]);
+                    if (neg) comboPromptRows.push([`${vLabel} · Negative`, neg]);
                     for (const [g, c] of Object.entries(comboFlake.entry.variant || {})) {
                         const v = d.variants?.[g]?.[c];
-                        if (v?.positive) posX += (posX ? ", " : "") + v.positive;
-                        if (v?.negative) negX += (negX ? ", " : "") + v.negative;
+                        if (v?.positive) comboPromptRows.push([`${vLabel} · ${g} · Positive`, v.positive]);
+                        if (v?.negative) comboPromptRows.push([`${vLabel} · ${g} · Negative`, v.negative]);
                     }
-                    const fp = [pos, posX].filter(Boolean).join(", ");
-                    const fn = [neg, negX].filter(Boolean).join(", ");
-                    if (fp) comboPromptRows.push([`${vLabel} · Positive`, fp]);
-                    if (fn) comboPromptRows.push([`${vLabel} · Negative`, fn]);
                     const cs1 = section("LoRAs", comboLoraRows);
                     const cs2 = section("Prompts", comboPromptRows);
                     if (cs1) leftDataWrap.appendChild(cs1);
@@ -460,8 +460,11 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
         css(compositeImg, "width:256px;height:256px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
+        const compositeDimensions = document.createElement("div");
+        css(compositeDimensions, "font-size:10px;color:#666;text-align:center;");
         compositeWrap.appendChild(compositeImg);
         compositeWrap.appendChild(compositeLabel);
+        compositeWrap.appendChild(compositeDimensions);
         singleWrap.appendChild(compositeWrap);
 
         const dataWrap = document.createElement("div");
@@ -473,13 +476,13 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             const wrap = document.createElement("div");
             const h = document.createElement("div");
             h.textContent = titleText;
-            css(h, `font-size:11px;font-weight:600;color:${ACCENT};margin-bottom:4px;`);
+            css(h, `font-size:11px;font-weight:600;color:${ACCENT};margin-bottom:6px;`);
             wrap.appendChild(h);
             const list = document.createElement("div");
-            css(list, "display:flex;flex-direction:column;gap:4px;");
+            css(list, "display:flex;flex-wrap:wrap;gap:6px;");
             for (const [k, v] of rows) {
                 const row = document.createElement("div");
-                css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:6px 8px;");
+                css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:6px 8px;flex:0 1 auto;min-width:140px;max-width:100%;box-sizing:border-box;");
                 const ke = document.createElement("div");
                 ke.textContent = k;
                 css(ke, "font-size:10px;color:#888;margin-bottom:2px;");
@@ -510,14 +513,14 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
                 compositeImg.src = await buildComposite(urls);
             }
+            compositeDimensions.textContent = data.dimensions || "";
 
             dataWrap.replaceChildren();
             const s1 = section("Model", data.modelRows);
-            const s2 = section("Output", data.outputRows);
-            const s3 = section("LoRAs", data.loraRows);
-            const s4 = section("Prompts", data.promptRows);
-            for (const s of [s1, s2, s3, s4]) if (s) dataWrap.appendChild(s);
-            if (!s1 && !s2 && !s3 && !s4) {
+            const s2 = section("LoRAs", data.loraRows);
+            const s3 = section("Prompts", data.promptRows);
+            for (const s of [s1, s2, s3]) if (s) dataWrap.appendChild(s);
+            if (!s1 && !s2 && !s3) {
                 const empty = document.createElement("div");
                 css(empty, "font-size:12px;color:#555;text-align:center;padding:20px;");
                 empty.textContent = "No data for this combination";
