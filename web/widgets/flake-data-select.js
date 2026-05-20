@@ -45,7 +45,11 @@ function syncSplitOutputs(node, selected) {
         const pinDef = ALL_SPLIT_PINS.find(p => p.name === out.name);
         if (!pinDef) continue;
         const shouldHide = !selected.includes(out.name);
-        if (shouldHide && !out.hidden) node.disconnectOutputs(i);
+        if (shouldHide && !out.hidden && out.links && out.links.length) {
+            for (const linkId of [...out.links]) {
+                node.graph?.removeLink?.(linkId);
+            }
+        }
         out.hidden = shouldHide;
     }
     node.setDirtyCanvas(true, true);
