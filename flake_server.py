@@ -481,6 +481,37 @@ def _resolve_sibling_image_relpath(folder_type: str, path: str) -> str | None:
     return None
 
 
+def _resolve_variant_sibling_image_relpath(folder_type: str, path: str, group: str, choice: str) -> str | None:
+    """Return the relative path of the sibling image named
+    ``<basename>_<group>_<choice>.ext`` for the given weight file, or None."""
+    resolved = _resolve_model_name(folder_type, path)
+    try:
+        full_path = folder_paths.get_full_path(folder_type, resolved)
+    except Exception:
+        full_path = None
+    if not full_path or not os.path.isfile(full_path):
+        return None
+    dir_path = os.path.dirname(full_path)
+    basename = os.path.splitext(os.path.basename(full_path))[0]
+    suffix = f"_{group.lower()}_{choice.lower()}"
+    for ext in _CHECKPOINT_IMAGE_EXTS:
+        sibling = os.path.join(dir_path, basename + suffix + ext)
+        if os.path.isfile(sibling):
+            try:
+                roots = folder_paths.get_folder_paths(folder_type)
+            except Exception:
+                roots = []
+            for root in roots:
+                try:
+                    rel = os.path.relpath(sibling, root)
+                except ValueError:
+                    continue
+                if not rel.startswith(".."):
+                    return rel.replace(os.sep, "/")
+            return os.path.basename(sibling)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Registered roots (so the UI can offer a base-path dropdown)
 # ---------------------------------------------------------------------------
@@ -534,6 +565,19 @@ async def _get_lora_sibling_image_path(request: web.Request) -> web.Response:
     rel = _resolve_sibling_image_relpath("loras", path)
     if rel is None:
         return _not_found("no sibling image found")
+    return web.json_response({"path": rel})
+
+
+@routes.get("/flakes/lora_variant_sibling_image_path")
+async def _get_lora_variant_sibling_image_path(request: web.Request) -> web.Response:
+    path = request.query.get("path", "").strip()
+    group = request.query.get("group", "").strip()
+    choice = request.query.get("choice", "").strip()
+    if not path or not group or not choice:
+        return _bad_request("missing 'path', 'group' or 'choice' query param")
+    rel = _resolve_variant_sibling_image_relpath("loras", path, group, choice)
+    if rel is None:
+        return _not_found("no variant sibling image found")
     return web.json_response({"path": rel})
 
 

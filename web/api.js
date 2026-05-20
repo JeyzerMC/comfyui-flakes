@@ -152,6 +152,13 @@ export async function fetchLoraSiblingImagePath(loraPath) {
     return d.path || null;
 }
 
+export async function fetchLoraVariantSiblingImagePath(loraPath, group, choice) {
+    const r = await fetch(`/flakes/lora_variant_sibling_image_path?path=${encodeURIComponent(loraPath)}&group=${encodeURIComponent(group)}&choice=${encodeURIComponent(choice)}`);
+    if (!r.ok) return null;
+    const d = await r.json().catch(() => ({}));
+    return d.path || null;
+}
+
 export async function uploadCover(name, file) {
     const form = new FormData();
     form.append("file", file);

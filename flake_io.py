@@ -452,6 +452,12 @@ def resolve(entry: dict[str, Any]) -> Flake:
             flake.positive = f"{flake.positive}, {extra_pos}" if flake.positive else extra_pos
         if extra_neg:
             flake.negative = f"{flake.negative}, {extra_neg}" if flake.negative else extra_neg
+        variant_stem = variant.get("output_stem")
+        if variant_stem:
+            if flake.output_stem:
+                flake.output_stem = f"{flake.output_stem.rstrip('/')}/{variant_stem.lstrip('/')}"
+            else:
+                flake.output_stem = variant_stem
 
     # Runtime output_stem override from the option panel (not persisted to disk)
     if "_output_stem_override" in entry:

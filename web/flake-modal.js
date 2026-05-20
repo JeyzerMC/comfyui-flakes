@@ -10,6 +10,7 @@ import {
     getCoverUrl, getVariantImageUrl, uploadCover, fetchLoras, fetchCnModels, fetchCnTypes, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
+    fetchLoraVariantSiblingImagePath,
 } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
 
@@ -1058,31 +1059,99 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 css(cRow, "display:flex;gap:4px;align-items:center;");
                                 const cNameInput = makeComfyInput(choiceName, "choice name");
                                 cNameInput.style.flex = "1";
+                                const upBtn = makeSmallButton("\u2191");
+                                const downBtn = makeSmallButton("\u2193");
                                 const removeChoiceBtn = makeSmallButton("\u2715");
                                 cNameInput.addEventListener("change", () => {
                                     const newCName = cNameInput.value.trim();
                                     if (!newCName || newCName === choiceName) return;
                                     if (fieldState.variants[groupName][newCName]) { cNameInput.value = choiceName; return; }
-                                    fieldState.variants[groupName][newCName] = fieldState.variants[groupName][choiceName];
-                                    delete fieldState.variants[groupName][choiceName];
+                                    const newObj = {};
+                                    for (const [k, v] of Object.entries(fieldState.variants[groupName])) {
+                                        newObj[k === choiceName ? newCName : k] = v;
+                                    }
+                                    fieldState.variants[groupName] = newObj;
                                     renderOpts();
+                                });
+                                upBtn.addEventListener("click", () => {
+                                    const keys = Object.keys(fieldState.variants[groupName]);
+                                    const idx = keys.indexOf(choiceName);
+                                    if (idx > 0) {
+                                        const newObj = {};
+                                        for (let i = 0; i < keys.length; i++) {
+                                            if (i === idx - 1) newObj[keys[idx]] = fieldState.variants[groupName][keys[idx]];
+                                            if (i === idx) newObj[keys[idx - 1]] = fieldState.variants[groupName][keys[idx - 1]];
+                                            if (i !== idx - 1 && i !== idx) newObj[keys[i]] = fieldState.variants[groupName][keys[i]];
+                                        }
+                                        fieldState.variants[groupName] = newObj;
+                                        renderOpts();
+                                    }
+                                });
+                                downBtn.addEventListener("click", () => {
+                                    const keys = Object.keys(fieldState.variants[groupName]);
+                                    const idx = keys.indexOf(choiceName);
+                                    if (idx >= 0 && idx < keys.length - 1) {
+                                        const newObj = {};
+                                        for (let i = 0; i < keys.length; i++) {
+                                            if (i === idx) newObj[keys[idx + 1]] = fieldState.variants[groupName][keys[idx + 1]];
+                                            if (i === idx + 1) newObj[keys[idx]] = fieldState.variants[groupName][keys[idx]];
+                                            if (i !== idx && i !== idx + 1) newObj[keys[i]] = fieldState.variants[groupName][keys[i]];
+                                        }
+                                        fieldState.variants[groupName] = newObj;
+                                        renderOpts();
+                                    }
                                 });
                                 removeChoiceBtn.addEventListener("click", () => {
                                     delete fieldState.variants[groupName][choiceName];
                                     renderOpts();
                                 });
                                 cRow.appendChild(cNameInput);
+                                cRow.appendChild(upBtn);
+                                cRow.appendChild(downBtn);
                                 cRow.appendChild(removeChoiceBtn);
                                 choiceCard.appendChild(cRow);
 
                                 const choice = fieldState.variants[groupName][choiceName] || {};
 
-                                // --- Variant choice image (optional) ---
-                                const imgRow = document.createElement("div");
-                                css(imgRow, "display:flex;gap:6px;align-items:center;");
+                                // Main body: left (stem + prompts) | right (image)
+                                const bodyRow = document.createElement("div");
+                                css(bodyRow, "display:flex;gap:10px;align-items:flex-start;");
+
+                                const leftCol = document.createElement("div");
+                                css(leftCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;");
+
+                                // Output stem
+                                const stemRow = document.createElement("div");
+                                css(stemRow, "display:flex;flex-direction:column;gap:2px;");
+                                const stemLabel = document.createElement("div");
+                                stemLabel.textContent = "Output Stem";
+                                css(stemLabel, "font-size:10px;color:#888;");
+                                stemRow.appendChild(stemLabel);
+                                const stemInput = makeComfyInput(choice.output_stem ?? "", "e.g. classic/");
+                                stemInput.addEventListener("change", () => {
+                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                    fieldState.variants[groupName][choiceName].output_stem = stemInput.value || null;
+                                });
+                                stemRow.appendChild(stemInput);
+                                leftCol.appendChild(stemRow);
+
+                                const promptsWrap = document.createElement("div");
+                                css(promptsWrap, "display:flex;gap:8px;align-items:stretch;");
+                                leftCol.appendChild(promptsWrap);
+
+                                const choicePosCol = document.createElement("div");
+                                css(choicePosCol, "flex:0 0 70%;display:flex;flex-direction:column;gap:4px;min-width:0;");
+                                promptsWrap.appendChild(choicePosCol);
+
+                                const choiceNegCol = document.createElement("div");
+                                css(choiceNegCol, "flex:0 0 30%;display:flex;flex-direction:column;gap:4px;min-width:0;");
+                                promptsWrap.appendChild(choiceNegCol);
+
+                                const rightCol = document.createElement("div");
+                                css(rightCol, "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;");
 
                                 const imgBox = document.createElement("div");
-                                css(imgBox, "width:80px;height:80px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex:0 0 auto;");
+                                css(imgBox, "width:80px;height:80px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
                                 const imgPreview = document.createElement("img");
                                 css(imgPreview, "width:100%;height:100%;object-fit:cover;display:none;");
                                 imgBox.appendChild(imgPreview);
@@ -1091,8 +1160,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 css(imgBoxLabel, "font-size:10px;color:#666;pointer-events:none;");
                                 imgBox.appendChild(imgBoxLabel);
 
-                                const imgPathLabel = document.createElement("span");
-                                css(imgPathLabel, "flex:1;font-size:11px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
+                                const imgPathLabel = document.createElement("div");
+                                css(imgPathLabel, "font-size:9px;color:#888;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;");
                                 const clearImgBtn = makeSmallButton("✕");
 
                                 function refreshChoiceImage() {
@@ -1110,7 +1179,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         imgBoxLabel.style.display = "none";
                                         clearImgBtn.style.display = "";
                                     } else {
-                                        imgPathLabel.textContent = "No variant image";
+                                        imgPathLabel.textContent = "No image";
                                         imgPreview.style.display = "none";
                                         imgBoxLabel.style.display = "block";
                                         clearImgBtn.style.display = "none";
@@ -1150,23 +1219,14 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     if (cur) delete cur.image;
                                     refreshChoiceImage();
                                 });
-                                imgRow.appendChild(imgBox);
-                                imgRow.appendChild(imgPathLabel);
-                                imgRow.appendChild(clearImgBtn);
-                                choiceCard.appendChild(imgRow);
+                                rightCol.appendChild(imgBox);
+                                rightCol.appendChild(imgPathLabel);
+                                rightCol.appendChild(clearImgBtn);
                                 refreshChoiceImage();
 
-                                const promptsWrap = document.createElement("div");
-                                css(promptsWrap, "display:flex;gap:8px;align-items:stretch;");
-                                choiceCard.appendChild(promptsWrap);
-
-                                const choicePosCol = document.createElement("div");
-                                css(choicePosCol, "flex:0 0 70%;display:flex;flex-direction:column;gap:4px;min-width:0;");
-                                promptsWrap.appendChild(choicePosCol);
-
-                                const choiceNegCol = document.createElement("div");
-                                css(choiceNegCol, "flex:0 0 30%;display:flex;flex-direction:column;gap:4px;min-width:0;");
-                                promptsWrap.appendChild(choiceNegCol);
+                                bodyRow.appendChild(leftCol);
+                                bodyRow.appendChild(rightCol);
+                                choiceCard.appendChild(bodyRow);
 
                                 function renderChoicePrompts() {
                                     choicePosCol.replaceChildren();
@@ -1259,7 +1319,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     inlineWrap.replaceWith(addChoiceBtn);
                                 }
 
-                                addBtn.addEventListener("click", () => {
+                                addBtn.addEventListener("click", async () => {
                                     const trimmed = choiceNameInput.value.trim();
                                     if (!trimmed) { finish(); return; }
                                     if (fieldState.variants[groupName][trimmed]) {
@@ -1267,7 +1327,19 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         finish();
                                         return;
                                     }
-                                    fieldState.variants[groupName][trimmed] = {};
+                                    const choiceData = { positive: "" };
+                                    // Auto-detect variant sibling image from first LoRA
+                                    const firstLora = Array.isArray(data.loras) ? data.loras[0] : null;
+                                    const loraPath = firstLora?.path || firstLora?.name || null;
+                                    if (loraPath) {
+                                        try {
+                                            const siblingPath = await fetchLoraVariantSiblingImagePath(loraPath, groupName, trimmed);
+                                            if (siblingPath) {
+                                                choiceData.image = siblingPath;
+                                            }
+                                        } catch { /* ignore */ }
+                                    }
+                                    fieldState.variants[groupName][trimmed] = choiceData;
                                     finish();
                                     renderOpts();
                                 });
