@@ -365,7 +365,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             css(list, "display:flex;flex-wrap:wrap;gap:6px;");
             for (const [k, v] of rows) {
                 const row = document.createElement("div");
-                css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:6px 8px;flex:0 1 auto;min-width:140px;max-width:100%;box-sizing:border-box;");
+                css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:6px 8px;flex:0 0 auto;min-width:0;max-width:100%;box-sizing:border-box;");
                 const ke = document.createElement("div");
                 ke.textContent = k;
                 css(ke, "font-size:10px;color:#888;margin-bottom:2px;");
@@ -486,7 +486,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             css(list, "display:flex;flex-wrap:wrap;gap:6px;");
             for (const [k, v] of rows) {
                 const row = document.createElement("div");
-                css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:6px 8px;flex:0 1 auto;min-width:140px;max-width:100%;box-sizing:border-box;");
+                css(row, "background:#181818;border:1px solid #333;border-radius:6px;padding:6px 8px;flex:0 0 auto;min-width:0;max-width:100%;box-sizing:border-box;");
                 const ke = document.createElement("div");
                 ke.textContent = k;
                 css(ke, "font-size:10px;color:#888;margin-bottom:2px;");
