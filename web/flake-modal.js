@@ -810,18 +810,28 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     const row = document.createElement("div");
                     css(row, "display:flex;gap:8px;align-items:center;");
                     const wInput = makeComfyNumberInput(fieldState.resolution?.[0] || "", "width", 64);
-                    wInput.addEventListener("change", () => {
-                        if (!fieldState.resolution) fieldState.resolution = [1024, 1024];
-                        fieldState.resolution[0] = parseInt(wInput.value) || 1024;
-                    });
+                    const hInput = makeComfyNumberInput(fieldState.resolution?.[1] || "", "height", 64);
+                    const syncResolution = () => {
+                        const rw = parseInt(wInput.value);
+                        const rh = parseInt(hInput.value);
+                        if (Number.isFinite(rw) && Number.isFinite(rh)) {
+                            fieldState.resolution = [rw, rh];
+                        } else if (!fieldState.resolution) {
+                            fieldState.resolution = [1024, 1024];
+                        }
+                    };
+                    // Listen on both input (real-time) and change (blur) so save
+                    // sees the latest typed values even without losing focus first.
+                    wInput.addEventListener("input", syncResolution);
+                    wInput.addEventListener("change", syncResolution);
+                    hInput.addEventListener("input", syncResolution);
+                    hInput.addEventListener("change", syncResolution);
+                    // Expose the inputs on fieldState so the save handler can read
+                    // them directly as a belt-and-braces fallback.
+                    fieldState._resolutionInputs = { w: wInput, h: hInput };
                     const xLabel = document.createElement("span");
                     xLabel.textContent = "\u00d7";
                     css(xLabel, "color:#888;font-size:13px;");
-                    const hInput = makeComfyNumberInput(fieldState.resolution?.[1] || "", "height", 64);
-                    hInput.addEventListener("change", () => {
-                        if (!fieldState.resolution) fieldState.resolution = [1024, 1024];
-                        fieldState.resolution[1] = parseInt(hInput.value) || 1024;
-                    });
                     row.appendChild(wInput);
                     row.appendChild(xLabel);
                     row.appendChild(hInput);
@@ -1523,10 +1533,15 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     if (fieldState.prompt.positive != null) ordered.prompt.positive = fieldState.prompt.positive;
                     if (fieldState.prompt.negative != null) ordered.prompt.negative = fieldState.prompt.negative;
                 }
-                if (ft === "resolution" && fieldState.resolution) {
-                    const rw = parseInt(fieldState.resolution[0]);
-                    const rh = parseInt(fieldState.resolution[1]);
-                    if (!isNaN(rw) && !isNaN(rh)) ordered.resolution = [rw, rh];
+                if (ft === "resolution") {
+                    // Prefer reading directly from the DOM inputs so we capture
+                    // values typed but not yet committed via change/blur.
+                    const inputs = fieldState._resolutionInputs;
+                    let rw = inputs ? parseInt(inputs.w.value) : NaN;
+                    let rh = inputs ? parseInt(inputs.h.value) : NaN;
+                    if (!Number.isFinite(rw) && fieldState.resolution) rw = parseInt(fieldState.resolution[0]);
+                    if (!Number.isFinite(rh) && fieldState.resolution) rh = parseInt(fieldState.resolution[1]);
+                    if (Number.isFinite(rw) && Number.isFinite(rh)) ordered.resolution = [rw, rh];
                 }
                 if (ft === "controlnets") {
                     const cnArr = fieldState.controlnets._ || [];
