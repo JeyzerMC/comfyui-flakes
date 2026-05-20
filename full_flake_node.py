@@ -121,9 +121,15 @@ def _load_preset_bundle(preset_name: str):
     latent = EmptyLatentImage().generate(width, height, 1)[0]
 
     model_bundle = (model, clip, vae)
+    # Note: filename_state["preset"] used to be the preset's full yaml path
+    # (e.g. "img/illustrious/nova/nova_anime_xl_v17") which leaked into the
+    # output directory structure. Now only the explicit `filename_prefix`
+    # field contributes (via stems); leave preset as an empty string so the
+    # yaml location on disk does not affect the output path.
+    prefix = (preset_data.filename_prefix or "").strip()
     filename_state = {
-        "preset": preset_name,
-        "stems": [preset_data.filename_prefix] if preset_data.filename_prefix else [],
+        "preset": "",
+        "stems": [prefix] if prefix else [],
         "checkpoint": preset_data.checkpoint,
         "vae": preset_data.vae or "baked-in",
         "text_encoder": preset_data.text_encoder or "baked-in",

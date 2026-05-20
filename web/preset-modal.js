@@ -109,6 +109,11 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         let pathManuallyEdited = mode !== "create";
         pathInput.addEventListener("input", () => { pathManuallyEdited = true; updateResolvedPath(); });
 
+        // Track manual edits to the filename prefix so syncOutputPath() does not
+        // clobber a user-cleared/customized value when they touch the name field.
+        let filenamePrefixManuallyEdited = mode !== "create";
+        filenamePrefixInput.addEventListener("input", () => { filenamePrefixManuallyEdited = true; });
+
         function familyFolderLocal(fam) {
             const map = {
                 "SDXL/Base": "sdxl",
@@ -128,7 +133,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         function syncOutputPath() {
             const stem = snake(nameInput.value);
             if (!pathManuallyEdited) pathInput.value = stem;
-            filenamePrefixInput.value = stem;
+            if (!filenamePrefixManuallyEdited) filenamePrefixInput.value = stem;
             updateResolvedPath();
         }
         nameInput.addEventListener("input", syncOutputPath);
