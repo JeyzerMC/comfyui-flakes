@@ -198,23 +198,29 @@ const OPTIONAL_WIDGET_NAMES = new Set([
     "filename_prefix", "width", "height", "steps", "cfg", "sampler_name", "scheduler"
 ]);
 
-function hideIntoWidgets(node) {
+function removeIntoWidgets(node) {
     if (!node.widgets) return;
-    for (const w of node.widgets) {
+    for (let i = node.widgets.length - 1; i >= 0; i--) {
+        const w = node.widgets[i];
         if (!OPTIONAL_WIDGET_NAMES.has(w.name)) continue;
-        w.computeSize = () => [0, -4];
-        w.type = "hidden";
-        w.hidden = true;
         if (w.element) { w.element.remove(); w.element = null; }
         if (w.inputEl) { w.inputEl.remove(); w.inputEl = null; }
+        node.widgets.splice(i, 1);
     }
 }
 
 export function setupIntoFlakeDataSelect(node) {
     if (!node.properties) node.properties = {};
+    if (node._intoSetupDone) {
+        node._intoPinUpdate?.();
+        return;
+    }
+    node._intoSetupDone = true;
 
-    // Hide auto-created widgets for optional fields — pins are managed dynamically.
-    hideIntoWidgets(node);
+    // Fully remove auto-created widgets for optional fields — pins are managed dynamically.
+    // (Previously these were hidden but the canvas-drawn widgets still caught clicks,
+    // hijacking clicks meant for the dropdown / + button.)
+    removeIntoWidgets(node);
 
     // Remove any pre-existing optional inputs that Python adds automatically.
     // Keep only flake_data.
