@@ -39,6 +39,7 @@ export const DEFAULT_INTO_PINS = [];
 // Manages output pin visibility. State lives in node.properties._split_pins.
 
 function syncSplitOutputs(node, selected) {
+    if (!node.outputs || !node.outputs.length) return;
     for (let i = 0; i < node.outputs.length; i++) {
         const out = node.outputs[i];
         const pinDef = ALL_SPLIT_PINS.find(p => p.name === out.name);
@@ -65,7 +66,19 @@ export function setupFlakeDataSplitSelect(node) {
     }
     node.properties._split_pins = [...selected];
 
-    syncSplitOutputs(node, selected);
+    // Delay sync until outputs are populated (new ComfyUI frontend may create
+    // outputs after onNodeCreated).
+    if (node.outputs && node.outputs.length) {
+        syncSplitOutputs(node, selected);
+    } else {
+        const checkOutputs = setInterval(() => {
+            if (node.outputs && node.outputs.length) {
+                clearInterval(checkOutputs);
+                syncSplitOutputs(node, selected);
+            }
+        }, 50);
+        setTimeout(() => clearInterval(checkOutputs), 2000);
+    }
 
     // ── UI ──
     const container = document.createElement("div");
@@ -188,7 +201,8 @@ function hideIntoWidgets(node) {
         w.computeSize = () => [0, -4];
         w.type = "hidden";
         w.hidden = true;
-        if (w.element) { w.element.style.display = "none"; }
+        if (w.element) { w.element.remove(); w.element = null; }
+        if (w.inputEl) { w.inputEl.remove(); w.inputEl = null; }
     }
 }
 
