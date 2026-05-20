@@ -209,8 +209,10 @@ async function combinationData(model, selection) {
                     out.loraRows.push([label, path]);
                 });
             }
-            const pos = (d.positive_prompt || "").trim();
-            const neg = (d.negative_prompt || "").trim();
+            // Flake yaml stores prompts under `prompt: { positive, negative }` — not
+            // `positive_prompt` / `negative_prompt` (which never existed).
+            const pos = ((d.prompt && d.prompt.positive) || "").trim();
+            const neg = ((d.prompt && d.prompt.negative) || "").trim();
             if (pos) out.promptRows.push([`${vLabel} · Positive`, pos]);
             if (neg) out.promptRows.push([`${vLabel} · Negative`, neg]);
             for (const [g, c] of Object.entries(entry.variant || {})) {
@@ -430,8 +432,8 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
                         });
                     }
                     const comboPromptRows = [];
-                    const pos = (d.positive_prompt || "").trim();
-                    const neg = (d.negative_prompt || "").trim();
+                    const pos = ((d.prompt && d.prompt.positive) || "").trim();
+                    const neg = ((d.prompt && d.prompt.negative) || "").trim();
                     if (pos) comboPromptRows.push([`${vLabel} · Positive`, pos]);
                     if (neg) comboPromptRows.push([`${vLabel} · Negative`, neg]);
                     for (const [g, c] of Object.entries(comboFlake.entry.variant || {})) {
