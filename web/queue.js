@@ -68,9 +68,28 @@ function clearAllHighlights() {
     }
 }
 
-function setupBatchTracking(combinations) {
-    const comfyApi = window.comfyAPI?.api?.api;
-    if (!comfyApi || combinations.length === 0) return null;
+// ComfyUI exposes the websocket-event-emitting `api` singleton in slightly
+// different places depending on frontend version. Try several spots so we
+// don't silently lose batch tracking on a newer/older frontend.
+function _resolveComfyApi() {
+    return (
+        window.comfyAPI?.api?.api
+        || window.comfyAPI?.api
+        || app.api
+        || window.app?.api
+        || null
+    );
+}
+
+function setupBatchTracking(combinations, comboKeys) {
+    const comfyApi = _resolveComfyApi();
+    if (!comfyApi || typeof comfyApi.addEventListener !== "function" || combinations.length === 0) {
+        if (!comfyApi) {
+            // eslint-disable-next-line no-console
+            console.warn("[flakes] could not resolve ComfyUI api singleton; combo highlight/per-combo image storage disabled.");
+        }
+        return null;
+    }
 
     const promptIds = []; // insertion order = combo index
     let completedCount = 0;
@@ -114,16 +133,46 @@ function setupBatchTracking(combinations) {
         maybeFinish();
     };
 
+    // Stamp generated images onto the right combo key on the right FlakeGenerate
+    // node by reading the prompt_id from the `executed` event. Without this,
+    // _pending_combination_key races between successive prompts in a batch and
+    // every prompt's output overwrites the same (latest) combo slot.
+    const onExecuted = (e) => {
+        const detail = e?.detail || {};
+        const pid = typeof detail === "string" ? null : detail.prompt_id;
+        const output = detail?.output;
+        const nodeId = detail?.node;
+        if (!pid || !output) return;
+        const idx = promptIds.indexOf(pid);
+        if (idx < 0) return;
+        const comboKey = (comboKeys && comboKeys[idx]) ?? "";
+        const images = output.flake_images;
+        if (!Array.isArray(images) || images.length === 0) return;
+        // Pin the image to the FlakeGenerate node that produced it. If we have
+        // a node id from the event, prefer that; otherwise stamp every
+        // FlakeGenerate node (single-FG workflows are by far the common case).
+        const candidates = nodeId
+            ? [app.graph.getNodeById(nodeId)].filter(n => n && n.type === "FlakeGenerate")
+            : app.graph.nodes.filter(n => n.type === "FlakeGenerate");
+        for (const fg of candidates) {
+            fg.properties = fg.properties || {};
+            fg.properties._images_by_combo = fg.properties._images_by_combo || {};
+            fg.properties._images_by_combo[comboKey] = images[0];
+        }
+    };
+
     comfyApi.addEventListener("execution_start", onExecStart);
     comfyApi.addEventListener("execution_success", onExecDone);
     comfyApi.addEventListener("execution_error", onExecDone);
     comfyApi.addEventListener("execution_interrupted", onExecDone);
+    comfyApi.addEventListener("executed", onExecuted);
 
     const cleanup = () => {
         comfyApi.removeEventListener("execution_start", onExecStart);
         comfyApi.removeEventListener("execution_success", onExecDone);
         comfyApi.removeEventListener("execution_error", onExecDone);
         comfyApi.removeEventListener("execution_interrupted", onExecDone);
+        comfyApi.removeEventListener("executed", onExecuted);
         clearAllHighlights();
     };
 
@@ -202,7 +251,8 @@ app.queuePrompt = async function(number, batchCount = 1) {
         _batchCleanup = null;
     }
 
-    const tracker = setupBatchTracking(combinations);
+    const comboKeys = []; // parallel to promptIds; comboKeys[idx] = key for promptIds[idx]
+    const tracker = setupBatchTracking(combinations, comboKeys);
     if (tracker) {
         _batchCleanup = tracker.cleanup;
     }
@@ -224,11 +274,16 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 .sort((a, b) => a[0] - b[0])
                 .map(([id, idx]) => `${id}:${idx}`)
                 .join("|");
-            for (const fg of flakeGenerateNodes) fg._pending_combination_key = comboKey;
 
             const result = await _originalQueuePrompt.call(this, number, 1);
-            if (tracker && result?.prompt_id) {
-                tracker.promptIds.push(result.prompt_id);
+            if (tracker) {
+                if (result?.prompt_id) {
+                    tracker.promptIds.push(result.prompt_id);
+                    comboKeys.push(comboKey);
+                } else {
+                    // eslint-disable-next-line no-console
+                    console.warn("[flakes] queuePrompt result missing prompt_id; combo highlight may not work for this batch.");
+                }
             }
         }
     } finally {

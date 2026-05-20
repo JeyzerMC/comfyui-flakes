@@ -133,12 +133,16 @@ export function setupFlakeGenerateWidget(node) {
             const img = output.flake_images[0];
             showImage(img);
             node.properties._last_image = img;
-            // Record the generated image keyed by the active combination (set
-            // by queue.js before this prompt) so the Generation Data overlay
-            // can show it for that combination. Empty key = no combo nodes.
-            const comboKey = node._pending_combination_key || "";
-            node.properties._images_by_combo = node.properties._images_by_combo || {};
-            node.properties._images_by_combo[comboKey] = img;
+            // Per-combo storage is populated from queue.js via the `executed`
+            // websocket event (which carries the correct prompt_id), so we no
+            // longer write _images_by_combo here — doing so raced when the
+            // batch loop advanced to the next combo before this fired.
+            // For single-prompt (no combo) runs, still record under the empty
+            // key as a safety net.
+            if (!node.properties._images_by_combo || Object.keys(node.properties._images_by_combo).length === 0) {
+                node.properties._images_by_combo = node.properties._images_by_combo || {};
+                node.properties._images_by_combo[""] = img;
+            }
         } else if (output && output.flake_images) {
             clearImage();
         }
