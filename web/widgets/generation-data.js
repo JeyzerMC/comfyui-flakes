@@ -1,6 +1,26 @@
 import { css } from "../utils.js";
 import { openOverlay } from "../modal.js";
 import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl } from "../api.js";
+import { getActiveBatch } from "../queue.js";
+
+// Parse a comboKey like "12:0|7:2" into a list of [nodeId, itemIdx] pairs.
+function parseComboKey(key) {
+    if (!key) return [];
+    return key.split("|").map(pair => {
+        const [n, i] = pair.split(":").map(Number);
+        return [n, i];
+    });
+}
+
+// Resolve the ComfyUI api singleton (same pattern as queue.js).
+function _resolveComfyApi() {
+    return (
+        window.comfyAPI?.api?.api
+        || window.comfyAPI?.api
+        || (typeof window !== "undefined" && window.app?.api)
+        || null
+    );
+}
 
 const ACCENT = "#4a9eff";
 
@@ -157,15 +177,59 @@ function buildComposite(urls, size = 256) {
     });
 }
 
+// Convert a single flake entry into label/lora/prompt rows.
+async function flakeEntryRows(entry) {
+    const loraRows = [];
+    const promptRows = [];
+    try {
+        const d = await fetchFlake(entry.name);
+        const label = entry.display_name || d.name || entry.name.split("/").pop() || entry.name;
+        const choices = Object.values(entry.variant || {}).filter(Boolean);
+        const vLabel = label + (choices.length ? ` (${choices.join(", ")})` : "");
+        if (Array.isArray(d.loras)) {
+            d.loras.forEach((lr, idx) => {
+                const name = lr.name || `LoRA #${idx + 1}`;
+                const path = lr.path || lr.name || "";
+                const s = entry.loras?.[idx] ?? lr.strength ?? 1;
+                loraRows.push([`${name} [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`, path]);
+            });
+        }
+        const pos = ((d.prompt && d.prompt.positive) || "").trim();
+        const neg = ((d.prompt && d.prompt.negative) || "").trim();
+        if (pos) promptRows.push([`${vLabel} · Positive`, pos]);
+        if (neg) promptRows.push([`${vLabel} · Negative`, neg]);
+        for (const [g, c] of Object.entries(entry.variant || {})) {
+            const v = d.variants?.[g]?.[c];
+            if (v?.positive) promptRows.push([`${vLabel} · ${g} · Positive`, v.positive]);
+            if (v?.negative) promptRows.push([`${vLabel} · ${g} · Negative`, v.negative]);
+        }
+    } catch { /* skip */ }
+    return { loraRows, promptRows };
+}
+
 // ── Per-combination data assembly ──────────────────────────────────────────
+// Returns common (model preset + stack flakes) and combo (all combo-axis selected
+// flakes) data buckets separately, so the overlay can show common on the right
+// and ALL combo-axis data on the left (#228). The previous unified bucket was
+// the root cause of combo data leaking into the right panel and second-combo
+// data being dropped from the left panel.
 async function combinationData(model, selection) {
-    // selection: array of chosen item per axis (same order as model.axes)
     let presetName = model.fixed.presetName;
     model.axes.forEach((axis, i) => {
         if (axis.kind === "model") presetName = selection[i].presetName;
     });
 
-    const out = { modelRows: [], loraRows: [], promptRows: [], coverUrls: [], dimensions: null };
+    const out = {
+        modelRows: [],
+        commonLoraRows: [],
+        commonPromptRows: [],
+        comboLoraRows: [],
+        comboPromptRows: [],
+        coverUrls: [],
+        dimensions: null,
+        width: null,
+        height: null,
+    };
 
     if (presetName) {
         try {
@@ -179,51 +243,39 @@ async function combinationData(model, selection) {
             if (d.scheduler) m.push(["Scheduler", d.scheduler]);
             if (d.cfg) m.push(["CFG", String(d.cfg)]);
             if (d.steps) m.push(["Steps", String(d.steps)]);
-            if (d.width || d.height) out.dimensions = `${d.width || "?"} × ${d.height || "?"}`;
+            if (d.width || d.height) {
+                out.dimensions = `${d.width || "?"} × ${d.height || "?"}`;
+                out.width = d.width || null;
+                out.height = d.height || null;
+            }
             const label = d.display_name || presetName.split("/").pop() || presetName;
             const pos = (d.prompt?.positive || "").trim();
             const neg = (d.prompt?.negative || "").trim();
-            if (pos) out.promptRows.push([`${label} · Positive (Model)`, pos]);
-            if (neg) out.promptRows.push([`${label} · Negative (Model)`, neg]);
+            if (pos) out.commonPromptRows.push([`${label} · Positive (Model)`, pos]);
+            if (neg) out.commonPromptRows.push([`${label} · Negative (Model)`, neg]);
         } catch { /* skip */ }
     }
 
-    // Gather flakes: fixed stack flakes + the selected combo flake per flake-axis
-    const flakeEntries = [...model.fixed.stackFlakes];
-    model.axes.forEach((axis, i) => {
-        if (axis.kind === "flake") flakeEntries.push(selection[i].entry);
-    });
-
-    for (const entry of flakeEntries) {
-        try {
-            const d = await fetchFlake(entry.name);
-            const label = entry.display_name || d.name || entry.name.split("/").pop() || entry.name;
-            const choices = Object.values(entry.variant || {}).filter(Boolean);
-            const vLabel = label + (choices.length ? ` (${choices.join(", ")})` : "");
-            if (Array.isArray(d.loras)) {
-                d.loras.forEach((lr, idx) => {
-                    const name = lr.name || `LoRA #${idx + 1}`;
-                    const path = lr.path || lr.name || "";
-                    const s = entry.loras?.[idx] ?? lr.strength ?? 1;
-                    const label = `${name} [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`;
-                    out.loraRows.push([label, path]);
-                });
-            }
-            // Flake yaml stores prompts under `prompt: { positive, negative }` — not
-            // `positive_prompt` / `negative_prompt` (which never existed).
-            const pos = ((d.prompt && d.prompt.positive) || "").trim();
-            const neg = ((d.prompt && d.prompt.negative) || "").trim();
-            if (pos) out.promptRows.push([`${vLabel} · Positive`, pos]);
-            if (neg) out.promptRows.push([`${vLabel} · Negative`, neg]);
-            for (const [g, c] of Object.entries(entry.variant || {})) {
-                const v = d.variants?.[g]?.[c];
-                if (v?.positive) out.promptRows.push([`${vLabel} · ${g} · Positive`, v.positive]);
-                if (v?.negative) out.promptRows.push([`${vLabel} · ${g} · Negative`, v.negative]);
-            }
-        } catch { /* skip */ }
+    // Common: fixed stack flakes (Flake Stack contributions are shared across all combinations).
+    for (const entry of model.fixed.stackFlakes) {
+        const rows = await flakeEntryRows(entry);
+        out.commonLoraRows.push(...rows.loraRows);
+        out.commonPromptRows.push(...rows.promptRows);
     }
 
-    // Cover urls for the composite = the selected combo item covers, in order
+    // Combo: every flake-axis's currently-selected entry (multiple axes are
+    // each rendered as their own block on the left panel).
+    for (let i = 0; i < model.axes.length; i++) {
+        const axis = model.axes[i];
+        if (axis.kind !== "flake") continue;
+        const entry = selection[i]?.entry;
+        if (!entry) continue;
+        const rows = await flakeEntryRows(entry);
+        out.comboLoraRows.push(...rows.loraRows);
+        out.comboPromptRows.push(...rows.promptRows);
+    }
+
+    // Cover urls for the composite = the selected combo item covers, in order.
     out.coverUrls = model.axes.map((_, i) => selection[i].coverUrl);
     return out;
 }
@@ -241,10 +293,10 @@ export function combinationKeyFor(model, selIdx) {
 
 // ── Overlay UI ─────────────────────────────────────────────────────────────
 export function openGenerationDataOverlay(model, lastImagesByCombo) {
-    const { content, footer, close } = openOverlay();
-    // Let the panel size to its content (capped at viewport) instead of forcing
-    // a fixed 95vw — the background panel should match the content panel size.
-    css(content.parentElement, content.parentElement.style.cssText + "width:auto;max-width:min(1400px,95vw);min-width:0;");
+    let { content, footer, close } = openOverlay();
+    // Cap width at 70% of previous (#229 — reduce overlay width by 30%): the
+    // previous cap was min(1400px, 95vw); new cap is min(980px, 66vw).
+    css(content.parentElement, content.parentElement.style.cssText + "width:auto;max-width:min(980px,66vw);min-width:0;");
 
     const header = document.createElement("div");
     css(header, "display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #333;");
@@ -275,7 +327,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
 
     if (hasCombos) {
         const split = document.createElement("div");
-        css(split, "display:flex;gap:14px;align-items:flex-start;");
+        css(split, "display:flex;gap:8px;align-items:flex-start;");
         content.appendChild(split);
 
         // Left half: combo axis grids + combo-specific fields below
@@ -309,10 +361,23 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             const axisCards = [];
             axis.items.forEach((item, ii) => {
                 const card = document.createElement("div");
+                card.dataset.nodeId = String(axis.node.id);
+                card.dataset.itemIdx = String(ii);
                 css(card, `position:relative;flex:0 0 auto;width:72px;height:80px;border-radius:4px;cursor:pointer;background:#2a2a2a;background-size:cover;background-position:center;border:2px solid ${ii === selIdx[ai] ? ACCENT : "transparent"};box-sizing:border-box;`);
                 if (item.coverUrl) {
                     card.style.backgroundImage = `url(${item.coverUrl})`;
                 }
+                // Progress bar (above the caption) — shown while the active
+                // batch's running prompt includes this (nodeId, itemIdx) pair.
+                const progressTrack = document.createElement("div");
+                css(progressTrack, "position:absolute;left:2px;right:2px;bottom:14px;height:3px;background:rgba(0,0,0,0.55);border-radius:2px;overflow:hidden;display:none;");
+                const progressFill = document.createElement("div");
+                css(progressFill, `height:100%;width:0%;background:${ACCENT};transition:width 0.15s ease;`);
+                progressTrack.appendChild(progressFill);
+                card.appendChild(progressTrack);
+                card._progressTrack = progressTrack;
+                card._progressFill = progressFill;
+
                 const cap = document.createElement("div");
                 cap.textContent = item.label;
                 cap.title = item.label;
@@ -336,10 +401,82 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
         css(leftDataWrap, "display:flex;flex-direction:column;gap:10px;");
         left.appendChild(leftDataWrap);
 
+        // ── Progress bars on combo grid items (#230) ──
+        // Walk through every card and update its progress track based on the
+        // currently-running prompt (mapped to combo via queue.js's _activeBatch).
+        function findCardsForRunningCombo() {
+            const batch = getActiveBatch();
+            const pid = batch.runningPromptId;
+            if (!pid) return [];
+            const idx = batch.promptIds.indexOf(pid);
+            if (idx < 0) return [];
+            const key = batch.comboKeys[idx];
+            const pairs = parseComboKey(key);
+            const out = [];
+            for (const [nodeId, itemIdx] of pairs) {
+                for (const axisCards of cards) {
+                    for (const c of axisCards) {
+                        if (Number(c.dataset.nodeId) === nodeId && Number(c.dataset.itemIdx) === itemIdx) {
+                            out.push(c);
+                        }
+                    }
+                }
+            }
+            return out;
+        }
+        function clearAllProgress() {
+            for (const axisCards of cards) {
+                for (const c of axisCards) {
+                    if (c._progressTrack) c._progressTrack.style.display = "none";
+                    if (c._progressFill) c._progressFill.style.width = "0%";
+                }
+            }
+        }
+        const _progressApi = _resolveComfyApi();
+        const onProgress = (e) => {
+            const detail = e?.detail || {};
+            const value = detail.value ?? 0;
+            const max = detail.max ?? 1;
+            const pct = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
+            const activeCards = findCardsForRunningCombo();
+            if (activeCards.length === 0) return;
+            for (const axisCards of cards) {
+                for (const c of axisCards) {
+                    if (activeCards.includes(c)) {
+                        c._progressTrack.style.display = "block";
+                        c._progressFill.style.width = `${pct}%`;
+                    } else {
+                        c._progressTrack.style.display = "none";
+                        c._progressFill.style.width = "0%";
+                    }
+                }
+            }
+        };
+        const onExecDoneForProgress = () => clearAllProgress();
+        if (_progressApi && typeof _progressApi.addEventListener === "function") {
+            _progressApi.addEventListener("progress", onProgress);
+            _progressApi.addEventListener("execution_success", onExecDoneForProgress);
+            _progressApi.addEventListener("execution_error", onExecDoneForProgress);
+            _progressApi.addEventListener("execution_interrupted", onExecDoneForProgress);
+        }
+        // Tear down the listeners when the overlay closes.
+        const _origClose = close;
+        close = function(...args) {
+            if (_progressApi && typeof _progressApi.removeEventListener === "function") {
+                _progressApi.removeEventListener("progress", onProgress);
+                _progressApi.removeEventListener("execution_success", onExecDoneForProgress);
+                _progressApi.removeEventListener("execution_error", onExecDoneForProgress);
+                _progressApi.removeEventListener("execution_interrupted", onExecDoneForProgress);
+            }
+            return _origClose(...args);
+        };
+
         // Right: composite image + common data sections
         const compositeWrap = document.createElement("div");
         css(compositeWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
         const compositeImg = document.createElement("img");
+        // Aspect ratio is set per-combination in refreshRight (#231); start at
+        // a 1:1 placeholder while data loads.
         css(compositeImg, "width:256px;height:256px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
@@ -349,6 +486,16 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
         compositeWrap.appendChild(compositeLabel);
         compositeWrap.appendChild(compositeDimensions);
         right.appendChild(compositeWrap);
+        function applyAspectRatio(w, h) {
+            if (!w || !h) return;
+            const MAX = 256;
+            const ratio = w / h;
+            let cw, ch;
+            if (ratio >= 1) { cw = MAX; ch = Math.round(MAX / ratio); }
+            else { ch = MAX; cw = Math.round(MAX * ratio); }
+            compositeImg.style.width = `${cw}px`;
+            compositeImg.style.height = `${ch}px`;
+        }
 
         const dataWrap = document.createElement("div");
         css(dataWrap, "display:flex;flex-direction:column;gap:10px;");
@@ -388,6 +535,9 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             const data = await combinationData(model, sel);
             if (token !== refreshToken) return;
 
+            // Match the preview aspect ratio to the output's resolution (#231).
+            applyAspectRatio(data.width, data.height);
+
             // Composite (or generated output if we have one for this combination)
             const generated = lastImagesByCombo && lastImagesByCombo[key];
             if (generated) {
@@ -401,11 +551,12 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             }
             compositeDimensions.textContent = data.dimensions || "";
 
-            // Common fields go on the right (model preset, fixed stack flakes)
+            // Right panel: common data only (Model Preset + Flake Stack).
+            // Combo-axis data lives exclusively on the left (#228).
             dataWrap.replaceChildren();
             const s1 = section("Model", data.modelRows);
-            const s2 = section("LoRAs", data.loraRows);
-            const s3 = section("Prompts", data.promptRows);
+            const s2 = section("LoRAs", data.commonLoraRows);
+            const s3 = section("Prompts", data.commonPromptRows);
             for (const s of [s1, s2, s3]) if (s) dataWrap.appendChild(s);
             if (!s1 && !s2 && !s3) {
                 const empty = document.createElement("div");
@@ -414,41 +565,13 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
                 dataWrap.appendChild(empty);
             }
 
-            // Combo-specific fields on the left below grids
+            // Left panel below grids: combo-axis-specific data (all flake-axis
+            // selected entries, not just the first — that was the #228 bug).
             leftDataWrap.replaceChildren();
-            const comboFlake = sel[model.axes.findIndex(a => a.kind === "flake")];
-            if (comboFlake && comboFlake.entry) {
-                try {
-                    const d = await fetchFlake(comboFlake.entry.name);
-                    const label = comboFlake.entry.display_name || d.name || comboFlake.entry.name.split("/").pop() || comboFlake.entry.name;
-                    const choices = Object.values(comboFlake.entry.variant || {}).filter(Boolean);
-                    const vLabel = label + (choices.length ? ` (${choices.join(", ")})` : "");
-                    const comboLoraRows = [];
-                    if (Array.isArray(d.loras)) {
-                        d.loras.forEach((lr, idx) => {
-                            const name = lr.name || `LoRA #${idx + 1}`;
-                            const path = lr.path || lr.name || "";
-                            const s = comboFlake.entry.loras?.[idx] ?? lr.strength ?? 1;
-                            const label = `${name} [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`;
-                            comboLoraRows.push([label, path]);
-                        });
-                    }
-                    const comboPromptRows = [];
-                    const pos = ((d.prompt && d.prompt.positive) || "").trim();
-                    const neg = ((d.prompt && d.prompt.negative) || "").trim();
-                    if (pos) comboPromptRows.push([`${vLabel} · Positive`, pos]);
-                    if (neg) comboPromptRows.push([`${vLabel} · Negative`, neg]);
-                    for (const [g, c] of Object.entries(comboFlake.entry.variant || {})) {
-                        const v = d.variants?.[g]?.[c];
-                        if (v?.positive) comboPromptRows.push([`${vLabel} · ${g} · Positive`, v.positive]);
-                        if (v?.negative) comboPromptRows.push([`${vLabel} · ${g} · Negative`, v.negative]);
-                    }
-                    const cs1 = section("LoRAs", comboLoraRows);
-                    const cs2 = section("Prompts", comboPromptRows);
-                    if (cs1) leftDataWrap.appendChild(cs1);
-                    if (cs2) leftDataWrap.appendChild(cs2);
-                } catch { /* skip */ }
-            }
+            const cs1 = section("LoRAs", data.comboLoraRows);
+            const cs2 = section("Prompts", data.comboPromptRows);
+            if (cs1) leftDataWrap.appendChild(cs1);
+            if (cs2) leftDataWrap.appendChild(cs2);
         }
 
         refreshRight();
@@ -470,6 +593,16 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
         compositeWrap.appendChild(compositeLabel);
         compositeWrap.appendChild(compositeDimensions);
         singleWrap.appendChild(compositeWrap);
+        function applyAspectRatioSingle(w, h) {
+            if (!w || !h) return;
+            const MAX = 256;
+            const ratio = w / h;
+            let cw, ch;
+            if (ratio >= 1) { cw = MAX; ch = Math.round(MAX / ratio); }
+            else { ch = MAX; cw = Math.round(MAX * ratio); }
+            compositeImg.style.width = `${cw}px`;
+            compositeImg.style.height = `${ch}px`;
+        }
 
         const dataWrap = document.createElement("div");
         css(dataWrap, "display:flex;flex-direction:column;gap:10px;width:100%;");
@@ -517,6 +650,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             const key = model.axes.length === 0
                 ? ""
                 : combinationKeyFor(model, model.axes.map(() => 0));
+            applyAspectRatioSingle(data.width, data.height);
             const generated = lastImagesByCombo && (lastImagesByCombo[key] ?? lastImagesByCombo[""]);
             if (generated) {
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
@@ -529,10 +663,11 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             }
             compositeDimensions.textContent = data.dimensions || "";
 
+            // Single panel: no left/right split, so merge common+combo data.
             dataWrap.replaceChildren();
             const s1 = section("Model", data.modelRows);
-            const s2 = section("LoRAs", data.loraRows);
-            const s3 = section("Prompts", data.promptRows);
+            const s2 = section("LoRAs", [...data.commonLoraRows, ...data.comboLoraRows]);
+            const s3 = section("Prompts", [...data.commonPromptRows, ...data.comboPromptRows]);
             for (const s of [s1, s2, s3]) if (s) dataWrap.appendChild(s);
             if (!s1 && !s2 && !s3) {
                 const empty = document.createElement("div");

@@ -86,6 +86,13 @@ function _resolveComfyApi() {
 // right comboKey. Cleared between combos.
 let _currentBatchComboKey = null;
 
+// Active batch promptId → comboKey map, plus a live "running" pointer.
+// Exported so the Generation Data overlay can show per-combo progress (#230).
+const _activeBatch = { promptIds: [], comboKeys: [], runningPromptId: null };
+export function getActiveBatch() {
+    return _activeBatch;
+}
+
 function setupBatchTracking(combinations, comboKeys) {
     const comfyApi = _resolveComfyApi();
     if (!comfyApi || typeof comfyApi.addEventListener !== "function" || combinations.length === 0) {
@@ -110,6 +117,8 @@ function setupBatchTracking(combinations, comboKeys) {
             if (result?.prompt_id && _currentBatchComboKey !== null) {
                 promptIds.push(result.prompt_id);
                 comboKeys.push(_currentBatchComboKey);
+                _activeBatch.promptIds.push(result.prompt_id);
+                _activeBatch.comboKeys.push(_currentBatchComboKey);
             }
             return result;
         };
@@ -142,7 +151,10 @@ function setupBatchTracking(combinations, comboKeys) {
         const pid = getPromptIdFromEvent(e);
         if (!pid) return;
         const idx = promptIds.indexOf(pid);
-        if (idx >= 0) setComboHighlight(idx);
+        if (idx >= 0) {
+            setComboHighlight(idx);
+            _activeBatch.runningPromptId = pid;
+        }
     };
 
     const onExecDone = (e) => {
@@ -202,12 +214,13 @@ function setupBatchTracking(combinations, comboKeys) {
         comfyApi.removeEventListener("execution_error", onExecDone);
         comfyApi.removeEventListener("execution_interrupted", onExecDone);
         comfyApi.removeEventListener("executed", onExecuted);
-        // Restore api.queuePrompt — don't leave our patch installed past the
-        // batch lifetime, otherwise stale closures would accumulate.
         if (_origApiQueuePrompt) {
             comfyApi.queuePrompt = _origApiQueuePrompt;
         }
         _currentBatchComboKey = null;
+        _activeBatch.promptIds = [];
+        _activeBatch.comboKeys = [];
+        _activeBatch.runningPromptId = null;
         clearAllHighlights();
     };
 
