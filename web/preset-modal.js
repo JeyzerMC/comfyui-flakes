@@ -2,7 +2,7 @@ import { openOverlay } from "./modal.js";
 import {
     css, makeButton, makeComfyLabel, makeComfyInput,
     makeComfyDropdown, makeSearchableDropdown, makeComfySlider,
-    makeTextarea,
+    makeTextarea, makeHoverRemoveWrapper,
 } from "./utils.js";
 import { fetchPreset, fetchCheckpoints, fetchVaes, fetchEmbeddings } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
@@ -448,20 +448,67 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
             } catch { /* ignore */ }
         })();
 
+        // Side-by-side positive/negative prompts (mirrors #209 layout in flake-modal).
+        // Negative is hidden by default unless the preset already has one — then a
+        // "+ Negative" button reveals it on demand (per #225).
         const prompt = data.prompt || {};
-        content.appendChild(makeComfyLabel("Positive prompt"));
-        const posTA = makeTextarea(prompt.positive || "", "masterpiece, best quality", 3);
+        const promptState = {
+            positive: prompt.positive ?? "",
+            negative: prompt.negative != null && prompt.negative !== "" ? prompt.negative : null,
+        };
+        const promptRow = document.createElement("div");
+        css(promptRow, "display:flex;gap:8px;align-items:stretch;");
+        content.appendChild(promptRow);
+        const posCol = document.createElement("div");
+        css(posCol, "flex:0 0 70%;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        promptRow.appendChild(posCol);
+        const negCol = document.createElement("div");
+        css(negCol, "flex:0 0 30%;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        promptRow.appendChild(negCol);
+
+        const posLabel = makeComfyLabel("Positive prompt");
+        posCol.appendChild(posLabel);
+        const posTA = makeTextarea(promptState.positive, "masterpiece, best quality", 3);
         css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;min-height:78px;flex-shrink:0;");
         posTA.addEventListener("focus", () => posTA.style.borderColor = "#555");
         posTA.addEventListener("blur", () => posTA.style.borderColor = "#333");
-        content.appendChild(posTA);
+        posTA.addEventListener("input", () => { promptState.positive = posTA.value; });
+        // Positive prompt is required, but we still wrap it so the styling is
+        // consistent with the negative side; no remove button needed though, so
+        // hover-X helper isn't applied here — only on negative.
+        posCol.appendChild(posTA);
 
-        content.appendChild(makeComfyLabel("Negative prompt"));
-        const negTA = makeTextarea(prompt.negative || "", "worst quality, low quality", 3);
-        css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;min-height:78px;flex-shrink:0;");
-        negTA.addEventListener("focus", () => negTA.style.borderColor = "#555");
-        negTA.addEventListener("blur", () => negTA.style.borderColor = "#333");
-        content.appendChild(negTA);
+        function renderNegative() {
+            negCol.replaceChildren();
+            if (promptState.negative != null) {
+                negCol.appendChild(makeComfyLabel("Negative prompt"));
+                const negTA = makeTextarea(promptState.negative, "worst quality, low quality", 3);
+                css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;min-height:78px;flex-shrink:0;");
+                negTA.addEventListener("focus", () => negTA.style.borderColor = "#555");
+                negTA.addEventListener("blur", () => negTA.style.borderColor = "#333");
+                negTA.addEventListener("input", () => { promptState.negative = negTA.value; });
+                const negWrap = makeHoverRemoveWrapper(negTA, () => {
+                    promptState.negative = null;
+                    renderNegative();
+                }, "Remove negative prompt");
+                negCol.appendChild(negWrap);
+            } else {
+                // Hidden by default — show a "+ Negative" button.
+                negCol.appendChild(makeComfyLabel(" ")); // spacer label to align tops
+                const negBtn = document.createElement("button");
+                negBtn.type = "button";
+                negBtn.textContent = "+ Negative";
+                css(negBtn, "flex:1;min-height:78px;cursor:pointer;border-radius:6px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;user-select:none;");
+                negBtn.addEventListener("mouseenter", () => { negBtn.style.background = "#333"; });
+                negBtn.addEventListener("mouseleave", () => { negBtn.style.background = "#2a2a2a"; });
+                negBtn.addEventListener("click", () => {
+                    promptState.negative = "";
+                    renderNegative();
+                });
+                negCol.appendChild(negBtn);
+            }
+        }
+        renderNegative();
 
         if (mode === "edit") {
             const delBtn = makeButton("Delete");
@@ -501,7 +548,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                 scheduler: schedDD.element.value,
                 width: wSlider.getValue(),
                 height: hSlider.getValue(),
-                prompt: { positive: posTA.value, negative: negTA.value },
+                prompt: { positive: promptState.positive, negative: promptState.negative ?? "" },
                 embeddings: {
                     positive: posEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),
                     negative: negEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),

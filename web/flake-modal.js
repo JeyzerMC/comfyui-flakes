@@ -4,7 +4,7 @@ import {
     makeComfyDropdown, makePanelDropdown, makeSearchableDropdown,
     makeComfyNumberInput, makeComfyValueSlider, makeSmallValueSlider,
     makeTextarea, makeLabel, makeNumberInput,
-    familyFolder,
+    familyFolder, makeHoverRemoveWrapper,
 } from "./utils.js";
 import {
     getCoverUrl, getVariantImageUrl, uploadCover, fetchLoras, fetchCnModels, fetchCnTypes, fetchInputs,
@@ -736,13 +736,10 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         negCol.replaceChildren();
 
                         if (fieldState.prompt?.positive != null) {
-                            const posRow = document.createElement("div");
-                            css(posRow, "display:flex;gap:4px;align-items:flex-start;flex:1;");
                             const posTA = makeTextarea(fieldState.prompt.positive, "positive prompt", 3);
                             css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                             posTA.addEventListener("change", () => { fieldState.prompt.positive = posTA.value; });
-                            const rmPos = makeSmallButton("\u2715");
-                            rmPos.addEventListener("click", () => {
+                            const posWrap = makeHoverRemoveWrapper(posTA, () => {
                                 if (fieldState.prompt.negative == null) {
                                     fieldState.prompt = null;
                                     activeFields.splice(activeFields.indexOf("prompt"), 1);
@@ -751,10 +748,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     delete fieldState.prompt.positive;
                                     renderPrompts();
                                 }
-                            });
-                            posRow.appendChild(posTA);
-                            posRow.appendChild(rmPos);
-                            posCol.appendChild(posRow);
+                            }, "Remove positive prompt");
+                            posCol.appendChild(posWrap);
                         } else {
                             const posBtn = document.createElement("button");
                             posBtn.textContent = "+ Positive";
@@ -770,13 +765,10 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         }
 
                         if (fieldState.prompt?.negative != null) {
-                            const negRow = document.createElement("div");
-                            css(negRow, "display:flex;gap:4px;align-items:flex-start;flex:1;");
                             const negTA = makeTextarea(fieldState.prompt.negative, "negative prompt", 2);
                             css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                             negTA.addEventListener("change", () => { fieldState.prompt.negative = negTA.value; });
-                            const rmNeg = makeSmallButton("\u2715");
-                            rmNeg.addEventListener("click", () => {
+                            const negWrap = makeHoverRemoveWrapper(negTA, () => {
                                 if (fieldState.prompt.positive == null) {
                                     fieldState.prompt = null;
                                     activeFields.splice(activeFields.indexOf("prompt"), 1);
@@ -785,10 +777,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     delete fieldState.prompt.negative;
                                     renderPrompts();
                                 }
-                            });
-                            negRow.appendChild(negTA);
-                            negRow.appendChild(rmNeg);
-                            negCol.appendChild(negRow);
+                            }, "Remove negative prompt");
+                            negCol.appendChild(negWrap);
                         } else {
                             const negBtn = document.createElement("button");
                             negBtn.textContent = "+ Negative";
@@ -1275,8 +1265,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     choiceNegCol.replaceChildren();
 
                                     if (choice.positive != null) {
-                                        const posRow = document.createElement("div");
-                                        css(posRow, "display:flex;gap:4px;align-items:stretch;flex:1;min-height:0;");
                                         const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
                                         // Fill column height (the column matches the image height via align-items:stretch on bodyRow).
                                         css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;height:100%;flex:1;min-height:0;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
@@ -1284,14 +1272,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                             fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
                                             fieldState.variants[groupName][choiceName].positive = cPos.value;
                                         });
-                                        const rmPos = makeSmallButton("\u2715");
-                                        rmPos.addEventListener("click", () => {
+                                        const posWrap = makeHoverRemoveWrapper(cPos, () => {
                                             delete fieldState.variants[groupName][choiceName].positive;
                                             renderChoicePrompts();
-                                        });
-                                        posRow.appendChild(cPos);
-                                        posRow.appendChild(rmPos);
-                                        choicePosCol.appendChild(posRow);
+                                        }, "Remove positive prompt");
+                                        css(posWrap, "min-height:0;");
+                                        choicePosCol.appendChild(posWrap);
                                     } else {
                                         const posBtn = document.createElement("button");
                                         posBtn.textContent = "+ Positive";
@@ -1307,22 +1293,18 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     }
 
                                     if (choice.negative != null) {
-                                        const negRow = document.createElement("div");
-                                        css(negRow, "display:flex;gap:4px;align-items:stretch;flex:1;min-height:0;");
                                         const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
                                         css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;height:100%;flex:1;min-height:0;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                                         cNeg.addEventListener("change", () => {
                                             fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
                                             fieldState.variants[groupName][choiceName].negative = cNeg.value;
                                         });
-                                        const rmNeg = makeSmallButton("\u2715");
-                                        rmNeg.addEventListener("click", () => {
+                                        const negWrap = makeHoverRemoveWrapper(cNeg, () => {
                                             delete fieldState.variants[groupName][choiceName].negative;
                                             renderChoicePrompts();
-                                        });
-                                        negRow.appendChild(cNeg);
-                                        negRow.appendChild(rmNeg);
-                                        choiceNegCol.appendChild(negRow);
+                                        }, "Remove negative prompt");
+                                        css(negWrap, "min-height:0;");
+                                        choiceNegCol.appendChild(negWrap);
                                     } else {
                                         const negBtn = document.createElement("button");
                                         negBtn.textContent = "+ Negative";

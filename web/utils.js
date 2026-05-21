@@ -77,6 +77,38 @@ export function setWidgetHidden(widget, hide) {
     }
 }
 
+// Wrap a textarea (or any block element) in a relative container with an
+// absolute-positioned ✕ button anchored to the top-right corner. The button
+// is invisible by default and fades in when the container is hovered. Used
+// for the prompt-field remove affordance (#226) so the X consumes no layout
+// space when not hovered.
+export function makeHoverRemoveWrapper(child, onRemove, title = "Remove") {
+    const wrap = document.createElement("div");
+    css(wrap, "position:relative;flex:1;min-width:0;display:flex;flex-direction:column;");
+    wrap.appendChild(child);
+    const btn = document.createElement("button");
+    btn.textContent = "✕";
+    btn.title = title;
+    btn.type = "button";
+    css(btn, [
+        "position:absolute;top:4px;right:4px;z-index:2;",
+        "width:18px;height:18px;padding:0;border-radius:3px;",
+        "background:rgba(40,40,40,0.85);color:#bbb;",
+        "border:1px solid #444;cursor:pointer;font-size:11px;line-height:1;",
+        "display:flex;align-items:center;justify-content:center;",
+        "opacity:0;transition:opacity 0.12s ease;",
+    ].join(""));
+    wrap.addEventListener("mouseenter", () => { btn.style.opacity = "1"; });
+    wrap.addEventListener("mouseleave", () => { btn.style.opacity = "0"; });
+    btn.addEventListener("focus", () => { btn.style.opacity = "1"; });
+    btn.addEventListener("blur", () => { btn.style.opacity = "0"; });
+    btn.addEventListener("mouseenter", () => { btn.style.background = "rgba(90,40,40,0.95)"; btn.style.color = "#fdd"; });
+    btn.addEventListener("mouseleave", () => { btn.style.background = "rgba(40,40,40,0.85)"; btn.style.color = "#bbb"; });
+    btn.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); onRemove(); });
+    wrap.appendChild(btn);
+    return wrap;
+}
+
 // ---------- Zoom scaling for native <select> in DOM widgets ----------
 
 
