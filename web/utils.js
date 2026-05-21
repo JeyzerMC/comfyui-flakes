@@ -30,6 +30,53 @@ function _closeAllPanels() {
     for (const fn of _openPanels) fn();
 }
 
+// ---------- Widget show/hide ----------
+// Hide a node widget so it neither renders nor takes vertical space, but
+// stays in node.widgets so prompt serialization still includes its value
+// (necessary for widgets bound to REQUIRED Python inputs).
+//
+// Different ComfyUI frontend versions render widgets differently:
+//   - LiteGraph canvas-drawn COMBO/STRING widgets render via `widget.draw`.
+//   - The modern Vue/DOM frontend uses `widget.element` and/or `widget.inputEl`.
+//   - Both versions usually honor `widget.computeSize` returning [0, -4] to
+//     collapse the row height.
+// We stack every known signal so at least one is honored.
+const _widgetHideState = new WeakMap();
+export function setWidgetHidden(widget, hide) {
+    if (!widget) return;
+    let saved = _widgetHideState.get(widget);
+    if (hide) {
+        if (saved) return; // already hidden
+        saved = {
+            type: widget.type,
+            computeSize: widget.computeSize,
+            draw: widget.draw,
+            options: widget.options,
+            elementDisplay: widget.element ? widget.element.style.display : null,
+            inputElDisplay: widget.inputEl ? widget.inputEl.style.display : null,
+        };
+        _widgetHideState.set(widget, saved);
+        widget.computeSize = () => [0, -4];
+        widget.type = "hidden";
+        widget.hidden = true;
+        widget.draw = function () {};
+        widget.options = { ...(widget.options || {}), serialize: true };
+        if (widget.element) widget.element.style.display = "none";
+        if (widget.inputEl) widget.inputEl.style.display = "none";
+    } else {
+        if (!saved) return; // already visible
+        widget.type = saved.type;
+        widget.computeSize = saved.computeSize;
+        if (saved.draw) widget.draw = saved.draw;
+        else delete widget.draw;
+        if (saved.options) widget.options = saved.options;
+        widget.hidden = false;
+        if (widget.element && saved.elementDisplay !== null) widget.element.style.display = saved.elementDisplay;
+        if (widget.inputEl && saved.inputElDisplay !== null) widget.inputEl.style.display = saved.inputElDisplay;
+        _widgetHideState.delete(widget);
+    }
+}
+
 // ---------- Zoom scaling for native <select> in DOM widgets ----------
 
 

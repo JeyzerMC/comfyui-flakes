@@ -2,7 +2,7 @@ import {
     css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider, variantSuffix,
-    _registerOpenPanel, _unregisterOpenPanel,
+    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
@@ -287,15 +287,10 @@ export function setupFlakeComboWidget(node) {
         return familyWidget?.value || "SDXL/Base";
     }
 
-    // Hide model_family widget when flake_data input is connected, and infer
-    // the family value from the upstream node. The widget MUST remain in
-    // node.widgets so prompt serialization still includes model_family
-    // (it's REQUIRED on the Python side) and so widget index order stays
-    // stable for onConfigure to assign saved values correctly.
+    // Hide model_family widget when flake_data input is connected. See
+    // flake-stack.js for full rationale; uses setWidgetHidden() from utils.js
+    // which stacks every known hide signal across LiteGraph + modern frontends.
     let _familyHidden = false;
-    const _familyOrigComputeSize = familyWidget?.computeSize;
-    const _familyOrigType = familyWidget?.type;
-    const _familyOrigDraw = familyWidget?.draw;
     function _inferUpstreamFamily() {
         const flakeDataInput = node.inputs?.find(i => i.name === "flake_data");
         if (!flakeDataInput || flakeDataInput.link == null) return null;
@@ -316,18 +311,7 @@ export function setupFlakeComboWidget(node) {
         }
         if (shouldHide === _familyHidden) return;
         _familyHidden = shouldHide;
-        if (shouldHide) {
-            familyWidget.computeSize = () => [0, -4];
-            familyWidget.type = "hidden";
-            familyWidget.hidden = true;
-            familyWidget.draw = function () { /* hidden */ };
-        } else {
-            familyWidget.computeSize = _familyOrigComputeSize;
-            familyWidget.type = _familyOrigType || "combo";
-            familyWidget.hidden = false;
-            if (_familyOrigDraw) familyWidget.draw = _familyOrigDraw;
-            else delete familyWidget.draw;
-        }
+        setWidgetHidden(familyWidget, shouldHide);
         node.setDirtyCanvas(true, true);
     }
     const _familyPoll = setInterval(_updateFamilyVisibility, 200);

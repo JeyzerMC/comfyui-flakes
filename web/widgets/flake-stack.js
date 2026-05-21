@@ -2,7 +2,7 @@ import {
     css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider, variantSuffix,
-    _registerOpenPanel, _unregisterOpenPanel,
+    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, invalidateList } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
@@ -312,21 +312,11 @@ export function setupFlakeWidget(node) {
     }
 
     // Hide model_family widget when flake_data input is connected, and infer
-    // the family value from the upstream node.
-    //
-    // IMPORTANT: the widget MUST remain in node.widgets so that:
-    //   1. ComfyUI's prompt serialization still includes the model_family
-    //      value (model_family is a REQUIRED input on the Python side; if
-    //      we omit it the backend rejects the prompt).
-    //   2. The widget index order stays stable, so onConfigure can restore
-    //      saved widget values to the right widget (e.g. flakes_json).
-    // So we don't detach the widget — we make it invisible by overriding
-    // computeSize/draw and flagging type as hidden. We also save/restore
-    // the original draw/computeSize so a later reconnect undoes the hide.
+    // the family value from the upstream node. The widget stays in node.widgets
+    // so serialization still includes model_family (REQUIRED on the Python
+    // side). setWidgetHidden() in utils.js stacks every known hide signal
+    // (computeSize, type, hidden, draw, options, DOM element display).
     let _familyHidden = false;
-    const _familyOrigComputeSize = familyWidget?.computeSize;
-    const _familyOrigType = familyWidget?.type;
-    const _familyOrigDraw = familyWidget?.draw;
     function _inferUpstreamFamily() {
         const flakeDataInput = node.inputs?.find(i => i.name === "flake_data");
         if (!flakeDataInput || flakeDataInput.link == null) return null;
@@ -347,27 +337,12 @@ export function setupFlakeWidget(node) {
         }
         if (shouldHide === _familyHidden) return;
         _familyHidden = shouldHide;
-        if (shouldHide) {
-            familyWidget.computeSize = () => [0, -4];
-            familyWidget.type = "hidden";
-            familyWidget.hidden = true;
-            familyWidget.draw = function () { /* hidden */ };
-        } else {
-            familyWidget.computeSize = _familyOrigComputeSize;
-            familyWidget.type = _familyOrigType || "combo";
-            familyWidget.hidden = false;
-            if (_familyOrigDraw) familyWidget.draw = _familyOrigDraw;
-            else delete familyWidget.draw;
-        }
+        setWidgetHidden(familyWidget, shouldHide);
         node.setDirtyCanvas(true, true);
         // Note: we deliberately don't call node.setSize() here — doing so
-        // overrode user-resized node sizes on reload (regression flagged in
-        // the follow-up todo). LiteGraph repaints with the new computeSize
-        // on the next draw cycle, which is enough.
+        // overrode user-resized node sizes on reload.
     }
     const _familyPoll = setInterval(_updateFamilyVisibility, 200);
-    // Defer the initial sync until after onConfigure can restore link state,
-    // otherwise loaded workflows always see "disconnected" at setup time.
     setTimeout(_updateFamilyVisibility, 0);
 
     function readEntries() {
