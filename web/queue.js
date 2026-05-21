@@ -81,6 +81,11 @@ function _resolveComfyApi() {
     );
 }
 
+// Set by the outer batch loop before each combo's queue call; read by the
+// patched api.queuePrompt so the captured prompt_id can be tagged with the
+// right comboKey. Cleared between combos.
+let _currentBatchComboKey = null;
+
 function setupBatchTracking(combinations, comboKeys) {
     const comfyApi = _resolveComfyApi();
     if (!comfyApi || typeof comfyApi.addEventListener !== "function" || combinations.length === 0) {
@@ -93,6 +98,22 @@ function setupBatchTracking(combinations, comboKeys) {
 
     const promptIds = []; // insertion order = combo index
     let completedCount = 0;
+
+    // Patch api.queuePrompt for the duration of this batch so we capture the
+    // returned prompt_id. (app.queuePrompt in current frontend versions
+    // returns void; the low-level api.queuePrompt still returns the
+    // {prompt_id, number, node_errors} REST response.)
+    const _origApiQueuePrompt = comfyApi.queuePrompt?.bind(comfyApi);
+    if (_origApiQueuePrompt) {
+        comfyApi.queuePrompt = async function(...args) {
+            const result = await _origApiQueuePrompt(...args);
+            if (result?.prompt_id && _currentBatchComboKey !== null) {
+                promptIds.push(result.prompt_id);
+                comboKeys.push(_currentBatchComboKey);
+            }
+            return result;
+        };
+    }
 
     function setComboHighlight(comboIndex) {
         const combination = combinations[comboIndex];
@@ -173,6 +194,12 @@ function setupBatchTracking(combinations, comboKeys) {
         comfyApi.removeEventListener("execution_error", onExecDone);
         comfyApi.removeEventListener("execution_interrupted", onExecDone);
         comfyApi.removeEventListener("executed", onExecuted);
+        // Restore api.queuePrompt — don't leave our patch installed past the
+        // batch lifetime, otherwise stale closures would accumulate.
+        if (_origApiQueuePrompt) {
+            comfyApi.queuePrompt = _origApiQueuePrompt;
+        }
+        _currentBatchComboKey = null;
         clearAllHighlights();
     };
 
@@ -275,15 +302,14 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 .map(([id, idx]) => `${id}:${idx}`)
                 .join("|");
 
-            const result = await _originalQueuePrompt.call(this, number, 1);
-            if (tracker) {
-                if (result?.prompt_id) {
-                    tracker.promptIds.push(result.prompt_id);
-                    comboKeys.push(comboKey);
-                } else {
-                    // eslint-disable-next-line no-console
-                    console.warn("[flakes] queuePrompt result missing prompt_id; combo highlight may not work for this batch.");
-                }
+            // Tell our patched api.queuePrompt which comboKey to attach to the
+            // upcoming prompt_id. app.queuePrompt in modern frontends returns
+            // void; the prompt_id is captured inside the patch instead.
+            if (tracker) _currentBatchComboKey = comboKey;
+            try {
+                await _originalQueuePrompt.call(this, number, 1);
+            } finally {
+                if (tracker) _currentBatchComboKey = null;
             }
         }
     } finally {
