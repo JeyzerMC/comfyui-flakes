@@ -1061,18 +1061,36 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             headerRow.appendChild(removeGroupBtn);
                             groupCard.appendChild(headerRow);
 
-                            for (const choiceName of Object.keys(fieldState.variants[groupName] || {})) {
+                            let dragChoiceName = null;
+                            const choiceNames = Object.keys(fieldState.variants[groupName] || {});
+                            for (const choiceName of choiceNames) {
+                                const choice = fieldState.variants[groupName][choiceName] || {};
                                 const choiceCard = document.createElement("div");
                                 css(choiceCard, "background:#1a1a1a;padding:8px;border-radius:4px;display:flex;flex-direction:column;gap:4px;");
 
+                                // Header: drag handle + name (50%) + stem (50%)
                                 const cRow = document.createElement("div");
                                 css(cRow, "display:flex;gap:4px;align-items:center;");
+
+                                const dragHandle = document.createElement("span");
+                                dragHandle.textContent = "\u2630";
+                                css(dragHandle, "cursor:grab;color:#666;font-size:12px;padding:0 4px;user-select:none;");
+                                dragHandle.draggable = true;
+                                dragHandle.addEventListener("dragstart", (e) => {
+                                    dragChoiceName = choiceName;
+                                    choiceCard.style.opacity = "0.4";
+                                    e.dataTransfer.effectAllowed = "move";
+                                });
+                                dragHandle.addEventListener("dragend", () => {
+                                    dragChoiceName = null;
+                                    choiceCard.style.opacity = "";
+                                    for (const ind of optsBox.querySelectorAll(".choice-drop-indicator")) ind.remove();
+                                });
+                                cRow.appendChild(dragHandle);
+
                                 const cNameInput = makeComfyInput(choiceName, "choice name");
                                 cNameInput.style.flex = "1 1 50%";
                                 cNameInput.style.minWidth = "0";
-                                const upBtn = makeSmallButton("\u2191");
-                                const downBtn = makeSmallButton("\u2193");
-                                const removeChoiceBtn = makeSmallButton("\u2715");
                                 cNameInput.addEventListener("change", () => {
                                     const newCName = cNameInput.value.trim();
                                     if (!newCName || newCName === choiceName) return;
@@ -1084,41 +1102,9 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     fieldState.variants[groupName] = newObj;
                                     renderOpts();
                                 });
-                                upBtn.addEventListener("click", () => {
-                                    const keys = Object.keys(fieldState.variants[groupName]);
-                                    const idx = keys.indexOf(choiceName);
-                                    if (idx > 0) {
-                                        const newObj = {};
-                                        for (let i = 0; i < keys.length; i++) {
-                                            if (i === idx - 1) newObj[keys[idx]] = fieldState.variants[groupName][keys[idx]];
-                                            if (i === idx) newObj[keys[idx - 1]] = fieldState.variants[groupName][keys[idx - 1]];
-                                            if (i !== idx - 1 && i !== idx) newObj[keys[i]] = fieldState.variants[groupName][keys[i]];
-                                        }
-                                        fieldState.variants[groupName] = newObj;
-                                        renderOpts();
-                                    }
-                                });
-                                downBtn.addEventListener("click", () => {
-                                    const keys = Object.keys(fieldState.variants[groupName]);
-                                    const idx = keys.indexOf(choiceName);
-                                    if (idx >= 0 && idx < keys.length - 1) {
-                                        const newObj = {};
-                                        for (let i = 0; i < keys.length; i++) {
-                                            if (i === idx) newObj[keys[idx + 1]] = fieldState.variants[groupName][keys[idx + 1]];
-                                            if (i === idx + 1) newObj[keys[idx]] = fieldState.variants[groupName][keys[idx]];
-                                            if (i !== idx && i !== idx + 1) newObj[keys[i]] = fieldState.variants[groupName][keys[i]];
-                                        }
-                                        fieldState.variants[groupName] = newObj;
-                                        renderOpts();
-                                    }
-                                });
-                                removeChoiceBtn.addEventListener("click", () => {
-                                    delete fieldState.variants[groupName][choiceName];
-                                    renderOpts();
-                                });
-                                const choice = fieldState.variants[groupName][choiceName] || {};
+                                cRow.appendChild(cNameInput);
 
-                                // Output stem lives on the same row as the choice name (per #212).
+                                // Output stem on the same row (per #212).
                                 const stemInput = makeComfyInput(choice.output_stem ?? "", "output stem");
                                 stemInput.style.flex = "1 1 50%";
                                 stemInput.style.minWidth = "0";
@@ -1127,23 +1113,58 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
                                     fieldState.variants[groupName][choiceName].output_stem = stemInput.value || null;
                                 });
-
-                                cRow.appendChild(cNameInput);
                                 cRow.appendChild(stemInput);
-                                cRow.appendChild(upBtn);
-                                cRow.appendChild(downBtn);
-                                cRow.appendChild(removeChoiceBtn);
                                 choiceCard.appendChild(cRow);
 
-                                // Main body: left (prompts) | right (image)
+                                // Drop indicator wiring on the card itself.
+                                choiceCard.addEventListener("dragover", (e) => {
+                                    if (dragChoiceName === null || dragChoiceName === choiceName) return;
+                                    e.preventDefault();
+                                    e.dataTransfer.dropEffect = "move";
+                                    for (const ind of optsBox.querySelectorAll(".choice-drop-indicator")) ind.remove();
+                                    const indicator = document.createElement("div");
+                                    indicator.className = "choice-drop-indicator";
+                                    css(indicator, "height:2px;background:#2a6acf;border-radius:1px;margin:2px 0;");
+                                    const rect = choiceCard.getBoundingClientRect();
+                                    const above = (e.clientY - rect.top) < rect.height / 2;
+                                    choiceCard.parentNode.insertBefore(indicator, above ? choiceCard : choiceCard.nextSibling);
+                                });
+                                choiceCard.addEventListener("dragleave", (e) => {
+                                    const rect = choiceCard.getBoundingClientRect();
+                                    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+                                        for (const ind of optsBox.querySelectorAll(".choice-drop-indicator")) ind.remove();
+                                    }
+                                });
+                                choiceCard.addEventListener("drop", (e) => {
+                                    e.preventDefault();
+                                    for (const ind of optsBox.querySelectorAll(".choice-drop-indicator")) ind.remove();
+                                    if (dragChoiceName === null || dragChoiceName === choiceName) return;
+                                    const rect = choiceCard.getBoundingClientRect();
+                                    const above = (e.clientY - rect.top) < rect.height / 2;
+                                    const keys = Object.keys(fieldState.variants[groupName]);
+                                    const srcIdx = keys.indexOf(dragChoiceName);
+                                    let dstIdx = keys.indexOf(choiceName);
+                                    if (srcIdx < 0 || dstIdx < 0) return;
+                                    keys.splice(srcIdx, 1);
+                                    if (srcIdx < dstIdx) dstIdx--;
+                                    if (!above) dstIdx++;
+                                    keys.splice(dstIdx, 0, dragChoiceName);
+                                    const newObj = {};
+                                    for (const k of keys) newObj[k] = fieldState.variants[groupName][k];
+                                    fieldState.variants[groupName] = newObj;
+                                    dragChoiceName = null;
+                                    renderOpts();
+                                });
+
+                                // Body: left (prompts, fills height) | right (image + remove + label)
                                 const bodyRow = document.createElement("div");
-                                css(bodyRow, "display:flex;gap:10px;align-items:flex-start;");
+                                css(bodyRow, "display:flex;gap:10px;align-items:stretch;");
 
                                 const leftCol = document.createElement("div");
                                 css(leftCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;");
 
                                 const promptsWrap = document.createElement("div");
-                                css(promptsWrap, "display:flex;gap:8px;align-items:stretch;");
+                                css(promptsWrap, "display:flex;gap:8px;align-items:stretch;flex:1;");
                                 leftCol.appendChild(promptsWrap);
 
                                 const choicePosCol = document.createElement("div");
@@ -1156,6 +1177,13 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
                                 const rightCol = document.createElement("div");
                                 css(rightCol, "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;");
+
+                                const removeChoiceBtn = makeSmallButton("\u2715");
+                                removeChoiceBtn.title = "Remove this variant choice";
+                                removeChoiceBtn.addEventListener("click", () => {
+                                    delete fieldState.variants[groupName][choiceName];
+                                    renderOpts();
+                                });
 
                                 const imgBox = document.createElement("div");
                                 css(imgBox, "width:140px;height:140px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
@@ -1227,8 +1255,15 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     refreshChoiceImage();
                                 });
                                 rightCol.appendChild(imgBox);
-                                rightCol.appendChild(imgPathLabel);
-                                rightCol.appendChild(clearImgBtn);
+                                // Bottom row under the image: remove-choice ✕, the "image" path label,
+                                // and the clear-image ✕. Per #224 the remove-choice button lives here.
+                                const imgBottomRow = document.createElement("div");
+                                css(imgBottomRow, "display:flex;gap:6px;align-items:center;width:140px;");
+                                imgBottomRow.appendChild(removeChoiceBtn);
+                                css(imgPathLabel, "flex:1;min-width:0;font-size:9px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;");
+                                imgBottomRow.appendChild(imgPathLabel);
+                                imgBottomRow.appendChild(clearImgBtn);
+                                rightCol.appendChild(imgBottomRow);
                                 refreshChoiceImage();
 
                                 bodyRow.appendChild(leftCol);
@@ -1241,9 +1276,10 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
                                     if (choice.positive != null) {
                                         const posRow = document.createElement("div");
-                                        css(posRow, "display:flex;gap:4px;align-items:flex-start;flex:1;");
+                                        css(posRow, "display:flex;gap:4px;align-items:stretch;flex:1;min-height:0;");
                                         const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
-                                        css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                                        // Fill column height (the column matches the image height via align-items:stretch on bodyRow).
+                                        css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;height:100%;flex:1;min-height:0;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                                         cPos.addEventListener("change", () => {
                                             fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
                                             fieldState.variants[groupName][choiceName].positive = cPos.value;
@@ -1272,9 +1308,9 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
                                     if (choice.negative != null) {
                                         const negRow = document.createElement("div");
-                                        css(negRow, "display:flex;gap:4px;align-items:flex-start;flex:1;");
+                                        css(negRow, "display:flex;gap:4px;align-items:stretch;flex:1;min-height:0;");
                                         const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
-                                        css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                                        css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;height:100%;flex:1;min-height:0;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                                         cNeg.addEventListener("change", () => {
                                             fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
                                             fieldState.variants[groupName][choiceName].negative = cNeg.value;
