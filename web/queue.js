@@ -151,6 +151,14 @@ function setupBatchTracking(combinations, comboKeys) {
         const idx = promptIds.indexOf(pid);
         if (idx < 0) return;
         completedCount++;
+        // Surface progress to the Flake Generate node label "[i/N] done" (#227).
+        for (const n of app.graph.nodes) {
+            if (n.type === "FlakeGenerate") {
+                n._batch_completed_count = completedCount;
+                n._batch_total_count = combinations.length;
+                n._batch_progress_render?.();
+            }
+        }
         maybeFinish();
     };
 
@@ -282,6 +290,13 @@ app.queuePrompt = async function(number, batchCount = 1) {
     const tracker = setupBatchTracking(combinations, comboKeys);
     if (tracker) {
         _batchCleanup = tracker.cleanup;
+    }
+    // Initialize progress counters on every FlakeGenerate node so the "[i/N] done"
+    // label resets to "[0/N]" at batch start (#227).
+    for (const n of flakeGenerateNodes) {
+        n._batch_completed_count = 0;
+        n._batch_total_count = combinations.length;
+        n._batch_progress_render?.();
     }
 
     try {

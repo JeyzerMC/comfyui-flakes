@@ -10,26 +10,48 @@ export function setupFlakeGenerateWidget(node) {
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:4px;padding:4px 6px;font-size:12px;color:#ddd;");
 
-    // ── Jobs label + Generation Data button (below the Seed section) ──
+    // ── Jobs label (+ done label) + Generation Data button (below the Seed section) ──
     const topRow = document.createElement("div");
     css(topRow, "display:flex;align-items:center;gap:8px;font-size:12px;color:#ddd;min-height:36px;");
 
+    const jobsCol = document.createElement("div");
+    css(jobsCol, "display:flex;flex-direction:column;gap:1px;flex:1;min-width:0;");
+    topRow.appendChild(jobsCol);
+
     const jobsLabel = document.createElement("span");
-    css(jobsLabel, "font-size:11px;font-weight:600;color:" + ACCENT + ";flex-shrink:0;");
-    topRow.appendChild(jobsLabel);
+    css(jobsLabel, "font-size:11px;font-weight:600;color:" + ACCENT + ";");
+    jobsCol.appendChild(jobsLabel);
+
+    const doneLabel = document.createElement("span");
+    css(doneLabel, "font-size:10px;color:#888;");
+    jobsCol.appendChild(doneLabel);
 
     let lastJobCount = -1;
     function refreshJobCount() {
         const n = computeJobCount(node.graph);
-        if (n === lastJobCount) return;
-        lastJobCount = n;
-        jobsLabel.textContent = `Jobs: ${n}`;
+        if (n !== lastJobCount) {
+            lastJobCount = n;
+            jobsLabel.textContent = `Total jobs: ${n}`;
+        }
+    }
+    function renderBatchProgress() {
+        const total = node._batch_total_count ?? 0;
+        const done = node._batch_completed_count ?? 0;
+        if (total > 0) {
+            doneLabel.textContent = `[${done}/${total}] done`;
+            doneLabel.style.display = "block";
+        } else {
+            doneLabel.style.display = "none";
+        }
     }
     refreshJobCount();
-    const jobsPoll = setInterval(refreshJobCount, 200);
+    renderBatchProgress();
+    node._batch_progress_render = renderBatchProgress;
+    const jobsPoll = setInterval(() => { refreshJobCount(); renderBatchProgress(); }, 200);
 
+    // Generation Data button — width fits content (no flex:1) per #227.
     const genDataBtn = document.createElement("div");
-    css(genDataBtn, `flex:1;background:#222;border:1px solid ${ACCENT}44;border-radius:8px;padding:8px 6px;cursor:pointer;transition:border-color 0.15s,background 0.15s;display:flex;align-items:center;justify-content:center;gap:6px;min-height:30px;box-sizing:border-box;`);
+    css(genDataBtn, `flex:0 0 auto;background:#222;border:1px solid ${ACCENT}44;border-radius:8px;padding:6px 10px;cursor:pointer;transition:border-color 0.15s,background 0.15s;display:inline-flex;align-items:center;gap:6px;min-height:30px;box-sizing:border-box;white-space:nowrap;`);
     const gdIcon = document.createElement("span");
     gdIcon.textContent = "📊";
     gdIcon.style.fontSize = "14px";
