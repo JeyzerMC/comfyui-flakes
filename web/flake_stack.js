@@ -25,6 +25,28 @@ function setDefaultSize(node, minWidth) {
     }
 }
 
+// Recover from workflows saved by the broken v0.1.x where model_family was
+// detached from node.widgets when flake_data was connected — that shifted
+// the widget value order so onConfigure assigned `flakes_json` (a JSON
+// string) into model_family and left flakes_json at its default "[]".
+//
+// Heuristic: if model_family looks like JSON ("[" or "{") and flakes_json
+// is empty/default, swap them. Same for `preset` on the model nodes (the
+// preset is stored as a yaml-relative name, never starts with [).
+function _recoverShiftedWidgets(node, otherWidgetName) {
+    if (!node.widgets) return;
+    const family = node.widgets.find(w => w.name === "model_family");
+    const other = node.widgets.find(w => w.name === otherWidgetName);
+    if (!family || !other) return;
+    const fv = String(family.value || "");
+    if (!fv.startsWith("[") && !fv.startsWith("{")) return;
+    const ov = String(other.value || "");
+    const otherIsEmpty = ov === "" || ov === "[]" || ov === "Select a preset..." || ov === "No model preset is selected";
+    if (!otherIsEmpty) return;
+    other.value = fv;
+    family.value = "SDXL/Base";
+}
+
 app.registerExtension({
     name: "comfyui-flakes.FlakeStack",
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -45,6 +67,7 @@ app.registerExtension({
                 const r = origOnConfigure?.apply(this, arguments);
                 this._configured = true;
                 removeHiddenInputs(this, ["model_family", "flakes_json"]);
+                _recoverShiftedWidgets(this, "flakes_json");
                 this._flakes_render?.();
                 return r;
             };
@@ -87,6 +110,7 @@ app.registerExtension({
                 const r = origOnConfigure?.apply(this, arguments);
                 this._configured = true;
                 removeHiddenInputs(this, ["model_family", "flakes_json"]);
+                _recoverShiftedWidgets(this, "flakes_json");
                 this._combo_render?.();
                 return r;
             };

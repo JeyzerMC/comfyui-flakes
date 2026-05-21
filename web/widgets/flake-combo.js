@@ -288,11 +288,14 @@ export function setupFlakeComboWidget(node) {
     }
 
     // Hide model_family widget when flake_data input is connected, and infer
-    // the family value from the upstream node. We detach the widget entirely
-    // from node.widgets so it cannot be rendered by either LiteGraph or the
-    // modern ComfyUI frontend (setting type/hidden alone is not enough on
-    // recent frontend versions).
+    // the family value from the upstream node. The widget MUST remain in
+    // node.widgets so prompt serialization still includes model_family
+    // (it's REQUIRED on the Python side) and so widget index order stays
+    // stable for onConfigure to assign saved values correctly.
     let _familyHidden = false;
+    const _familyOrigComputeSize = familyWidget?.computeSize;
+    const _familyOrigType = familyWidget?.type;
+    const _familyOrigDraw = familyWidget?.draw;
     function _inferUpstreamFamily() {
         const flakeDataInput = node.inputs?.find(i => i.name === "flake_data");
         if (!flakeDataInput || flakeDataInput.link == null) return null;
@@ -314,22 +317,21 @@ export function setupFlakeComboWidget(node) {
         if (shouldHide === _familyHidden) return;
         _familyHidden = shouldHide;
         if (shouldHide) {
-            const idx = node.widgets?.indexOf(familyWidget) ?? -1;
-            if (idx >= 0) {
-                node._familyWidgetSavedIndex = idx;
-                node.widgets.splice(idx, 1);
-            }
+            familyWidget.computeSize = () => [0, -4];
+            familyWidget.type = "hidden";
+            familyWidget.hidden = true;
+            familyWidget.draw = function () { /* hidden */ };
         } else {
-            if (!node.widgets.includes(familyWidget)) {
-                const idx = Math.min(node._familyWidgetSavedIndex ?? 0, node.widgets.length);
-                node.widgets.splice(idx, 0, familyWidget);
-            }
+            familyWidget.computeSize = _familyOrigComputeSize;
+            familyWidget.type = _familyOrigType || "combo";
+            familyWidget.hidden = false;
+            if (_familyOrigDraw) familyWidget.draw = _familyOrigDraw;
+            else delete familyWidget.draw;
         }
-        node.setSize(node.computeSize());
         node.setDirtyCanvas(true, true);
     }
     const _familyPoll = setInterval(_updateFamilyVisibility, 200);
-    _updateFamilyVisibility();
+    setTimeout(_updateFamilyVisibility, 0);
 
     if (!node.properties) node.properties = {};
     if (!node.properties._combo_flakes) node.properties._combo_flakes = [];
