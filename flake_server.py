@@ -305,6 +305,23 @@ async def _get_variant_image(request: web.Request) -> web.Response:
     return web.Response(body=data, content_type=mime)
 
 
+@routes.delete("/flakes/cover")
+async def _delete_cover_route(request: web.Request) -> web.Response:
+    """Delete the cover image file alongside a flake's yaml. Used by the
+    modal's hover-X remove button (#239)."""
+    name = request.query.get("name", "").strip()
+    if not name:
+        return _bad_request("missing 'name' query param")
+    try:
+        flake_io._delete_cover(name)
+    except FileNotFoundError:
+        pass  # already gone — idempotent
+    except Exception as exc:
+        logging.exception("[flakes] failed to delete cover for %s", name)
+        return _server_error(str(exc))
+    return web.json_response({"ok": True, "name": name})
+
+
 @routes.post("/flakes/cover")
 async def _upload_cover(request: web.Request) -> web.Response:
     reader = await request.multipart()

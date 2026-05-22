@@ -262,7 +262,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             css(coverWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
 
             const coverBox = document.createElement("div");
-            css(coverBox, "width:160px;height:200px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
+            css(coverBox, "position:relative;width:160px;height:200px;border-radius:6px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
 
             coverImg = document.createElement("img");
             css(coverImg, "width:100%;height:100%;object-fit:cover;display:none;");
@@ -272,6 +272,34 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             coverLabel.textContent = "image";
             css(coverLabel, "font-size:10px;color:#666;pointer-events:none;");
             coverBox.appendChild(coverLabel);
+
+            // Hover-only ✕ to remove the cover image (#239). Only visible when
+            // a cover is set AND the user is hovering the box.
+            const coverRemoveBtn = document.createElement("button");
+            coverRemoveBtn.type = "button";
+            coverRemoveBtn.textContent = "✕";
+            coverRemoveBtn.title = "Remove cover image";
+            css(coverRemoveBtn, "position:absolute;top:6px;right:6px;z-index:2;width:22px;height:22px;padding:0;border-radius:4px;background:rgba(20,20,20,0.85);color:#ddd;border:1px solid #555;cursor:pointer;font-size:13px;line-height:1;display:none;align-items:center;justify-content:center;opacity:0;transition:opacity 0.12s ease;");
+            coverBox.appendChild(coverRemoveBtn);
+            coverBox.addEventListener("mouseenter", () => {
+                if (coverImg.style.display === "block") coverRemoveBtn.style.opacity = "1";
+            });
+            coverBox.addEventListener("mouseleave", () => { coverRemoveBtn.style.opacity = "0"; });
+            coverRemoveBtn.addEventListener("click", async (e) => {
+                e.stopPropagation();
+                // Reset all cover state: any pending upload, the stored source, and the preview.
+                coverFile = null;
+                coverSourcePath = null;
+                updateCoverPreview(null);
+                // In edit mode, also delete the file on disk so it doesn't
+                // re-appear on next open (the cover image lives next to the
+                // yaml, not in the yaml itself).
+                if (mode === "edit" && name) {
+                    try {
+                        await fetch(`/flakes/cover?name=${encodeURIComponent(name)}`, { method: "DELETE" });
+                    } catch { /* ignore — preview is already cleared */ }
+                }
+            });
 
             const coverInput = document.createElement("input");
             coverInput.type = "file";
@@ -283,9 +311,12 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     coverImg.src = src;
                     coverImg.style.display = "block";
                     coverLabel.style.display = "none";
+                    coverRemoveBtn.style.display = "flex";
                 } else {
                     coverImg.style.display = "none";
                     coverLabel.style.display = "block";
+                    coverRemoveBtn.style.display = "none";
+                    coverRemoveBtn.style.opacity = "0";
                 }
             }
 
