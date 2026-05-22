@@ -459,6 +459,20 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             _progressApi.addEventListener("execution_error", onExecDoneForProgress);
             _progressApi.addEventListener("execution_interrupted", onExecDoneForProgress);
         }
+        // Late-open seed (#241): if a batch is already in flight when the
+        // overlay opens, immediately mark the running combo's grid cards so the
+        // progress bar appears at "indeterminate / 0%" even before the next
+        // progress event arrives. Once a progress event fires, onProgress
+        // refines the width.
+        (function seedFromActiveBatch() {
+            const batch = getActiveBatch();
+            if (!batch.runningPromptId) return;
+            const activeCards = findCardsForRunningCombo();
+            for (const c of activeCards) {
+                if (c._progressTrack) c._progressTrack.style.display = "block";
+                // Leave width at 0% — onProgress will fill it in.
+            }
+        })();
         // Tear down the listeners when the overlay closes.
         const _origClose = close;
         close = function(...args) {

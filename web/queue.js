@@ -106,6 +106,54 @@ function setupBatchTracking(combinations, comboKeys) {
     const promptIds = []; // insertion order = combo index
     let completedCount = 0;
 
+    // Pending event buffer: websocket events for a prompt_id can arrive BEFORE
+    // the REST response that gives us that prompt_id (different transport
+    // channels). Buffer events we don't yet know about and replay them when
+    // the patched api.queuePrompt finally registers the id. Without this, the
+    // first generation in a batch consistently lost its execution_start /
+    // executed events (#241).
+    const pendingByPid = new Map(); // promptId -> [{type, e}]
+    function applyEventForKnownPid(type, e, pid) {
+        if (type === "execution_start") {
+            const idx = promptIds.indexOf(pid);
+            if (idx >= 0) { setComboHighlight(idx); _activeBatch.runningPromptId = pid; }
+        } else if (type === "execution_success" || type === "execution_error" || type === "execution_interrupted") {
+            const idx = promptIds.indexOf(pid);
+            if (idx < 0) return;
+            completedCount++;
+            for (const n of app.graph.nodes) {
+                if (n.type === "FlakeGenerate") {
+                    n._batch_completed_count = completedCount;
+                    n._batch_total_count = combinations.length;
+                    n._batch_progress_render?.();
+                }
+            }
+            maybeFinish();
+        } else if (type === "executed") {
+            handleExecuted(e);
+        } else if (type === "progress") {
+            // Progress events are handled by the overlay subscription; nothing
+            // to replay batch-side. We only buffer the lifecycle events.
+        }
+    }
+    function bufferOrApply(type, e) {
+        const pid = type === "executed" ? (typeof e?.detail === "string" ? null : e?.detail?.prompt_id) : getPromptIdFromEvent(e);
+        if (!pid) return;
+        if (promptIds.includes(pid)) {
+            applyEventForKnownPid(type, e, pid);
+        } else {
+            let arr = pendingByPid.get(pid);
+            if (!arr) { arr = []; pendingByPid.set(pid, arr); }
+            arr.push({ type, e });
+        }
+    }
+    function flushPendingFor(pid) {
+        const arr = pendingByPid.get(pid);
+        if (!arr) return;
+        pendingByPid.delete(pid);
+        for (const { type, e } of arr) applyEventForKnownPid(type, e, pid);
+    }
+
     // Patch api.queuePrompt for the duration of this batch so we capture the
     // returned prompt_id. (app.queuePrompt in current frontend versions
     // returns void; the low-level api.queuePrompt still returns the
@@ -113,12 +161,17 @@ function setupBatchTracking(combinations, comboKeys) {
     const _origApiQueuePrompt = comfyApi.queuePrompt?.bind(comfyApi);
     if (_origApiQueuePrompt) {
         comfyApi.queuePrompt = async function(...args) {
+            // Snapshot the combo key now — _currentBatchComboKey may already be
+            // cleared by the time the await below resolves.
+            const comboKeyForThisCall = _currentBatchComboKey;
             const result = await _origApiQueuePrompt(...args);
-            if (result?.prompt_id && _currentBatchComboKey !== null) {
+            if (result?.prompt_id && comboKeyForThisCall !== null) {
                 promptIds.push(result.prompt_id);
-                comboKeys.push(_currentBatchComboKey);
+                comboKeys.push(comboKeyForThisCall);
                 _activeBatch.promptIds.push(result.prompt_id);
-                _activeBatch.comboKeys.push(_currentBatchComboKey);
+                _activeBatch.comboKeys.push(comboKeyForThisCall);
+                // Replay any websocket events that arrived before this push.
+                flushPendingFor(result.prompt_id);
             }
             return result;
         };
@@ -147,38 +200,9 @@ function setupBatchTracking(combinations, comboKeys) {
         }
     }
 
-    const onExecStart = (e) => {
-        const pid = getPromptIdFromEvent(e);
-        if (!pid) return;
-        const idx = promptIds.indexOf(pid);
-        if (idx >= 0) {
-            setComboHighlight(idx);
-            _activeBatch.runningPromptId = pid;
-        }
-    };
-
-    const onExecDone = (e) => {
-        const pid = getPromptIdFromEvent(e);
-        if (!pid) return;
-        const idx = promptIds.indexOf(pid);
-        if (idx < 0) return;
-        completedCount++;
-        // Surface progress to the Flake Generate node label "[i/N] done" (#227).
-        for (const n of app.graph.nodes) {
-            if (n.type === "FlakeGenerate") {
-                n._batch_completed_count = completedCount;
-                n._batch_total_count = combinations.length;
-                n._batch_progress_render?.();
-            }
-        }
-        maybeFinish();
-    };
-
-    // Stamp generated images onto the right combo key on the right FlakeGenerate
-    // node by reading the prompt_id from the `executed` event. Without this,
-    // _pending_combination_key races between successive prompts in a batch and
-    // every prompt's output overwrites the same (latest) combo slot.
-    const onExecuted = (e) => {
+    // The `executed` event carries the per-node output payload. Used to stamp
+    // generated images onto FlakeGenerate nodes keyed by their comboKey.
+    function handleExecuted(e) {
         const detail = e?.detail || {};
         const pid = typeof detail === "string" ? null : detail.prompt_id;
         const output = detail?.output;
@@ -189,9 +213,6 @@ function setupBatchTracking(combinations, comboKeys) {
         const comboKey = (comboKeys && comboKeys[idx]) ?? "";
         const images = output.flake_images;
         if (!Array.isArray(images) || images.length === 0) return;
-        // Pin the image to the FlakeGenerate node that produced it. If we have
-        // a node id from the event, prefer that; otherwise stamp every
-        // FlakeGenerate node (single-FG workflows are by far the common case).
         const candidates = nodeId
             ? [app.graph.getNodeById(nodeId)].filter(n => n && n.type === "FlakeGenerate")
             : app.graph.nodes.filter(n => n.type === "FlakeGenerate");
@@ -200,19 +221,27 @@ function setupBatchTracking(combinations, comboKeys) {
             fg.properties._images_by_combo = fg.properties._images_by_combo || {};
             fg.properties._images_by_combo[comboKey] = images[0];
         }
-    };
+    }
+
+    // All websocket lifecycle/output events route through bufferOrApply so
+    // events arriving before their prompt_id is registered get queued.
+    const onExecStart = (e) => bufferOrApply("execution_start", e);
+    const onExecSuccess = (e) => bufferOrApply("execution_success", e);
+    const onExecError = (e) => bufferOrApply("execution_error", e);
+    const onExecInterrupted = (e) => bufferOrApply("execution_interrupted", e);
+    const onExecuted = (e) => bufferOrApply("executed", e);
 
     comfyApi.addEventListener("execution_start", onExecStart);
-    comfyApi.addEventListener("execution_success", onExecDone);
-    comfyApi.addEventListener("execution_error", onExecDone);
-    comfyApi.addEventListener("execution_interrupted", onExecDone);
+    comfyApi.addEventListener("execution_success", onExecSuccess);
+    comfyApi.addEventListener("execution_error", onExecError);
+    comfyApi.addEventListener("execution_interrupted", onExecInterrupted);
     comfyApi.addEventListener("executed", onExecuted);
 
     const cleanup = () => {
         comfyApi.removeEventListener("execution_start", onExecStart);
-        comfyApi.removeEventListener("execution_success", onExecDone);
-        comfyApi.removeEventListener("execution_error", onExecDone);
-        comfyApi.removeEventListener("execution_interrupted", onExecDone);
+        comfyApi.removeEventListener("execution_success", onExecSuccess);
+        comfyApi.removeEventListener("execution_error", onExecError);
+        comfyApi.removeEventListener("execution_interrupted", onExecInterrupted);
         comfyApi.removeEventListener("executed", onExecuted);
         if (_origApiQueuePrompt) {
             comfyApi.queuePrompt = _origApiQueuePrompt;
@@ -221,6 +250,7 @@ function setupBatchTracking(combinations, comboKeys) {
         _activeBatch.promptIds = [];
         _activeBatch.comboKeys = [];
         _activeBatch.runningPromptId = null;
+        pendingByPid.clear();
         clearAllHighlights();
     };
 
