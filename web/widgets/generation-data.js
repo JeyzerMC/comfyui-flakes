@@ -101,15 +101,20 @@ export function buildModel(startNode) {
                 node, kind: "flake",
                 label: "Flake Combo",
                 items: flakes.map(e => {
+                    // #237: fall back to the flake's main cover image when no
+                    // variant is selected (or when the variant image 404s —
+                    // see card render where we probe-load below).
                     const variantSel = Object.entries(e.variant || {}).find(([, c]) => c);
-                    let cover = getCoverUrl(e.name);
-                    if (variantSel) cover = getVariantImageUrl(e.name, variantSel[0], variantSel[1]);
+                    const baseCover = getCoverUrl(e.name);
+                    const variantCover = variantSel ? getVariantImageUrl(e.name, variantSel[0], variantSel[1]) : null;
                     const choices = Object.values(e.variant || {}).filter(Boolean);
                     const base = e.display_name || e.name.split("/").pop() || e.name;
                     return {
                         label: base + (choices.length ? ` (${choices.join(", ")})` : ""),
                         entry: e,
-                        coverUrl: cover,
+                        coverUrl: variantCover || baseCover,
+                        baseCoverUrl: baseCover,
+                        variantCoverUrl: variantCover,
                     };
                 }),
             });
@@ -364,7 +369,21 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
                 card.dataset.nodeId = String(axis.node.id);
                 card.dataset.itemIdx = String(ii);
                 css(card, `position:relative;flex:0 0 auto;width:72px;height:80px;border-radius:4px;cursor:pointer;background:#2a2a2a;background-size:cover;background-position:center;border:2px solid ${ii === selIdx[ai] ? ACCENT : "transparent"};box-sizing:border-box;`);
-                if (item.coverUrl) {
+                // #237: probe-load variant image and fall back to base cover if 404,
+                // matching the flake-combo node grid behavior. Without this the
+                // card showed no image when a missing variant choice image was
+                // selected.
+                if (item.variantCoverUrl) {
+                    const probe = new Image();
+                    probe.onload = () => { card.style.backgroundImage = `url(${item.variantCoverUrl})`; };
+                    probe.onerror = () => {
+                        if (item.baseCoverUrl) card.style.backgroundImage = `url(${item.baseCoverUrl})`;
+                    };
+                    probe.src = item.variantCoverUrl;
+                    // Show base immediately while probe resolves so there's
+                    // never an empty cell.
+                    if (item.baseCoverUrl) card.style.backgroundImage = `url(${item.baseCoverUrl})`;
+                } else if (item.coverUrl) {
                     card.style.backgroundImage = `url(${item.coverUrl})`;
                 }
                 // Progress bar (above the caption) — shown while the active
