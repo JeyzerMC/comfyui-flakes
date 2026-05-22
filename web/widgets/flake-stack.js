@@ -115,19 +115,29 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
 function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVariantChange) {
     if (entry.inline) return { toggleOptionsPanel: () => {} };
 
-    // Options panel (hidden by default)
+    // Options panel (hidden by default). Container is a flex row so we can add
+    // a second panel to the right when the host flake has a flake_link (#235).
     const panel = document.createElement("div");
-    css(panel, "position:absolute;top:100%;left:50%;transform:translateX(-50%);width:160px;background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:4px;display:none;flex-direction:column;gap:3px;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-top:1px;");
+    css(panel, "position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:0;display:none;flex-direction:row;gap:0;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-top:1px;");
     panel.addEventListener("click", (e) => e.stopPropagation());
     panel.addEventListener("dblclick", (e) => e.stopPropagation());
     block.appendChild(panel);
 
+    const nativeColumn = document.createElement("div");
+    css(nativeColumn, "width:160px;padding:4px;display:flex;flex-direction:column;gap:3px;box-sizing:border-box;");
+    panel.appendChild(nativeColumn);
+
+    const linkedColumn = document.createElement("div");
+    css(linkedColumn, "width:160px;padding:4px;display:none;flex-direction:column;gap:3px;box-sizing:border-box;border-left:1px solid #333;");
+    panel.appendChild(linkedColumn);
+
     let optionsLoaded = false;
     let hasOptions = false;
     let flakeData = null;
+    let linkedFlakeData = null;
 
     function rebuildPanel() {
-        panel.replaceChildren();
+        nativeColumn.replaceChildren();
 
         const lorasMeta = flakeData?.loras || [];
         // Sync override array length to match the YAML
@@ -149,7 +159,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
         const opLabel = document.createElement("div");
         opLabel.textContent = "Output Stem";
         css(opLabel, "font-size:9px;opacity:0.7;text-align:center;");
-        panel.appendChild(opLabel);
+        nativeColumn.appendChild(opLabel);
         const opInput = document.createElement("input");
         opInput.type = "text";
         opInput.value = outputStem;
@@ -159,13 +169,13 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             entry._output_stem_override = opInput.value || null;
             onChanged();
         });
-        panel.appendChild(opInput);
+        nativeColumn.appendChild(opInput);
 
         // 2. LoRA strength sliders
         if (hasLoras) {
             const sep = document.createElement("div");
             css(sep, "border-top:1px solid #333;margin:2px 0;");
-            panel.appendChild(sep);
+            nativeColumn.appendChild(sep);
             for (let i = 0; i < lorasMeta.length; i++) {
                 const sliderRow = document.createElement("div");
                 css(sliderRow, "padding:2px 0;");
@@ -179,7 +189,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     onChanged();
                 });
                 sliderRow.appendChild(strSlider);
-                panel.appendChild(sliderRow);
+                nativeColumn.appendChild(sliderRow);
             }
         }
 
@@ -187,7 +197,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
         if (hasOptionGroups) {
             const sep = document.createElement("div");
             css(sep, "border-top:1px solid #333;margin:2px 0;");
-            panel.appendChild(sep);
+            nativeColumn.appendChild(sep);
             for (const group of Object.keys(hasOptions)) {
                 const row = document.createElement("div");
                 css(row, "display:flex;flex-direction:column;gap:2px;");
@@ -212,16 +222,103 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     if (onVariantChange) onVariantChange();
                 });
                 row.appendChild(dd.container);
-                panel.appendChild(row);
+                nativeColumn.appendChild(row);
             }
         } else if (!hasLoras) {
             const sep = document.createElement("div");
             css(sep, "border-top:1px solid #333;margin:2px 0;");
-            panel.appendChild(sep);
+            nativeColumn.appendChild(sep);
             const empty = document.createElement("div");
             css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
             empty.textContent = "no variants";
-            panel.appendChild(empty);
+            nativeColumn.appendChild(empty);
+        }
+
+        rebuildLinkedPanel();
+    }
+
+    // Linked flake panel (#235): shown when the host flake declares a
+    // flake_link. The overrides write to entry.flake_link_override which the
+    // backend's resolve() reads at execute time.
+    function rebuildLinkedPanel() {
+        if (!flakeData?.flake_link?.target || !linkedFlakeData) {
+            linkedColumn.style.display = "none";
+            return;
+        }
+        linkedColumn.style.display = "flex";
+        linkedColumn.replaceChildren();
+
+        entry.flake_link_override = entry.flake_link_override || { variant: {}, lora_strengths: [] };
+        const ovr = entry.flake_link_override;
+        ovr.variant = ovr.variant || {};
+        ovr.lora_strengths = ovr.lora_strengths || [];
+
+        const yamlDefaults = flakeData.flake_link;
+
+        const title = document.createElement("div");
+        title.textContent = (linkedFlakeData.name || flakeData.flake_link.target).split("/").pop();
+        title.title = `Linked: ${flakeData.flake_link.target}`;
+        css(title, "font-size:9px;opacity:0.8;text-align:center;font-weight:600;color:#4a9eff;padding:2px 0;");
+        linkedColumn.appendChild(title);
+
+        const linkedLoras = Array.isArray(linkedFlakeData.loras) ? linkedFlakeData.loras : [];
+        if (linkedLoras.length > 0) {
+            const sep = document.createElement("div");
+            css(sep, "border-top:1px solid #333;margin:2px 0;");
+            linkedColumn.appendChild(sep);
+            for (let i = 0; i < linkedLoras.length; i++) {
+                const sliderRow = document.createElement("div");
+                css(sliderRow, "padding:2px 0;");
+                const name = linkedLoras[i]?.name || "LoRA";
+                const label = document.createElement("div");
+                label.textContent = name;
+                css(label, "font-size:9px;opacity:0.7;padding:2px 0;text-align:center;");
+                sliderRow.appendChild(label);
+                // Effective default: per-grid override > yaml default > linked flake's own
+                let initial = ovr.lora_strengths[i];
+                if (initial === null || initial === undefined) initial = (yamlDefaults.lora_strengths || [])[i];
+                if (initial === null || initial === undefined) initial = linkedLoras[i]?.strength ?? 1.0;
+                const strSlider = makeSmallValueSlider(initial, -10, 10, 0.05, (v) => {
+                    while (ovr.lora_strengths.length <= i) ovr.lora_strengths.push(null);
+                    ovr.lora_strengths[i] = v;
+                    onChanged();
+                });
+                sliderRow.appendChild(strSlider);
+                linkedColumn.appendChild(sliderRow);
+            }
+        }
+
+        const linkedVariants = linkedFlakeData.variants || linkedFlakeData.options || {};
+        if (Object.keys(linkedVariants).length > 0) {
+            const sep = document.createElement("div");
+            css(sep, "border-top:1px solid #333;margin:2px 0;");
+            linkedColumn.appendChild(sep);
+            for (const group of Object.keys(linkedVariants)) {
+                const row = document.createElement("div");
+                css(row, "display:flex;flex-direction:column;gap:2px;");
+                const gLabel = document.createElement("span");
+                gLabel.textContent = group;
+                css(gLabel, "font-size:9px;opacity:0.7;text-align:center;");
+                row.appendChild(gLabel);
+                const ddOptions = [{ value: "", label: "-" }];
+                for (const ch of Object.keys(linkedVariants[group])) ddOptions.push({ value: ch, label: ch });
+                const current = ovr.variant[group] || (yamlDefaults.variant || {})[group] || "";
+                const dd = makePanelDropdown(ddOptions, current);
+                dd.element.addEventListener("change", () => {
+                    if (dd.element.value) ovr.variant[group] = dd.element.value;
+                    else delete ovr.variant[group];
+                    onChanged();
+                });
+                row.appendChild(dd.container);
+                linkedColumn.appendChild(row);
+            }
+        }
+
+        if (linkedLoras.length === 0 && Object.keys(linkedVariants).length === 0) {
+            const empty = document.createElement("div");
+            css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
+            empty.textContent = "no overrides";
+            linkedColumn.appendChild(empty);
         }
     }
 
@@ -232,6 +329,12 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             optionsLoaded = true;
             hasOptions = variants;
             flakeData = fdata;
+            // Also fetch linked flake data if the host declares a flake_link.
+            if (fdata?.flake_link?.target) {
+                try {
+                    linkedFlakeData = await fetchFlake(fdata.flake_link.target);
+                } catch { /* leave null — rebuildLinkedPanel hides the column */ }
+            }
             rebuildPanel();
         } catch { /* ignore */ }
     }
@@ -264,20 +367,20 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
         }
 
         if (!optionsLoaded && entry.name) {
-            panel.textContent = "";
+            nativeColumn.replaceChildren();
             const loading = document.createElement("div");
             css(loading, "font-size:9px;opacity:0.5;text-align:center;padding:4px;");
             loading.textContent = "loading...";
-            panel.appendChild(loading);
+            nativeColumn.appendChild(loading);
 
             try {
                 await loadOptions();
             } catch {
-                panel.replaceChildren();
+                nativeColumn.replaceChildren();
                 const err = document.createElement("div");
                 css(err, "font-size:9px;color:#f88;padding:4px;text-align:center;");
                 err.textContent = "failed to load";
-                panel.appendChild(err);
+                nativeColumn.appendChild(err);
             }
         }
     }
