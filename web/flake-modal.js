@@ -414,6 +414,14 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             controlnets: JSON.parse(JSON.stringify(data.controlnets || [])),
             variants: JSON.parse(JSON.stringify(data.variants || data.options || {})),
             output_stem: data.output_stem ?? null,
+            // Flake link: yaml defaults — { target, variant, lora_strengths }
+            flake_link: data.flake_link ? {
+                target: String(data.flake_link.target || ""),
+                variant: { ...(data.flake_link.variant || {}) },
+                lora_strengths: Array.isArray(data.flake_link.lora_strengths)
+                    ? [...data.flake_link.lora_strengths]
+                    : [],
+            } : null,
         };
         if (!Array.isArray(fieldState.controlnets._)) {
             const arr = Array.isArray(fieldState.controlnets) ? [...fieldState.controlnets] : [];
@@ -422,7 +430,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
 
         // Derive field order from YAML key order (Python preserves insertion order)
         const activeFields = [];
-        const knownFieldKeys = { loras: "lora", path: "lora", prompt: "prompt", resolution: "resolution", controlnets: "controlnets", variants: "variants", options: "variants" };
+        const knownFieldKeys = { loras: "lora", path: "lora", prompt: "prompt", resolution: "resolution", controlnets: "controlnets", variants: "variants", options: "variants", flake_link: "flake_link" };
         for (const key of Object.keys(data)) {
             const ft = knownFieldKeys[key];
             if (ft && !activeFields.includes(ft)) activeFields.push(ft);
@@ -433,6 +441,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         if (!activeFields.includes("resolution") && fieldState.resolution) activeFields.push("resolution");
 if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0) activeFields.push("controlnets");
             if (!activeFields.includes("variants") && Object.keys(fieldState.variants).length > 0) activeFields.push("variants");
+        if (!activeFields.includes("flake_link") && fieldState.flake_link) activeFields.push("flake_link");
 
         const optionalBox = document.createElement("div");
         css(optionalBox, "display:flex;flex-direction:column;gap:8px;");
@@ -522,6 +531,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     if (fieldType === "variants") {
                         for (const k of Object.keys(fieldState.variants)) delete fieldState.variants[k];
                     }
+                    if (fieldType === "flake_link") fieldState.flake_link = null;
                     renderFields();
                 });
                 header.appendChild(delFieldBtn);
@@ -1504,6 +1514,131 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     renderOpts();
                 }
 
+                if (fieldType === "flake_link") {
+                    // Flake link field (#234): pick a target flake, then show
+                    // optional default overrides for the target's variant choices
+                    // and lora strengths.
+                    const linkBox = document.createElement("div");
+                    css(linkBox, "display:flex;flex-direction:column;gap:8px;");
+                    fieldWrap.appendChild(linkBox);
+
+                    const targetRow = document.createElement("div");
+                    css(targetRow, "display:flex;gap:8px;align-items:center;");
+                    targetRow.appendChild(makeComfyLabel("Target"));
+                    const targetWrap = makeSearchableDropdown(
+                        [], fieldState.flake_link?.target || "", "select a flake…",
+                    );
+                    css(targetWrap.container, "flex:1;min-width:0;");
+                    targetRow.appendChild(targetWrap.container);
+                    linkBox.appendChild(targetRow);
+
+                    const overridesBox = document.createElement("div");
+                    css(overridesBox, "display:flex;flex-direction:column;gap:6px;");
+                    linkBox.appendChild(overridesBox);
+
+                    // Populate the target picker with all flakes except self
+                    // (and the user's own family/dirs — but list is small enough
+                    // to keep simple for now).
+                    (async () => {
+                        try {
+                            const list = await (await fetch(`/flakes/list?family=${encodeURIComponent(currentFamily || "")}`)).json();
+                            const all = (list.flakes || []).filter(n => n !== name);
+                            for (const flakeName of all) {
+                                targetWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: flakeName }));
+                            }
+                        } catch { /* ignore */ }
+                    })();
+
+                    async function refreshOverrides() {
+                        overridesBox.replaceChildren();
+                        const link = fieldState.flake_link;
+                        if (!link || !link.target) return;
+                        let linkedData;
+                        try {
+                            linkedData = await fetchFlake(link.target);
+                        } catch {
+                            const err = document.createElement("div");
+                            err.textContent = `Target not found: ${link.target}`;
+                            css(err, "font-size:11px;color:#f99;");
+                            overridesBox.appendChild(err);
+                            return;
+                        }
+                        // Variant choices block
+                        const variants = linkedData.variants || linkedData.options || {};
+                        if (Object.keys(variants).length > 0) {
+                            const vLabel = document.createElement("div");
+                            vLabel.textContent = "Default variant choices";
+                            css(vLabel, "font-size:11px;color:#aaa;font-weight:500;");
+                            overridesBox.appendChild(vLabel);
+                            for (const [group, choices] of Object.entries(variants)) {
+                                const row = document.createElement("div");
+                                css(row, "display:flex;gap:8px;align-items:center;");
+                                const gLabel = document.createElement("span");
+                                gLabel.textContent = group;
+                                css(gLabel, "flex:0 0 120px;font-size:12px;color:#bbb;");
+                                row.appendChild(gLabel);
+                                const opts = [{ value: "", label: "— none —" }, ...Object.keys(choices).map(c => ({ value: c, label: c }))];
+                                const dd = makeComfyDropdown(opts, link.variant?.[group] || "");
+                                dd.element.addEventListener("change", () => {
+                                    link.variant = link.variant || {};
+                                    if (dd.element.value) link.variant[group] = dd.element.value;
+                                    else delete link.variant[group];
+                                });
+                                css(dd.container, "flex:1;min-width:0;");
+                                row.appendChild(dd.container);
+                                overridesBox.appendChild(row);
+                            }
+                        }
+                        // LoRA strength overrides
+                        const loras = Array.isArray(linkedData.loras) ? linkedData.loras : [];
+                        if (loras.length > 0) {
+                            const lLabel = document.createElement("div");
+                            lLabel.textContent = "Default LoRA strengths";
+                            css(lLabel, "font-size:11px;color:#aaa;font-weight:500;margin-top:4px;");
+                            overridesBox.appendChild(lLabel);
+                            link.lora_strengths = link.lora_strengths || [];
+                            while (link.lora_strengths.length < loras.length) link.lora_strengths.push(null);
+                            loras.forEach((lr, i) => {
+                                const row = document.createElement("div");
+                                css(row, "display:flex;gap:8px;align-items:center;");
+                                const nm = document.createElement("span");
+                                nm.textContent = lr.name || lr.path || `LoRA ${i + 1}`;
+                                css(nm, "flex:0 0 160px;font-size:12px;color:#bbb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
+                                row.appendChild(nm);
+                                const cur = link.lora_strengths[i];
+                                const defaultStrength = lr.strength ?? 1.0;
+                                const initial = (cur === null || cur === undefined) ? defaultStrength : cur;
+                                const slider = makeSmallValueSlider(initial, 0, 2, 0.05, (v) => {
+                                    link.lora_strengths[i] = v;
+                                });
+                                css(slider.container, "flex:1;");
+                                row.appendChild(slider.container);
+                                // Reset to "use linked default" button.
+                                const resetBtn = makeSmallButton("↺");
+                                resetBtn.title = "Use linked flake's default strength";
+                                resetBtn.addEventListener("click", () => {
+                                    link.lora_strengths[i] = null;
+                                    refreshOverrides();
+                                });
+                                row.appendChild(resetBtn);
+                                overridesBox.appendChild(row);
+                            });
+                        }
+                    }
+                    targetWrap.element.addEventListener("change", () => {
+                        const v = targetWrap.element.value.trim();
+                        if (!fieldState.flake_link) fieldState.flake_link = { target: "", variant: {}, lora_strengths: [] };
+                        if (v !== fieldState.flake_link.target) {
+                            fieldState.flake_link.target = v;
+                            // Reset overrides when the target changes — old indices/groups don't apply.
+                            fieldState.flake_link.variant = {};
+                            fieldState.flake_link.lora_strengths = [];
+                        }
+                        refreshOverrides();
+                    });
+                    refreshOverrides();
+                }
+
                 optionalBox.appendChild(fieldWrap);
             }
         }
@@ -1524,6 +1659,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
             { key: "resolution", label: "Resolution override" },
             { key: "controlnets", label: "ControlNets" },
             { key: "variants", label: "Variants" },
+            { key: "flake_link", label: "Flake link" },
         ];
         for (const ft of fieldTypes) {
             const item = document.createElement("button");
@@ -1538,6 +1674,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                 if (ft.key === "resolution") fieldState.resolution = [1024, 1024];
                 if (ft.key === "controlnets") fieldState.controlnets._ = [];
                 if (ft.key === "variants") fieldState.variants = {};
+                if (ft.key === "flake_link") fieldState.flake_link = { target: "", variant: {}, lora_strengths: [] };
                 renderFields();
             });
             fieldMenu.appendChild(item);
@@ -1634,6 +1771,19 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                 }
                 if (ft === "variants" && Object.keys(fieldState.variants).length > 0) {
                     ordered.variants = fieldState.variants;
+                }
+                if (ft === "flake_link" && fieldState.flake_link && fieldState.flake_link.target) {
+                    const link = fieldState.flake_link;
+                    const out = { target: link.target };
+                    const variant = link.variant ? Object.fromEntries(Object.entries(link.variant).filter(([, v]) => v)) : {};
+                    if (Object.keys(variant).length > 0) out.variant = variant;
+                    // Drop trailing nulls to keep the yaml clean.
+                    let strengths = (link.lora_strengths || []).slice();
+                    while (strengths.length && (strengths[strengths.length - 1] === null || strengths[strengths.length - 1] === undefined)) {
+                        strengths.pop();
+                    }
+                    if (strengths.length > 0) out.lora_strengths = strengths;
+                    ordered.flake_link = out;
                 }
             }
             if (coverSourcePath && !coverFile) {
