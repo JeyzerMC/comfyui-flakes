@@ -1177,37 +1177,37 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     renderOpts();
                                 });
 
-                                // Body: left (prompts, fills height) | right (image + remove + label)
+                                // Per #238: card body is one row with name+stem header + tall prompts on
+                                // the left and a portrait (832x1216) image with a hover delete dropdown
+                                // on the right.
+                                if (cRow.parentNode === choiceCard) choiceCard.removeChild(cRow);
+
                                 const bodyRow = document.createElement("div");
                                 css(bodyRow, "display:flex;gap:10px;align-items:stretch;");
 
                                 const leftCol = document.createElement("div");
                                 css(leftCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;");
+                                leftCol.appendChild(cRow);
 
                                 const promptsWrap = document.createElement("div");
-                                css(promptsWrap, "display:flex;gap:8px;align-items:stretch;flex:1;");
+                                css(promptsWrap, "display:flex;gap:8px;align-items:stretch;flex:1;min-height:0;");
                                 leftCol.appendChild(promptsWrap);
 
                                 const choicePosCol = document.createElement("div");
-                                css(choicePosCol, "flex:0 0 70%;display:flex;flex-direction:column;gap:4px;min-width:0;");
+                                css(choicePosCol, "flex:0 0 70%;display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0;");
                                 promptsWrap.appendChild(choicePosCol);
 
                                 const choiceNegCol = document.createElement("div");
-                                css(choiceNegCol, "flex:0 0 30%;display:flex;flex-direction:column;gap:4px;min-width:0;");
+                                css(choiceNegCol, "flex:0 0 30%;display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0;");
                                 promptsWrap.appendChild(choiceNegCol);
 
                                 const rightCol = document.createElement("div");
                                 css(rightCol, "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;");
 
-                                const removeChoiceBtn = makeSmallButton("\u2715");
-                                removeChoiceBtn.title = "Remove this variant choice";
-                                removeChoiceBtn.addEventListener("click", () => {
-                                    delete fieldState.variants[groupName][choiceName];
-                                    renderOpts();
-                                });
-
+                                // 832x1216 aspect (~0.684). At 160px wide -> 234px tall.
+                                const IMG_W = 160, IMG_H = 234;
                                 const imgBox = document.createElement("div");
-                                css(imgBox, "width:140px;height:140px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
+                                css(imgBox, `position:relative;width:${IMG_W}px;height:${IMG_H}px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;flex-shrink:0;`);
                                 const imgPreview = document.createElement("img");
                                 css(imgPreview, "width:100%;height:100%;object-fit:cover;display:none;");
                                 imgBox.appendChild(imgPreview);
@@ -1216,14 +1216,67 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 css(imgBoxLabel, "font-size:11px;color:#666;pointer-events:none;");
                                 imgBox.appendChild(imgBoxLabel);
 
-                                const imgPathLabel = document.createElement("div");
-                                css(imgPathLabel, "font-size:9px;color:#888;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;");
-                                const clearImgBtn = makeSmallButton("✕");
+                                // Hover-only delete button (top-right of image) -> dropdown menu (#238).
+                                let _dropdownOpen = false;
+                                const deleteBtn = document.createElement("button");
+                                deleteBtn.type = "button";
+                                deleteBtn.textContent = "✕";
+                                deleteBtn.title = "Delete options";
+                                css(deleteBtn, "position:absolute;top:6px;right:6px;z-index:2;width:22px;height:22px;padding:0;border-radius:4px;background:rgba(20,20,20,0.85);color:#ddd;border:1px solid #555;cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.12s ease;");
+                                imgBox.addEventListener("mouseenter", () => { deleteBtn.style.opacity = "1"; });
+                                imgBox.addEventListener("mouseleave", () => { if (!_dropdownOpen) deleteBtn.style.opacity = "0"; });
+                                imgBox.appendChild(deleteBtn);
+
+                                const dropdown = document.createElement("div");
+                                css(dropdown, "position:absolute;top:32px;right:6px;z-index:3;display:none;flex-direction:column;min-width:160px;background:#1f1f1f;border:1px solid #555;border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,0.5);overflow:hidden;");
+                                function makeDropdownItem(label, onClick, danger) {
+                                    const item = document.createElement("button");
+                                    item.type = "button";
+                                    item.textContent = label;
+                                    css(item, `background:transparent;border:none;color:${danger ? "#f99" : "#ddd"};padding:8px 12px;text-align:left;font-size:12px;cursor:pointer;`);
+                                    item.addEventListener("mouseenter", () => { item.style.background = "rgba(255,255,255,0.05)"; });
+                                    item.addEventListener("mouseleave", () => { item.style.background = "transparent"; });
+                                    item.addEventListener("click", (e) => { e.stopPropagation(); closeDropdown(); onClick(); });
+                                    return item;
+                                }
+                                function refreshDropdown() {
+                                    dropdown.replaceChildren();
+                                    const cur = fieldState.variants[groupName][choiceName] || {};
+                                    if (cur.image) {
+                                        dropdown.appendChild(makeDropdownItem("Remove image", () => {
+                                            delete cur.image;
+                                            refreshChoiceImage();
+                                        }, false));
+                                    }
+                                    dropdown.appendChild(makeDropdownItem("Delete choice", () => {
+                                        delete fieldState.variants[groupName][choiceName];
+                                        renderOpts();
+                                    }, true));
+                                }
+                                function openDropdown() {
+                                    refreshDropdown();
+                                    dropdown.style.display = "flex";
+                                    _dropdownOpen = true;
+                                    setTimeout(() => document.addEventListener("mousedown", outsideClick), 0);
+                                }
+                                function closeDropdown() {
+                                    dropdown.style.display = "none";
+                                    _dropdownOpen = false;
+                                    deleteBtn.style.opacity = "0";
+                                    document.removeEventListener("mousedown", outsideClick);
+                                }
+                                function outsideClick(e) {
+                                    if (!dropdown.contains(e.target) && e.target !== deleteBtn) closeDropdown();
+                                }
+                                deleteBtn.addEventListener("click", (e) => {
+                                    e.stopPropagation();
+                                    if (_dropdownOpen) closeDropdown(); else openDropdown();
+                                });
+                                imgBox.appendChild(dropdown);
 
                                 function refreshChoiceImage() {
                                     const cur = fieldState.variants[groupName][choiceName] || {};
                                     if (cur.image) {
-                                        imgPathLabel.textContent = cur.image;
                                         if (cur._uploaded) {
                                             imgPreview.src = `/view?filename=${encodeURIComponent(cur.image)}&type=input`;
                                         } else if (mode !== "create" && name) {
@@ -1233,15 +1286,15 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         }
                                         imgPreview.style.display = "block";
                                         imgBoxLabel.style.display = "none";
-                                        clearImgBtn.style.display = "";
                                     } else {
-                                        imgPathLabel.textContent = "No image";
                                         imgPreview.style.display = "none";
                                         imgBoxLabel.style.display = "block";
-                                        clearImgBtn.style.display = "none";
                                     }
                                 }
-                                imgBox.addEventListener("click", async () => {
+                                imgBox.addEventListener("click", async (e) => {
+                                    // Skip the file picker when the user clicks the delete button or its
+                                    // dropdown — those have their own handlers.
+                                    if (e.target === deleteBtn || dropdown.contains(e.target)) return;
                                     const fileInput = document.createElement("input");
                                     fileInput.type = "file";
                                     fileInput.accept = ".png,.jpg,.jpeg,.webp,.gif,.bmp";
@@ -1270,21 +1323,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         });
                                     });
                                 });
-                                clearImgBtn.addEventListener("click", () => {
-                                    const cur = fieldState.variants[groupName][choiceName];
-                                    if (cur) delete cur.image;
-                                    refreshChoiceImage();
-                                });
                                 rightCol.appendChild(imgBox);
-                                // Bottom row under the image: remove-choice ✕, the "image" path label,
-                                // and the clear-image ✕. Per #224 the remove-choice button lives here.
-                                const imgBottomRow = document.createElement("div");
-                                css(imgBottomRow, "display:flex;gap:6px;align-items:center;width:140px;");
-                                imgBottomRow.appendChild(removeChoiceBtn);
-                                css(imgPathLabel, "flex:1;min-width:0;font-size:9px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;");
-                                imgBottomRow.appendChild(imgPathLabel);
-                                imgBottomRow.appendChild(clearImgBtn);
-                                rightCol.appendChild(imgBottomRow);
                                 refreshChoiceImage();
 
                                 bodyRow.appendChild(leftCol);
