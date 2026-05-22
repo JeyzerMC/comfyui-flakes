@@ -47,6 +47,7 @@ export function setWidgetHidden(widget, hide) {
     let saved = _widgetHideState.get(widget);
     if (hide) {
         if (saved) return; // already hidden
+        const state = widget._state || null; // modern ComfyUI proxy mirror
         saved = {
             type: widget.type,
             computeSize: widget.computeSize,
@@ -54,6 +55,9 @@ export function setWidgetHidden(widget, hide) {
             options: widget.options,
             elementDisplay: widget.element ? widget.element.style.display : null,
             inputElDisplay: widget.inputEl ? widget.inputEl.style.display : null,
+            stateType: state ? state.type : null,
+            stateDisabled: state ? state.disabled : null,
+            stateLabel: state ? state.label : null,
         };
         _widgetHideState.set(widget, saved);
         widget.computeSize = () => [0, -4];
@@ -63,6 +67,14 @@ export function setWidgetHidden(widget, hide) {
         widget.options = { ...(widget.options || {}), serialize: true };
         if (widget.element) widget.element.style.display = "none";
         if (widget.inputEl) widget.inputEl.style.display = "none";
+        // Mirror onto _state (#216 v3): on modern frontends the canvas-drawn
+        // ComboWidget renders from this Proxy rather than the top-level widget
+        // object. Setting type='hidden' here is what actually suppresses draw.
+        if (state) {
+            try { state.type = "hidden"; } catch { /* proxy may be read-only */ }
+            try { state.disabled = true; } catch { /* */ }
+            try { state.label = ""; } catch { /* */ }
+        }
     } else {
         if (!saved) return; // already visible
         widget.type = saved.type;
@@ -73,6 +85,12 @@ export function setWidgetHidden(widget, hide) {
         widget.hidden = false;
         if (widget.element && saved.elementDisplay !== null) widget.element.style.display = saved.elementDisplay;
         if (widget.inputEl && saved.inputElDisplay !== null) widget.inputEl.style.display = saved.inputElDisplay;
+        const state = widget._state || null;
+        if (state) {
+            if (saved.stateType !== null) try { state.type = saved.stateType; } catch { /* */ }
+            if (saved.stateDisabled !== null) try { state.disabled = saved.stateDisabled; } catch { /* */ }
+            if (saved.stateLabel !== null) try { state.label = saved.stateLabel; } catch { /* */ }
+        }
         _widgetHideState.delete(widget);
     }
 }
