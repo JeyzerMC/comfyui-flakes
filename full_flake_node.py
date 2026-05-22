@@ -60,8 +60,13 @@ def _resolve_lora_name(stem_or_name: str) -> str:
     raise FileNotFoundError(f"LoRA '{stem_or_name}' not found in models/loras/")
 
 
-def _load_preset_bundle(preset_name: str):
-    """Load a model preset and return (model_bundle, generation_data, sampling_preset)."""
+def _load_preset_bundle(preset_name: str, model_family: str | None = None):
+    """Load a model preset and return (model_bundle, generation_data, sampling_preset).
+
+    ``model_family`` is used to derive the ``img/<family>/`` output folder
+    prefix (#240). It's optional for backwards compatibility but should be
+    passed by the node so the structural prefix is present.
+    """
     preset_data = flake_io.load_preset(preset_name)
 
     # --- Load checkpoint ----------------------------------------------------
@@ -121,15 +126,23 @@ def _load_preset_bundle(preset_name: str):
     latent = EmptyLatentImage().generate(width, height, 1)[0]
 
     model_bundle = (model, clip, vae)
-    # Note: filename_state["preset"] used to be the preset's full yaml path
-    # (e.g. "img/illustrious/nova/nova_anime_xl_v17") which leaked into the
-    # output directory structure. Now only the explicit `filename_prefix`
-    # field contributes (via stems); leave preset as an empty string so the
-    # yaml location on disk does not affect the output path.
-    prefix = (preset_data.filename_prefix or "").strip()
+    # Build the structural prefix `img/<family>/` (#240) plus the explicit
+    # filename_prefix field. We do NOT inherit from the preset's yaml location
+    # on disk (#217). The img/<family>/ segment is the project's output folder
+    # convention; without it, outputs land at output/<rest>/... instead of
+    # output/img/<family>/<rest>/...
+    family_folder = flake_io._family_folder(model_family) if model_family else None
+    structural = f"img/{family_folder}/" if family_folder else ""
+    prefix_stem = (preset_data.filename_prefix or "").strip()
+    stems = []
+    if structural:
+        # stems entries containing "/" land in folder_parts (see _build_filename_prefix).
+        stems.append(structural)
+    if prefix_stem:
+        stems.append(prefix_stem)
     filename_state = {
         "preset": "",
-        "stems": [prefix] if prefix else [],
+        "stems": stems,
         "checkpoint": preset_data.checkpoint,
         "vae": preset_data.vae or "baked-in",
         "text_encoder": preset_data.text_encoder or "baked-in",
@@ -189,7 +202,7 @@ class FlakeModelPreset:
         if not preset_name or preset_name in ("Select a preset...", "No model preset is selected"):
             raise ValueError("No model preset is selected — pick one from the dropdown.")
 
-        model_bundle, generation_data, sampling_preset = _load_preset_bundle(preset_name)
+        model_bundle, generation_data, sampling_preset = _load_preset_bundle(preset_name, model_family)
         return ((model_bundle, generation_data, sampling_preset),)
 
 
