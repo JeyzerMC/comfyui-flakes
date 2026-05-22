@@ -79,6 +79,21 @@ class LoraEntry:
 
 
 @dataclass
+class FlakeLink:
+    """Reference to another flake with optional default overrides (#232).
+
+    Persisted on a flake yaml as ``flake_link``. When the host flake is
+    applied to a stack/combo, the linked flake's loras + prompts + variant
+    contributions are also applied (after the host's). Each grid placement
+    of the host can further override the linked flake's variant choices and
+    lora strengths via the entry's ``flake_link_override`` payload.
+    """
+    target: str
+    variant: dict[str, str] = field(default_factory=dict)
+    lora_strengths: list[float | None] = field(default_factory=list)
+
+
+@dataclass
 class Flake:
     name: str
     positive: str = ""
@@ -90,6 +105,7 @@ class Flake:
     controlnets: list[ControlNetEntry] = field(default_factory=list)
     variants: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
     output_stem: str | None = None
+    flake_link: FlakeLink | None = None
 
 # ---------------------------------------------------------------------------
 # Directory helpers
@@ -401,6 +417,19 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
             )
         )
 
+    # Parse flake_link (#232) — defaults stored on the host yaml. Optional.
+    link_obj = None
+    link_raw = raw.get("flake_link")
+    if isinstance(link_raw, dict) and link_raw.get("target"):
+        link_obj = FlakeLink(
+            target=str(link_raw["target"]),
+            variant={str(g): str(c) for g, c in (link_raw.get("variant") or {}).items() if c},
+            lora_strengths=[
+                (float(s) if isinstance(s, (int, float)) else None)
+                for s in (link_raw.get("lora_strengths") or [])
+            ],
+        )
+
     return Flake(
         name=name,
         positive=str(prompt.get("positive", "") or ""),
@@ -412,6 +441,7 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
         controlnets=cns,
         variants=raw.get("variants") or raw.get("options") or {},
         output_stem=raw.get("output_stem") or None,
+        flake_link=link_obj,
     )
 
 
@@ -463,7 +493,74 @@ def resolve(entry: dict[str, Any]) -> Flake:
     if "_output_stem_override" in entry:
         flake.output_stem = entry["_output_stem_override"] or None
 
+    # ── Flake link resolution (#232) ──────────────────────────────────────
+    # If this flake declares a flake_link, also apply the linked flake's
+    # contributions (loras + prompts + variant prompts) after the host's.
+    # Cycle protection: pass a visited set so a chain can't loop forever.
+    _apply_flake_link(flake, entry, _visited=None)
+
     return flake
+
+
+def _apply_flake_link(host: "Flake", entry: dict[str, Any], _visited: set[str] | None = None) -> None:
+    """Apply the host flake's ``flake_link`` (if any) by resolving the linked
+    flake with merged overrides and appending its loras + prompts.
+
+    Override precedence (highest wins):
+      1. Per-grid placement override (entry["flake_link_override"])
+      2. Host yaml flake_link.variant / .lora_strengths
+      3. Linked flake's own defaults
+    """
+    link = host.flake_link
+    if not link or not link.target:
+        return
+
+    _visited = set(_visited or [])
+    if link.target in _visited:
+        return  # cycle guard
+    _visited.add(host.name)
+
+    # Build the effective entry for the linked flake.
+    grid_override = entry.get("flake_link_override") or {}
+    link_variant = dict(link.variant)
+    link_variant.update({str(k): str(v) for k, v in (grid_override.get("variant") or {}).items() if v})
+
+    # Strengths: each override slot is either a number (override) or None (use link default).
+    link_strengths = list(link.lora_strengths)
+    for i, s in enumerate(grid_override.get("lora_strengths") or []):
+        if s is None:
+            continue
+        if i >= len(link_strengths):
+            link_strengths.extend([None] * (i - len(link_strengths) + 1))
+        link_strengths[i] = float(s)
+
+    linked_entry = {
+        "name": link.target,
+        "variant": link_variant,
+    }
+    # Translate the link's lora_strengths into the entry's `loras` override
+    # (only set slots that have an explicit value; leave others None so they
+    # fall back to the linked flake's own default).
+    if link_strengths:
+        linked_entry["loras"] = link_strengths
+
+    try:
+        linked = resolve(linked_entry)
+    except FileNotFoundError:
+        # Missing linked flake — log via a print so it surfaces in the server
+        # log without taking a logging dep here.
+        print(f"[flakes] flake_link target not found: {link.target} (host: {host.name})")
+        return
+
+    # Append linked flake's loras to host's list.
+    for lr in linked.loras:
+        host.loras.append(lr)
+
+    # Append prompts (after host's, comma-joined like the existing variant logic).
+    if linked.positive:
+        host.positive = f"{host.positive}, {linked.positive}" if host.positive else linked.positive
+    if linked.negative:
+        host.negative = f"{host.negative}, {linked.negative}" if host.negative else linked.negative
 
 
 def flake_variants(name: str) -> dict[str, list[str]]:
