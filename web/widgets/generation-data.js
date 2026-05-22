@@ -183,11 +183,16 @@ function buildComposite(urls, size = 256) {
 }
 
 // Convert a single flake entry into label/lora/prompt rows.
+// If the host flake has a flake_link, also append the linked flake's effective
+// rows (post-override) — #236. The effective variant/strength is derived
+// from per-grid override > yaml default > linked flake's own default.
 async function flakeEntryRows(entry) {
     const loraRows = [];
     const promptRows = [];
+    let hostData = null;
     try {
         const d = await fetchFlake(entry.name);
+        hostData = d;
         const label = entry.display_name || d.name || entry.name.split("/").pop() || entry.name;
         const choices = Object.values(entry.variant || {}).filter(Boolean);
         const vLabel = label + (choices.length ? ` (${choices.join(", ")})` : "");
@@ -209,6 +214,45 @@ async function flakeEntryRows(entry) {
             if (v?.negative) promptRows.push([`${vLabel} · ${g} · Negative`, v.negative]);
         }
     } catch { /* skip */ }
+
+    // Linked flake surfacing.
+    if (hostData?.flake_link?.target) {
+        try {
+            const linkTarget = hostData.flake_link.target;
+            const link = hostData.flake_link;
+            const ovr = entry.flake_link_override || {};
+            const linked = await fetchFlake(linkTarget);
+            const hostLabel = entry.display_name || hostData.name || entry.name.split("/").pop() || entry.name;
+            const linkLabel = (linked.name || linkTarget).split("/").pop();
+            const groupLabel = `${hostLabel} · linked: ${linkLabel}`;
+            // Effective variant choices = grid override > yaml default.
+            const effectiveVariant = { ...(link.variant || {}), ...(ovr.variant || {}) };
+            const effChoices = Object.values(effectiveVariant).filter(Boolean);
+            const linkChoiceSuffix = effChoices.length ? ` (${effChoices.join(", ")})` : "";
+            // Linked LoRA rows with effective strengths.
+            if (Array.isArray(linked.loras)) {
+                linked.loras.forEach((lr, idx) => {
+                    const name = lr.name || `LoRA #${idx + 1}`;
+                    const path = lr.path || lr.name || "";
+                    let s = ovr.lora_strengths?.[idx];
+                    if (s === null || s === undefined) s = (link.lora_strengths || [])[idx];
+                    if (s === null || s === undefined) s = lr.strength ?? 1;
+                    loraRows.push([`[linked] ${name} [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`, path]);
+                });
+            }
+            // Linked prompts
+            const linkPos = ((linked.prompt && linked.prompt.positive) || "").trim();
+            const linkNeg = ((linked.prompt && linked.prompt.negative) || "").trim();
+            if (linkPos) promptRows.push([`${groupLabel}${linkChoiceSuffix} · Positive`, linkPos]);
+            if (linkNeg) promptRows.push([`${groupLabel}${linkChoiceSuffix} · Negative`, linkNeg]);
+            for (const [g, c] of Object.entries(effectiveVariant)) {
+                if (!c) continue;
+                const v = linked.variants?.[g]?.[c];
+                if (v?.positive) promptRows.push([`${groupLabel} · ${g} · Positive`, v.positive]);
+                if (v?.negative) promptRows.push([`${groupLabel} · ${g} · Negative`, v.negative]);
+            }
+        } catch { /* missing linked target — skip silently */ }
+    }
     return { loraRows, promptRows };
 }
 
