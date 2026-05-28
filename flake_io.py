@@ -383,11 +383,15 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
 
     cns: list[ControlNetEntry] = []
     for cn in raw.get("controlnets") or []:
+        model_name = str(cn.get("model", ""))
+        if not model_name.strip():
+            print(f"[flakes] skipping controlnet entry with empty model_name")
+            continue
         cns.append(
             ControlNetEntry(
                 type=str(cn.get("type", "")),
-                model_name=str(cn["model"]),
-                image_name=str(cn["image"]),
+                model_name=model_name,
+                image_name=str(cn.get("image", "")),
                 strength=float(cn.get("strength", 1.0)),
                 start_percent=float(cn.get("start_percent", 0.0)),
                 end_percent=float(cn.get("end_percent", 1.0)),

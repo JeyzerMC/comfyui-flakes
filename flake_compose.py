@@ -108,6 +108,9 @@ def compose(
         for cn in f.controlnets:
             if cn.strength == 0:
                 continue
+            if not cn.model_name.strip():
+                print(f"[flakes] skipping controlnet entry with empty model_name")
+                continue
             cn_resolved = _resolve_model_name("controlnet", cn.model_name)
             if cn_resolved not in cn_model_cache:
                 cn_model_cache[cn_resolved] = cn_loader.load_controlnet(cn_resolved)[0]
