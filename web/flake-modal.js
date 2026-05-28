@@ -10,7 +10,7 @@ import {
     getCoverUrl, getVariantImageUrl, uploadCover, fetchLoras, fetchCnModels, fetchCnTypes, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
-    fetchLoraVariantSiblingImagePath,
+    fetchLoraVariantSiblingImagePath, invalidateList,
 } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
 
@@ -52,6 +52,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         const FLAKE_TYPES = ["Style", "Slider", "Character", "Pose", "Concept", "Other"];
         let typeDropdown = null;
         let baseRootSelectRef = null;
+        let rootsLoaded = false;
 
         if (mode !== "default") {
             const nameStemRow = document.createElement("div");
@@ -166,6 +167,8 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                         baseRootSelect.appendChild(opt);
                     }
                 } catch { /* ignore */ }
+                rootsLoaded = true;
+                saveBtn.disabled = false;
             })();
 
             // ---- Output Path on its own row ----
@@ -1734,6 +1737,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
         footer.appendChild(cancelBtn);
 
         const saveBtn = makeButton("Save", true);
+        if (!rootsLoaded) saveBtn.disabled = true;
         saveBtn.addEventListener("click", async () => {
             const ordered = {};
             if (displayNameInput && displayNameInput.value) ordered.name = displayNameInput.value.trim();
@@ -1799,24 +1803,14 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                 if (!outputPath) { window.alert("Path is required"); return; }
                 const fullOutputPath = getOutputPrefix() + outputPath;
                 const baseRootIndex = baseRootSelectRef ? parseInt(baseRootSelectRef.value, 10) : 0;
-                const body = {
-                    name: fullOutputPath,
-                    data: ordered,
-                    family: currentFamily || undefined,
-                    base_root_index: Number.isFinite(baseRootIndex) ? baseRootIndex : 0,
-                    output_path: fullOutputPath,
-                };
-                if (mode !== "create") body.old_name = name;
-                const r = await fetch("/flakes/save", {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body),
-                });
-                if (!r.ok) {
-                    const err = await r.json().catch(() => ({}));
-                    throw new Error(err.error || `HTTP ${r.status}`);
-                }
-                const savedName = (await r.json()).name || outputPath;
+                const oldName = mode !== "create" ? name : null;
+                const savedName = await saveFlakeApi(
+                    fullOutputPath, ordered,
+                    currentFamily || undefined,
+                    Number.isFinite(baseRootIndex) ? baseRootIndex : 0,
+                    fullOutputPath,
+                    oldName,
+                );
                 if (mode === "create") {
                     await close({ created: true, name: savedName, data: ordered });
                 } else {

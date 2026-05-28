@@ -27,19 +27,23 @@ export async function fetchFlake(name) {
     return (await r.json()).data || {};
 }
 
-export async function saveFlakeApi(name, data, family = "") {
+export async function saveFlakeApi(name, data, family = "", baseRootIndex = null, outputPath = null, oldName = null) {
+    const body = { name, data, family: family || undefined };
+    if (baseRootIndex != null) body.base_root_index = baseRootIndex;
+    if (outputPath != null) body.output_path = outputPath;
+    if (oldName != null) body.old_name = oldName;
     const r = await fetch("/flakes/save", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, data, family: family || undefined }),
+        body: JSON.stringify(body),
     });
     if (!r.ok) {
         const err = await r.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${r.status}`);
     }
     invalidateList();
-    const body = await r.json().catch(() => ({}));
-    return body.name || name;
+    const result = await r.json().catch(() => ({}));
+    return result.name || name;
 }
 
 export async function deleteFlakeApi(name) {

@@ -341,15 +341,37 @@ def save_flake(
 
     target = os.path.join(root, f"{canonical}.yaml")
     _ensure_inside(target, root)
+    target_real = os.path.realpath(target)
     os.makedirs(os.path.dirname(target), exist_ok=True)
 
-    # Move existing files if the location changed
-    if old_name and old_name != canonical:
+    # Clean up any copies of the same canonical name in other roots to prevent
+    # double-save (both base and extra path) and edits-lost-on-reload bugs (#242).
+    for other_root in roots:
+        other_path = os.path.realpath(os.path.join(other_root, f"{canonical}.yaml"))
+        if other_path == target_real:
+            continue
+        if os.path.isfile(other_path):
+            try:
+                os.remove(other_path)
+                print(f"[flakes] removed duplicate yaml: {other_path}")
+            except OSError:
+                pass
+            for ext in _COVER_EXTENSIONS:
+                cover_path = os.path.realpath(os.path.join(other_root, f"{canonical}{ext}"))
+                if cover_path != target_real and os.path.isfile(cover_path):
+                    try:
+                        os.remove(cover_path)
+                    except OSError:
+                        pass
+
+    # Move existing files if the location changed (old_name handles renames
+    # or moves between roots — canonical stays the same but root may differ).
+    if old_name:
         try:
             old_yaml = _resolve_file(old_name)
         except (FileNotFoundError, ValueError):
             old_yaml = None
-        if old_yaml and os.path.realpath(old_yaml) != os.path.realpath(target):
+        if old_yaml and os.path.realpath(old_yaml) != target_real:
             try:
                 os.remove(old_yaml)
             except OSError:
