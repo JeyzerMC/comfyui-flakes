@@ -65,8 +65,15 @@ export function setWidgetHidden(widget, hide) {
         widget.hidden = true;
         widget.draw = function () {};
         widget.options = { ...(widget.options || {}), serialize: true };
-        if (widget.element) widget.element.style.display = "none";
-        if (widget.inputEl) widget.inputEl.style.display = "none";
+        if (widget.element) {
+            widget.element.style.setProperty("display", "none", "important");
+            let parent = widget.element.parentElement;
+            while (parent && !parent.classList.contains("comfy-widgets-divider") && parent.parentElement) {
+                parent = parent.parentElement;
+            }
+            if (parent) parent.style.setProperty("display", "none", "important");
+        }
+        if (widget.inputEl) widget.inputEl.style.setProperty("display", "none", "important");
         // Mirror onto _state (#216 v3): on modern frontends the canvas-drawn
         // ComboWidget renders from this Proxy rather than the top-level widget
         // object. Setting type='hidden' here is what actually suppresses draw.
@@ -83,8 +90,22 @@ export function setWidgetHidden(widget, hide) {
         else delete widget.draw;
         if (saved.options) widget.options = saved.options;
         widget.hidden = false;
-        if (widget.element && saved.elementDisplay !== null) widget.element.style.display = saved.elementDisplay;
-        if (widget.inputEl && saved.inputElDisplay !== null) widget.inputEl.style.display = saved.inputElDisplay;
+        if (widget.element && saved.elementDisplay !== null) {
+            widget.element.style.removeProperty("display");
+            widget.element.style.display = saved.elementDisplay;
+        }
+        if (widget.inputEl && saved.inputElDisplay !== null) {
+            widget.inputEl.style.removeProperty("display");
+            widget.inputEl.style.display = saved.inputElDisplay;
+        }
+        // Restore parent container display
+        if (widget.element) {
+            let parent = widget.element.parentElement;
+            while (parent && !parent.classList.contains("comfy-widgets-divider") && parent.parentElement) {
+                parent = parent.parentElement;
+            }
+            if (parent) parent.style.removeProperty("display");
+        }
         const state = widget._state || null;
         if (state) {
             if (saved.stateType !== null) try { state.type = saved.stateType; } catch { /* */ }
