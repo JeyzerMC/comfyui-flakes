@@ -1028,7 +1028,9 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             strLabel.textContent = "Str";
                             css(strLabel, "font-size:10px;color:#888;flex-shrink:0;");
                             slidersRow.appendChild(strLabel);
-                            const strSlider = makeComfyValueSlider(cn.strength ?? 1.0, 0, 2, 0.05);
+                            const strSlider = makeComfyValueSlider(cn.strength ?? 1.0, 0, 2, 0.05, (v) => {
+                                arr[i].strength = v;
+                            });
                             strSlider.style.flex = "1";
                             slidersRow.appendChild(strSlider);
 
@@ -1036,7 +1038,9 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             startLabel.textContent = "Start";
                             css(startLabel, "font-size:10px;color:#888;flex-shrink:0;");
                             slidersRow.appendChild(startLabel);
-                            const startSlider = makeComfyValueSlider(cn.start_percent ?? 0, 0, 1, 0.05);
+                            const startSlider = makeComfyValueSlider(cn.start_percent ?? 0, 0, 1, 0.05, (v) => {
+                                arr[i].start_percent = v;
+                            });
                             startSlider.style.flex = "1";
                             slidersRow.appendChild(startSlider);
 
@@ -1044,7 +1048,9 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             endLabel.textContent = "End";
                             css(endLabel, "font-size:10px;color:#888;flex-shrink:0;");
                             slidersRow.appendChild(endLabel);
-                            const endSlider = makeComfyValueSlider(cn.end_percent ?? 1, 0, 1, 0.05);
+                            const endSlider = makeComfyValueSlider(cn.end_percent ?? 1, 0, 1, 0.05, (v) => {
+                                arr[i].end_percent = v;
+                            });
                             endSlider.style.flex = "1";
                             slidersRow.appendChild(endSlider);
 
