@@ -280,6 +280,18 @@ def list_dirs(family: str | None = None) -> list[str]:
 # Flake CRUD
 # ---------------------------------------------------------------------------
 
+def _find_flake_root_index(name: str) -> int:
+    _validate_name(name)
+    roots = _flakes_roots()
+    for idx, root in enumerate(roots):
+        for ext in (".yaml", ".yml"):
+            candidate = os.path.join(root, f"{name}{ext}")
+            if os.path.isfile(candidate):
+                _ensure_inside(candidate, root)
+                return idx
+    raise FileNotFoundError(f"Flake '{name}' not found under any registered flakes/ directory")
+
+
 def read_flake_raw(name: str) -> dict[str, Any]:
     path = _resolve_file(name)
     with open(path, encoding="utf-8") as f:

@@ -155,10 +155,19 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     // Default to the extra model path (index > 0) when available
                     if (roots.length > 1 && mode === "create") {
                         baseRootSelect.value = String(roots[roots.length - 1].index);
-                        const rootIdx = parseInt(baseRootSelect.value, 10);
-                        const root = (rootsCache.find(r => r.index === rootIdx)) || rootsCache[0];
-                        currentRootPath = (root?.path || "").replace(/\\/g, "/").replace(/\/+$/, "") + "/";
+                    } else if (mode === "edit" && name) {
+                        const rr = await fetch(`/flakes/get?name=${encodeURIComponent(name)}`);
+                        if (rr.ok) {
+                            const rd = await rr.json();
+                            const savedRootIndex = rd.base_root_index;
+                            if (savedRootIndex != null && savedRootIndex < roots.length) {
+                                baseRootSelect.value = String(savedRootIndex);
+                            }
+                        }
                     }
+                    const rootIdx = parseInt(baseRootSelect.value, 10);
+                    const root = (rootsCache.find(r => r.index === rootIdx)) || rootsCache[0];
+                    currentRootPath = (root?.path || "").replace(/\\/g, "/").replace(/\/+$/, "") + "/";
                     updateResolvedPath();
                     if (!roots.length) {
                         const opt = document.createElement("option");

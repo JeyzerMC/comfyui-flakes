@@ -67,6 +67,7 @@ async def _get_flake(request: web.Request) -> web.Response:
         return _bad_request("missing 'name' query param")
     try:
         data = flake_io.read_flake_raw(name)
+        base_root_index = flake_io._find_flake_root_index(name)
     except FileNotFoundError as exc:
         return _not_found(str(exc))
     except ValueError as exc:
@@ -74,7 +75,7 @@ async def _get_flake(request: web.Request) -> web.Response:
     except Exception as exc:
         logging.exception("[flakes] failed to read %s", name)
         return _server_error(str(exc))
-    return web.json_response({"name": name, "data": data})
+    return web.json_response({"name": name, "data": data, "base_root_index": base_root_index})
 
 
 @routes.put("/flakes/save")
