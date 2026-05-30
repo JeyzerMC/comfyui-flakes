@@ -31,6 +31,92 @@ _FAMILY_COMPAT = {
 
 _FAMILY_FROM_FOLDER = {v: k for k, v in _FAMILY_MAP.items()}
 
+_CN_MODEL_MAP = {
+    "sdxl": {
+        "openpose": "controlnet_openpose_sdxl",
+        "depth": "controlnet_depth_sdxl",
+        "canny": "controlnet_canny_sdxl",
+        "lineart": "controlnet_lineart_sdxl",
+        "lineart_anime": "controlnet_lineart_anime_sdxl",
+        "softedge": "controlnet_softedge_sdxl",
+        "scribble": "controlnet_scribble_sdxl",
+        "normalbae": "controlnet_normalbae_sdxl",
+        "seg": "controlnet_seg_sdxl",
+        "tile": "controlnet_tile_sdxl",
+        "ip2p": "controlnet_ip2p_sdxl",
+    },
+    "illustrious": {
+        "openpose": "controlnet_openpose_sdxl",
+        "depth": "controlnet_depth_sdxl",
+        "canny": "controlnet_canny_sdxl",
+        "lineart": "controlnet_lineart_sdxl",
+        "lineart_anime": "controlnet_lineart_anime_sdxl",
+        "softedge": "controlnet_softedge_sdxl",
+        "scribble": "controlnet_scribble_sdxl",
+        "normalbae": "controlnet_normalbae_sdxl",
+        "seg": "controlnet_seg_sdxl",
+        "tile": "controlnet_tile_sdxl",
+        "ip2p": "controlnet_ip2p_sdxl",
+    },
+    "pony": {
+        "openpose": "controlnet_openpose_sdxl",
+        "depth": "controlnet_depth_sdxl",
+        "canny": "controlnet_canny_sdxl",
+        "lineart": "controlnet_lineart_sdxl",
+        "lineart_anime": "controlnet_lineart_anime_sdxl",
+        "softedge": "controlnet_softedge_sdxl",
+        "scribble": "controlnet_scribble_sdxl",
+        "normalbae": "controlnet_normalbae_sdxl",
+        "seg": "controlnet_seg_sdxl",
+        "tile": "controlnet_tile_sdxl",
+        "ip2p": "controlnet_ip2p_sdxl",
+    },
+    "zib": {
+        "openpose": "controlnet_openpose_zib",
+        "depth": "controlnet_depth_zib",
+        "canny": "controlnet_canny_zib",
+        "lineart": "controlnet_lineart_zib",
+        "lineart_anime": "controlnet_lineart_anime_zib",
+        "softedge": "controlnet_softedge_zib",
+        "scribble": "controlnet_scribble_zib",
+        "normalbae": "controlnet_normalbae_zib",
+        "seg": "controlnet_seg_zib",
+        "tile": "controlnet_tile_zib",
+        "ip2p": "controlnet_ip2p_zib",
+    },
+    "zit": {
+        "openpose": "controlnet_openpose_zib",
+        "depth": "controlnet_depth_zib",
+        "canny": "controlnet_canny_zib",
+        "lineart": "controlnet_lineart_zib",
+        "lineart_anime": "controlnet_lineart_anime_zib",
+        "softedge": "controlnet_softedge_zib",
+        "scribble": "controlnet_scribble_zib",
+        "normalbae": "controlnet_normalbae_zib",
+        "seg": "controlnet_seg_zib",
+        "tile": "controlnet_tile_zib",
+        "ip2p": "controlnet_ip2p_zib",
+    },
+    "common": {
+        "openpose": "controlnet_openpose_sdxl",
+        "depth": "controlnet_depth_sdxl",
+        "canny": "controlnet_canny_sdxl",
+        "lineart": "controlnet_lineart_sdxl",
+        "lineart_anime": "controlnet_lineart_anime_sdxl",
+        "softedge": "controlnet_softedge_sdxl",
+        "scribble": "controlnet_scribble_sdxl",
+        "normalbae": "controlnet_normalbae_sdxl",
+        "seg": "controlnet_seg_sdxl",
+        "tile": "controlnet_tile_sdxl",
+        "ip2p": "controlnet_ip2p_sdxl",
+    },
+}
+
+
+def infer_cn_model(cn_type: str, family_folder: str) -> str:
+    family_models = _CN_MODEL_MAP.get(family_folder, {})
+    return family_models.get(cn_type, "")
+
 
 # ---------------------------------------------------------------------------
 # Preset dataclass
@@ -160,6 +246,13 @@ def _ensure_inside(path: str, root: str) -> None:
 
 def _family_folder(family: str | None) -> str | None:
     return _FAMILY_MAP.get(family) if family else None
+
+
+def _family_folder_from_name(name: str) -> str:
+    parts = name.replace("\\", "/").split("/")
+    if parts[0] == "img" and len(parts) >= 2 and parts[1] in _FAMILY_FROM_FOLDER:
+        return parts[1]
+    return "sdxl"
 
 
 def infer_preset_family(path: str) -> str | None:
@@ -418,12 +511,21 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
     cns: list[ControlNetEntry] = []
     for cn in raw.get("controlnets") or []:
         model_name = str(cn.get("model", ""))
+        cn_type = str(cn.get("type", ""))
+        if model_name.strip():
+            pass
+        elif cn_type:
+            raw_name = name
+            family_folder = _family_folder_from_name(raw_name)
+            model_name = infer_cn_model(cn_type, family_folder)
+            if model_name:
+                pass
         if not model_name.strip():
-            print(f"[flakes] skipping controlnet entry with empty model_name")
+            print(f"[flakes] skipping controlnet entry with empty model_name (type={cn_type})")
             continue
         cns.append(
             ControlNetEntry(
-                type=str(cn.get("type", "")),
+                type=cn_type,
                 model_name=model_name,
                 image_name=str(cn.get("image", "")),
                 strength=float(cn.get("strength", 1.0)),

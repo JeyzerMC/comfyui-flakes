@@ -312,6 +312,7 @@ class FlakeStack:
         # --- Apply ControlNets (from flakes) ------------------------------------
         from .flake_compose import _load_cn_image
 
+        family_folder = flake_io._FAMILY_MAP.get(model_family, "sdxl")
         cn_model_cache = {}
         cn_loader = ControlNetLoader()
         cn_apply = ControlNetApplyAdvanced()
@@ -319,10 +320,13 @@ class FlakeStack:
             for cn in f.controlnets:
                 if cn.strength == 0:
                     continue
-                if not cn.model_name.strip():
-                    print(f"[flakes] skipping controlnet entry with empty model_name")
+                model_name = cn.model_name
+                if not model_name.strip() and cn.type:
+                    model_name = flake_io.infer_cn_model(cn.type, family_folder)
+                if not model_name.strip():
+                    print(f"[flakes] skipping controlnet entry with empty model_name (type={cn.type})")
                     continue
-                cn_resolved = _resolve_model_name("controlnet", cn.model_name)
+                cn_resolved = _resolve_model_name("controlnet", model_name)
                 if cn_resolved not in cn_model_cache:
                     cn_model_cache[cn_resolved] = cn_loader.load_controlnet(cn_resolved)[0]
                 cn_model = cn_model_cache[cn_resolved]

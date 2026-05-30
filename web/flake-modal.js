@@ -7,7 +7,7 @@ import {
     familyFolder, makeHoverRemoveWrapper,
 } from "./utils.js";
 import {
-    getCoverUrl, getVariantImageUrl, uploadCover, fetchLoras, fetchCnModels, fetchCnTypes, fetchInputs,
+    getCoverUrl, getVariantImageUrl, uploadCover, fetchLoras, fetchCnTypes, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
     fetchLoraVariantSiblingImagePath, invalidateList,
@@ -999,7 +999,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     }
                                 } catch { /* ignore */ }
                             })();
-                            typeDropdown.element.addEventListener("change", () => { arr[i].type = typeDropdown.element.value; });
+                            typeDropdown.element.addEventListener("change", () => { arr[i].type = typeDropdown.element.value; renderCNs(); });
                             typeDropdown.container.style.flex = "1";
                             typeRow.appendChild(typeDropdown.container);
 
@@ -1008,25 +1008,13 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             typeRow.appendChild(removeBtn);
                             rightCol.appendChild(typeRow);
 
-                            // Row 2: Model file
+                            // Row 2: Inferred model (read-only)
                             const modelRow = document.createElement("div");
                             css(modelRow, "display:flex;gap:4px;align-items:center;");
-
-                            const modelInput = makeComfyInput(cn.model || cn.model_name || "", "model file");
-                            const cnModelListId = `cnm-${Math.random().toString(36).slice(2)}`;
-                            const cnModelList = document.createElement("datalist");
-                            cnModelList.id = cnModelListId;
-                            modelInput.setAttribute("list", cnModelListId);
-                            modelInput.addEventListener("change", () => { arr[i].model = modelInput.value; });
-                            modelInput.style.flex = "1";
-                            modelRow.appendChild(modelInput);
-                            modelRow.appendChild(cnModelList);
-                            (async () => {
-                                try {
-                                    const cns = await fetchCnModels();
-                                    for (const c of cns) { const o = document.createElement("option"); o.value = c; cnModelList.appendChild(o); }
-                                } catch { /* ignore */ }
-                            })();
+                            const modelLabel = document.createElement("span");
+                            modelLabel.textContent = cn.model || cn.model_name ? `model: ${cn.model || cn.model_name}` : "model: \u2014";
+                            css(modelLabel, "font-size:11px;color:#888;flex:1;");
+                            modelRow.appendChild(modelLabel);
                             rightCol.appendChild(modelRow);
 
                             // Row 3: Sliders
@@ -1070,7 +1058,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
                         const addBtn = makeSmallButton("+ controlnet");
                         addBtn.addEventListener("click", () => {
-                            arr.push({ type: "", model: "", image: "", strength: 1.0, start_percent: 0, end_percent: 1 });
+                            arr.push({ type: "", image: "", strength: 1.0, start_percent: 0, end_percent: 1 });
                             renderCNs();
                         });
                         cnsBox.appendChild(addBtn);
@@ -1786,7 +1774,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                 }
                 if (ft === "controlnets") {
                     const cnArr = fieldState.controlnets._ || [];
-                    if (cnArr.length > 0) ordered.controlnets = cnArr;
+                    if (cnArr.length > 0) {
+                        ordered.controlnets = cnArr.map(cn => {
+                            const { model, model_name, ...rest } = cn;
+                            return rest;
+                        });
+                    }
                 }
                 if (ft === "variants" && Object.keys(fieldState.variants).length > 0) {
                     ordered.variants = fieldState.variants;
