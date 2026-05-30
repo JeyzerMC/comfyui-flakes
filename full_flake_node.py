@@ -326,6 +326,9 @@ class FlakeStack:
                 if not model_name.strip():
                     print(f"[flakes] skipping controlnet entry with empty model_name (type={cn.type})")
                     continue
+                if not cn.image_name.strip():
+                    print(f"[flakes] skipping controlnet entry with empty image_name (type={cn.type})")
+                    continue
                 cn_resolved = _resolve_model_name("controlnet", model_name)
                 if cn_resolved not in cn_model_cache:
                     cn_model_cache[cn_resolved] = cn_loader.load_controlnet(cn_resolved)[0]
