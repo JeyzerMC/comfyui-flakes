@@ -13,6 +13,88 @@ export function familyFolder(family) {
     return FAMILY_FOLDERS[family] || null;
 }
 
+// Mirror of flake_io._CN_MODEL_MAP — keep in sync.
+export const CN_MODEL_MAP = {
+    sdxl: {
+        openpose: "controlnet_openpose_sdxl",
+        depth: "controlnet_depth_sdxl",
+        canny: "controlnet_canny_sdxl",
+        lineart: "controlnet_lineart_sdxl",
+        lineart_anime: "controlnet_lineart_anime_sdxl",
+        softedge: "controlnet_softedge_sdxl",
+        scribble: "controlnet_scribble_sdxl",
+        normalbae: "controlnet_normalbae_sdxl",
+        seg: "controlnet_seg_sdxl",
+        tile: "controlnet_tile_sdxl",
+        ip2p: "controlnet_ip2p_sdxl",
+    },
+    illustrious: {
+        openpose: "controlnet_openpose_sdxl",
+        depth: "controlnet_depth_sdxl",
+        canny: "controlnet_canny_sdxl",
+        lineart: "controlnet_lineart_sdxl",
+        lineart_anime: "controlnet_lineart_anime_sdxl",
+        softedge: "controlnet_softedge_sdxl",
+        scribble: "controlnet_scribble_sdxl",
+        normalbae: "controlnet_normalbae_sdxl",
+        seg: "controlnet_seg_sdxl",
+        tile: "controlnet_tile_sdxl",
+        ip2p: "controlnet_ip2p_sdxl",
+    },
+    pony: {
+        openpose: "controlnet_openpose_sdxl",
+        depth: "controlnet_depth_sdxl",
+        canny: "controlnet_canny_sdxl",
+        lineart: "controlnet_lineart_sdxl",
+        lineart_anime: "controlnet_lineart_anime_sdxl",
+        softedge: "controlnet_softedge_sdxl",
+        scribble: "controlnet_scribble_sdxl",
+        normalbae: "controlnet_normalbae_sdxl",
+        seg: "controlnet_seg_sdxl",
+        tile: "controlnet_tile_sdxl",
+        ip2p: "controlnet_ip2p_sdxl",
+    },
+    zib: {
+        openpose: "controlnet_openpose_zib",
+        depth: "controlnet_depth_zib",
+        canny: "controlnet_canny_zib",
+        lineart: "controlnet_lineart_zib",
+        lineart_anime: "controlnet_lineart_anime_zib",
+        softedge: "controlnet_softedge_zib",
+        scribble: "controlnet_scribble_zib",
+        normalbae: "controlnet_normalbae_zib",
+        seg: "controlnet_seg_zib",
+        tile: "controlnet_tile_zib",
+        ip2p: "controlnet_ip2p_zib",
+    },
+    zit: {
+        openpose: "controlnet_openpose_zib",
+        depth: "controlnet_depth_zib",
+        canny: "controlnet_canny_zib",
+        lineart: "controlnet_lineart_zib",
+        lineart_anime: "controlnet_lineart_anime_zib",
+        softedge: "controlnet_softedge_zib",
+        scribble: "controlnet_scribble_zib",
+        normalbae: "controlnet_normalbae_zib",
+        seg: "controlnet_seg_zib",
+        tile: "controlnet_tile_zib",
+        ip2p: "controlnet_ip2p_zib",
+    },
+    common: {
+        openpose: "controlnet_openpose_sdxl",
+        depth: "controlnet_depth_sdxl",
+        canny: "controlnet_canny_sdxl",
+        lineart: "controlnet_lineart_sdxl",
+        lineart_anime: "controlnet_lineart_anime_sdxl",
+        softedge: "controlnet_softedge_sdxl",
+        scribble: "controlnet_scribble_sdxl",
+        normalbae: "controlnet_normalbae_sdxl",
+        seg: "controlnet_seg_sdxl",
+        tile: "controlnet_tile_sdxl",
+        ip2p: "controlnet_ip2p_sdxl",
+    },
+};
+
 // Global registry for mutually-exclusive option panels (flake combo/stack dropdowns).
 // Each panel registers a close function; opening a new panel closes all others.
 const _openPanels = new Set();

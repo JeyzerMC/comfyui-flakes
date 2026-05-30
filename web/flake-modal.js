@@ -4,7 +4,7 @@ import {
     makeComfyDropdown, makePanelDropdown, makeSearchableDropdown,
     makeComfyNumberInput, makeComfyValueSlider, makeSmallValueSlider,
     makeTextarea, makeLabel, makeNumberInput,
-    familyFolder, makeHoverRemoveWrapper,
+    familyFolder, makeHoverRemoveWrapper, CN_MODEL_MAP,
 } from "./utils.js";
 import {
     getCoverUrl, getVariantImageUrl, uploadCover, fetchLoras, fetchCnTypes, fetchInputs,
@@ -1012,7 +1012,9 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             const modelRow = document.createElement("div");
                             css(modelRow, "display:flex;gap:4px;align-items:center;");
                             const modelLabel = document.createElement("span");
-                            modelLabel.textContent = cn.model || cn.model_name ? `model: ${cn.model || cn.model_name}` : "model: \u2014";
+                            const inferred = cn.model || cn.model_name
+                                || (cn.type ? CN_MODEL_MAP[familyFolder(currentFamily)]?.[cn.type] || "" : "");
+                            modelLabel.textContent = inferred ? `model: ${inferred}` : "model: \u2014";
                             css(modelLabel, "font-size:11px;color:#888;flex:1;");
                             modelRow.appendChild(modelLabel);
                             rightCol.appendChild(modelRow);
