@@ -36,6 +36,33 @@ def _build_filename_prefix(preset_name: str, stems: list[str]) -> str:
     return path + filename
 
 
+def _carry_controlnets(src_cond, dst_cond):
+    """Copy the controlnet chain from upstream conditioning onto freshly
+    re-encoded conditioning (#257).
+
+    Flake nodes re-encode the accumulated prompt text every time, producing
+    fresh conditioning that loses the ``control`` key — which is how ComfyUI
+    chains ControlNets (see ControlNetApplyAdvanced). Without this, a
+    controlnet applied by an upstream Flake node is silently dropped and only
+    the last node's controlnets survive. Carrying ``control`` forward lets this
+    node's own controlnets chain on top via ``set_previous_controlnet``.
+    """
+    if not src_cond or not dst_cond:
+        return dst_cond
+    src_meta = src_cond[0][1] if len(src_cond[0]) > 1 else {}
+    control = src_meta.get("control")
+    if control is None:
+        return dst_cond
+    out = []
+    for t in dst_cond:
+        d = t[1].copy()
+        d["control"] = control
+        if "control_apply_to_uncond" in src_meta:
+            d["control_apply_to_uncond"] = src_meta["control_apply_to_uncond"]
+        out.append([t[0], d])
+    return out
+
+
 def _resolve_lora_name(stem_or_name: str) -> str:
     result = _resolve_model_name("loras", stem_or_name)
     available = folder_paths.get_filename_list("loras")
@@ -289,9 +316,17 @@ class FlakeStack:
         new_neg_text = ", ".join(neg_parts) if neg_parts else ""
 
         # --- Re-encode prompts --------------------------------------------------
+        # Re-encoding produces fresh conditioning that drops the ControlNet
+        # chain attached by upstream Flake nodes, so snapshot the incoming
+        # conditioning and carry its `control` forward afterwards (#257).
+        prev_positive_cond, prev_negative_cond = positive_cond, negative_cond
+
         encoder = CLIPTextEncode()
         positive_cond = encoder.encode(clip, new_pos_text)[0] if new_pos_text else encoder.encode(clip, "")[0]
         negative_cond = encoder.encode(clip, new_neg_text)[0] if new_neg_text else encoder.encode(clip, "")[0]
+
+        positive_cond = _carry_controlnets(prev_positive_cond, positive_cond)
+        negative_cond = _carry_controlnets(prev_negative_cond, negative_cond)
 
         # --- Target resolution (skip bypassed) ----------------------------------
         # Computed before ControlNets so hint images can be fitted to the frame.
