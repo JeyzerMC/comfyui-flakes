@@ -914,6 +914,18 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             css(imgLabel, "font-size:10px;color:#666;pointer-events:none;");
                             imgBox.appendChild(imgLabel);
 
+                            // Caption showing the controlnet image's intrinsic
+                            // pixel dimensions (#256). Filled from the preview
+                            // <img> once it loads; hidden when there's no image.
+                            const dimLabel = document.createElement("span");
+                            css(dimLabel, "font-size:10px;color:#666;pointer-events:none;display:none;");
+                            imgPreview.addEventListener("load", () => {
+                                if (imgPreview.naturalWidth && imgPreview.naturalHeight) {
+                                    dimLabel.textContent = `${imgPreview.naturalWidth} × ${imgPreview.naturalHeight}`;
+                                    dimLabel.style.display = "block";
+                                }
+                            });
+
                             const imgFileInput = document.createElement("input");
                             imgFileInput.type = "file";
                             imgFileInput.accept = ".png,.jpg,.jpeg,.webp,.gif";
@@ -929,6 +941,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 } else {
                                     imgPreview.style.display = "none";
                                     imgLabel.style.display = "block";
+                                    dimLabel.textContent = "";
+                                    dimLabel.style.display = "none";
                                 }
                             }
 
@@ -978,6 +992,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             });
 
                             imageCol.appendChild(imgBox);
+                            imageCol.appendChild(dimLabel);
                             imageCol.appendChild(imgFileInput);
                             card.appendChild(imageCol);
 
