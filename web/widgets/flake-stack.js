@@ -429,11 +429,18 @@ export function setupFlakeWidget(node) {
         const upstreamFamily = upstreamNode.widgets?.find(w => w.name === "model_family");
         return upstreamFamily?.value || null;
     }
+    function _isFlakeDataConnected() {
+        const flakeDataInput = node.inputs?.find(i => i.name === "flake_data");
+        return !!(flakeDataInput && flakeDataInput.link != null);
+    }
     function _updateFamilyVisibility() {
         if (!familyWidget) return;
+        // Hide whenever the input pin is connected — not only when the upstream
+        // family is inferable. Otherwise a connected-but-uninferable upstream
+        // leaves the widget visible-but-disabled (#261).
+        const shouldHide = _isFlakeDataConnected();
         const upstream = _inferUpstreamFamily();
-        const shouldHide = upstream !== null;
-        if (shouldHide && upstream !== familyWidget.value) {
+        if (upstream !== null && upstream !== familyWidget.value) {
             familyWidget.value = upstream;
             if (familyWidget.callback) familyWidget.callback(upstream);
         }
