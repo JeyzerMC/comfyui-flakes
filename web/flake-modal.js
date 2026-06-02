@@ -345,10 +345,21 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             coverInput.addEventListener("change", () => {
                 const file = coverInput.files?.[0];
                 if (file) {
-                    coverFile = file;
                     const reader = new FileReader();
                     reader.onload = () => updateCoverPreview(reader.result);
                     reader.readAsDataURL(file);
+                    if (file.path) {
+                        // Desktop/Electron exposes the absolute path: store a
+                        // reference instead of copying the bytes next to the
+                        // flake YAML (#259). Backend reads the path directly.
+                        coverSourcePath = file.path;
+                        coverFile = null;
+                    } else {
+                        // Plain browser — no path available; fall back to the
+                        // upload-and-store-beside-yaml behaviour.
+                        coverFile = file;
+                        coverSourcePath = null;
+                    }
                 }
             });
 
@@ -395,10 +406,19 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
 
             const origClose = close;
             close = async (value) => {
-                if (value && (value.created || value.saved) && coverFile) {
-                    try {
-                        await uploadCover(value.name, coverFile);
-                    } catch { /* ignore */ }
+                if (value && (value.created || value.saved)) {
+                    if (coverFile) {
+                        try {
+                            await uploadCover(value.name, coverFile);
+                        } catch { /* ignore */ }
+                    } else if (coverSourcePath) {
+                        // A cover_image reference supersedes any previously-copied
+                        // cover sitting beside the yaml; remove it so the
+                        // reference isn't shadowed on reload (#259).
+                        try {
+                            await fetch(`/flakes/cover?name=${encodeURIComponent(value.name)}`, { method: "DELETE" });
+                        } catch { /* ignore */ }
+                    }
                 }
                 origClose(value);
             };

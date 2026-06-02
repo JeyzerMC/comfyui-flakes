@@ -819,10 +819,20 @@ _COVER_MIME_MAP = {
 def _resolve_cover_source(cover_source: str) -> tuple[bytes, str] | None:
     """Resolve a ``cover_image`` string from a flake/preset YAML to raw bytes.
 
-    The value can either be a direct image path under the LoRA tree
-    (preferred) or — for legacy flakes — a ``.safetensors`` path whose
-    sibling image we fall back to.
+    The value can either be an absolute path to an image anywhere on disk
+    (#259 — manually added covers are stored by reference, never copied), a
+    direct image path under the LoRA tree, or — for legacy flakes — a
+    ``.safetensors`` path whose sibling image we fall back to.
     """
+    # Absolute-path reference: read the file directly (image extensions only).
+    if os.path.isabs(cover_source):
+        if os.path.isfile(cover_source):
+            ext = os.path.splitext(cover_source)[1].lower()
+            if ext in _COVER_MIME_MAP:
+                with open(cover_source, "rb") as f:
+                    return f.read(), _COVER_MIME_MAP[ext]
+        return None
+
     direct = folder_paths.get_full_path("loras", cover_source)
     if direct and os.path.isfile(direct):
         ext = os.path.splitext(direct)[1].lower()
