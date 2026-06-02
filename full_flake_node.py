@@ -322,6 +322,10 @@ class FlakeStack:
                     positive_cond, negative_cond, cn_model, image,
                     cn.strength, cn.start_percent, cn.end_percent,
                 )
+                logging.info(
+                    "[flakes] applied CN model=%s image=%s strength=%.2f start=%.2f end=%.2f",
+                    cn_resolved, cn.image_name, cn.strength, cn.start_percent, cn.end_percent,
+                )
 
         # --- Resolution (skip bypassed) ----------------------------------------
         new_width, new_height = width, height
