@@ -403,12 +403,11 @@ export function setupFlakeWidget(node) {
     const familyWidget = node.widgets?.find(w => w.name === "model_family");
     if (!flakesHidden) return;
 
-    // Hide flakes_json STRING widget
-    flakesHidden.computeSize = () => [0, -4];
-    flakesHidden.type = "hidden";
-    flakesHidden.hidden = true;
-    if (flakesHidden.element) { flakesHidden.element.remove(); flakesHidden.element = null; }
-    if (flakesHidden.inputEl) { flakesHidden.inputEl.remove(); flakesHidden.inputEl = null; }
+    // Hide flakes_json STRING widget permanently, with serialize=true
+    // so edited values (including the default flake's prompt) reach the
+    // backend. Manual hiding via type/hidden/removeElement was skipping
+    // serialization in ComfyUI's graph payload.
+    setWidgetHidden(flakesHidden, true);
 
     function getFamily() {
         return familyWidget?.value || "SDXL/Base";

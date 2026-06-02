@@ -305,8 +305,10 @@ class FlakeStack:
                 if cn.strength == 0:
                     continue
                 model_name = cn.model_name
-                if not model_name.strip() and cn.type:
-                    model_name = flake_io.infer_cn_model(cn.type, family_folder)
+                if cn.type:
+                    inferred = flake_io.infer_cn_model(cn.type, family_folder)
+                    if inferred:
+                        model_name = inferred
                 if not model_name.strip():
                     print(f"[flakes] skipping controlnet entry with empty model_name (type={cn.type})")
                     continue
