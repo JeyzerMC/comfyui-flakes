@@ -52,7 +52,11 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         const FLAKE_TYPES = ["Style", "Slider", "Character", "Pose", "Concept", "Other"];
         let typeDropdown = null;
         let baseRootSelectRef = null;
-        let rootsLoaded = false;
+        // The Save button is gated on `rootsLoaded` so create/edit can't save
+        // before the base-directory roots resolve. Default-flake mode loads no
+        // roots, so treat it as ready immediately — otherwise the inline
+        // Default flake can never be saved (#253).
+        let rootsLoaded = mode === "default";
 
         if (mode !== "default") {
             const nameStemRow = document.createElement("div");
