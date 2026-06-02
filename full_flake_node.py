@@ -293,8 +293,16 @@ class FlakeStack:
         positive_cond = encoder.encode(clip, new_pos_text)[0] if new_pos_text else encoder.encode(clip, "")[0]
         negative_cond = encoder.encode(clip, new_neg_text)[0] if new_neg_text else encoder.encode(clip, "")[0]
 
+        # --- Target resolution (skip bypassed) ----------------------------------
+        # Computed before ControlNets so hint images can be fitted to the frame.
+        new_width, new_height = width, height
+        for f in flakes:
+            if f.resolution is not None:
+                new_width, new_height = f.resolution
+                break
+
         # --- Apply ControlNets (from flakes) ------------------------------------
-        from .flake_compose import _load_cn_image
+        from .flake_compose import _load_cn_image, _fit_cn_image
 
         family_folder = flake_io._FAMILY_MAP.get(model_family, "sdxl")
         cn_model_cache = {}
@@ -320,22 +328,18 @@ class FlakeStack:
                     cn_model_cache[cn_resolved] = cn_loader.load_controlnet(cn_resolved)[0]
                 cn_model = cn_model_cache[cn_resolved]
                 image = _load_cn_image(cn.image_name)
+                image = _fit_cn_image(image, new_width, new_height)
                 positive_cond, negative_cond = cn_apply.apply_controlnet(
                     positive_cond, negative_cond, cn_model, image,
                     cn.strength, cn.start_percent, cn.end_percent,
                 )
                 logging.info(
-                    "[flakes] applied CN model=%s image=%s strength=%.2f start=%.2f end=%.2f",
-                    cn_resolved, cn.image_name, cn.strength, cn.start_percent, cn.end_percent,
+                    "[flakes] applied CN model=%s image=%s fit=%dx%d strength=%.2f start=%.2f end=%.2f",
+                    cn_resolved, cn.image_name, new_width, new_height,
+                    cn.strength, cn.start_percent, cn.end_percent,
                 )
 
-        # --- Resolution (skip bypassed) ----------------------------------------
-        new_width, new_height = width, height
-        for f in flakes:
-            if f.resolution is not None:
-                new_width, new_height = f.resolution
-                break
-
+        # --- Latent (resolution resolved above, before ControlNets) -------------
         if (new_width, new_height) != (width, height):
             latent = EmptyLatentImage().generate(new_width, new_height, 1)[0]
 

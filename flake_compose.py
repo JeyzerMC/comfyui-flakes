@@ -63,6 +63,27 @@ def _load_cn_image(image_name: str) -> torch.Tensor:
     return torch.from_numpy(arr)[None,]
 
 
+def _fit_cn_image(image: torch.Tensor, target_w: int, target_h: int) -> torch.Tensor:
+    """Resize a ControlNet hint image (IMAGE tensor [B, H, W, 3]) to the
+    generation resolution, cropping to the target aspect first (#255).
+
+    ComfyUI otherwise stretches the hint to the latent size at sample time,
+    which distorts the pose whenever the control image's aspect ratio differs
+    from the generation resolution. Crop-and-resize (matching A1111's default)
+    keeps the pose aligned with the generated frame.
+    """
+    import comfy.utils
+
+    if target_w <= 0 or target_h <= 0:
+        return image
+    h, w = int(image.shape[1]), int(image.shape[2])
+    if (w, h) == (target_w, target_h):
+        return image
+    samples = image.movedim(-1, 1)  # [B, 3, H, W]
+    samples = comfy.utils.common_upscale(samples, target_w, target_h, "lanczos", "center")
+    return samples.movedim(1, -1)  # back to [B, H, W, 3]
+
+
 def compose(
     model: Any,
     clip: Any,
