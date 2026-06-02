@@ -10,6 +10,23 @@ import yaml
 import folder_paths
 
 
+def _resolve_model_name(category: str, stem_or_name: str) -> str:
+    available = folder_paths.get_filename_list(category)
+    available_norm = {p.replace("\\", "/"): p for p in available}
+
+    norm = stem_or_name.replace("\\", "/")
+    if norm in available_norm:
+        return available_norm[norm]
+
+    norm_stem = os.path.basename(os.path.splitext(norm)[0])
+    for cand_norm, candidate in available_norm.items():
+        cand_stem = os.path.basename(os.path.splitext(cand_norm)[0])
+        if cand_stem == norm_stem:
+            return candidate
+
+    return stem_or_name
+
+
 _NAME_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_\- ]+$")
 
 _FAMILY_MAP = {

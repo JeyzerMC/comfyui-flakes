@@ -11,6 +11,7 @@ import comfy.utils
 from nodes import CLIPTextEncode, EmptyLatentImage, ControlNetApplyAdvanced, ControlNetLoader, LoraLoader
 
 from . import flake_io
+from .flake_io import _resolve_model_name
 
 
 def _build_filename_prefix(preset_name: str, stems: list[str]) -> str:
@@ -33,23 +34,6 @@ def _build_filename_prefix(preset_name: str, stems: list[str]) -> str:
     if file_parts:
         filename += "_" + "_".join(file_parts)
     return path + filename
-
-
-def _resolve_model_name(category: str, stem_or_name: str) -> str:
-    available = folder_paths.get_filename_list(category)
-    available_norm = {p.replace("\\", "/"): p for p in available}
-
-    norm = stem_or_name.replace("\\", "/")
-    if norm in available_norm:
-        return available_norm[norm]
-
-    norm_stem, _ = os.path.splitext(norm)
-    for cand_norm, candidate in available_norm.items():
-        stem, _ = os.path.splitext(cand_norm)
-        if stem == norm_stem:
-            return candidate
-
-    return stem_or_name
 
 
 def _resolve_lora_name(stem_or_name: str) -> str:

@@ -20,25 +20,8 @@ from nodes import (
 from . import flake_io
 
 
-def _resolve_model_name(category: str, stem_or_name: str) -> str:
-    available = folder_paths.get_filename_list(category)
-    available_norm = {p.replace("\\", "/"): p for p in available}
-
-    norm = stem_or_name.replace("\\", "/")
-    if norm in available_norm:
-        return available_norm[norm]
-
-    norm_stem, _ = os.path.splitext(norm)
-    for cand_norm, candidate in available_norm.items():
-        stem, _ = os.path.splitext(cand_norm)
-        if stem == norm_stem:
-            return candidate
-
-    return stem_or_name
-
-
 def _resolve_lora_name(stem_or_name: str) -> str:
-    result = _resolve_model_name("loras", stem_or_name)
+    result = flake_io._resolve_model_name("loras", stem_or_name)
     available = folder_paths.get_filename_list("loras")
     if result.replace("\\", "/") in {p.replace("\\", "/") for p in available}:
         return result
@@ -114,7 +97,7 @@ def compose(
             if not cn.image_name.strip():
                 print(f"[flakes] skipping controlnet entry with empty image_name (type={cn.type})")
                 continue
-            cn_resolved = _resolve_model_name("controlnet", cn.model_name)
+            cn_resolved = flake_io._resolve_model_name("controlnet", cn.model_name)
             if cn_resolved not in cn_model_cache:
                 cn_model_cache[cn_resolved] = cn_loader.load_controlnet(cn_resolved)[0]
             cn_model = cn_model_cache[cn_resolved]
