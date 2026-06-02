@@ -135,6 +135,79 @@ def infer_cn_model(cn_type: str, family_folder: str) -> str:
     return family_models.get(cn_type, "")
 
 
+# Family folder (sdxl / illustrious / pony / common / zib / zit) → the
+# subfolder under models/controlnet/ where that family's controlnets live.
+# All SDXL-based families share the `sdxl/` folder; ZImage families share
+# `zimage/`.
+_CN_SUBFOLDER = {
+    "sdxl": "sdxl",
+    "illustrious": "sdxl",
+    "pony": "sdxl",
+    "common": "sdxl",
+    "zib": "zimage",
+    "zit": "zimage",
+}
+
+
+def _cn_norm(value: str) -> str:
+    """Collapse a controlnet name to alphanumerics for fuzzy matching, so
+    ``controlnet_scribble_sdxl`` and ``controlnet-scribble-sdxl-1.0`` compare
+    equal up to the version suffix."""
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def resolve_cn_model_name(model_name: str, family_folder: str | None) -> str:
+    """Resolve an inferred/explicit controlnet model name to an entry in
+    ``folder_paths.get_filename_list("controlnet")``, preferring the family's
+    controlnet subfolder (``models/controlnet/sdxl/`` for SDXL families,
+    ``.../zimage/`` for ZImage).
+
+    Resolution order (#254):
+      1. Exact-stem or normalized match inside the target subfolder.
+      2. Fuzzy match inside the subfolder (handles dash/version-named files
+         such as ``controlnet-scribble-sdxl-1.0.safetensors``).
+      3. The generic global resolver (back-compat with flat layouts).
+    """
+    if not model_name:
+        return model_name
+
+    available = folder_paths.get_filename_list("controlnet")
+    subfolder = _CN_SUBFOLDER.get(family_folder or "")
+
+    if subfolder:
+        target_stem = os.path.basename(os.path.splitext(model_name)[0])
+        target_norm = _cn_norm(target_stem)
+        prefix = f"{subfolder}/"
+
+        exact: str | None = None
+        norm_eq: str | None = None
+        startswith: str | None = None
+        contains: str | None = None
+        for candidate in available:
+            cand_fwd = candidate.replace("\\", "/")
+            if not cand_fwd.lower().startswith(prefix):
+                continue
+            cand_stem = os.path.basename(os.path.splitext(cand_fwd)[0])
+            if cand_stem == target_stem and exact is None:
+                exact = candidate
+                break
+            cand_norm = _cn_norm(cand_stem)
+            if cand_norm == target_norm and norm_eq is None:
+                norm_eq = candidate
+            elif cand_norm.startswith(target_norm) and startswith is None:
+                startswith = candidate
+            elif target_norm and target_norm in cand_norm and contains is None:
+                contains = candidate
+
+        match = exact or norm_eq or startswith or contains
+        if match:
+            return match
+
+    # Fall back to the generic resolver (exact / global stem match) so flat
+    # `models/controlnet/` layouts keep working.
+    return _resolve_model_name("controlnet", model_name)
+
+
 # ---------------------------------------------------------------------------
 # Preset dataclass
 # ---------------------------------------------------------------------------
