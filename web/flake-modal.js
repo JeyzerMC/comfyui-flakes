@@ -792,6 +792,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             const posTA = makeTextarea(fieldState.prompt.positive, "positive prompt", 3);
                             css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                             posTA.addEventListener("change", () => { fieldState.prompt.positive = posTA.value; });
+                            posTA.addEventListener("input", () => { fieldState.prompt.positive = posTA.value; });
                             const posWrap = makeHoverRemoveWrapper(posTA, () => {
                                 if (fieldState.prompt.negative == null) {
                                     fieldState.prompt = null;
@@ -821,6 +822,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             const negTA = makeTextarea(fieldState.prompt.negative, "negative prompt", 2);
                             css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                             negTA.addEventListener("change", () => { fieldState.prompt.negative = negTA.value; });
+                            negTA.addEventListener("input", () => { fieldState.prompt.negative = negTA.value; });
                             const negWrap = makeHoverRemoveWrapper(negTA, () => {
                                 if (fieldState.prompt.positive == null) {
                                     fieldState.prompt = null;
