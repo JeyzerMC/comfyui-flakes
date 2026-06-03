@@ -302,6 +302,23 @@ export function makeTextarea(value = "", placeholder = "", rows = 3) {
     return el;
 }
 
+// Grow a textarea to fit its content up to maxPx, then scroll (#264). Returns
+// the resize fn so callers can trigger it after programmatic value changes.
+export function attachAutoGrow(el, maxPx = 240) {
+    el.style.resize = "none";
+    el.style.overflowY = "hidden";
+    const resize = () => {
+        el.style.height = "auto";
+        const h = Math.min(el.scrollHeight, maxPx);
+        el.style.height = `${h}px`;
+        el.style.overflowY = el.scrollHeight > maxPx ? "auto" : "hidden";
+    };
+    el.addEventListener("input", resize);
+    // scrollHeight needs layout — size on the next frame once in the DOM.
+    requestAnimationFrame(resize);
+    return resize;
+}
+
 export function makeLabel(text) {
     const l = document.createElement("div");
     l.textContent = text;

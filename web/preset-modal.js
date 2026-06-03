@@ -2,7 +2,7 @@ import { openOverlay } from "./modal.js";
 import {
     css, makeButton, makeComfyLabel, makeComfyInput,
     makeComfyDropdown, makeSearchableDropdown, makeComfySlider,
-    makeTextarea, makeHoverRemoveWrapper,
+    makeTextarea, makeHoverRemoveWrapper, attachAutoGrow,
 } from "./utils.js";
 import { fetchPreset, fetchCheckpoints, fetchVaes, fetchEmbeddings } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
@@ -460,19 +460,20 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         css(promptRow, "display:flex;gap:8px;align-items:stretch;");
         content.appendChild(promptRow);
         const posCol = document.createElement("div");
-        css(posCol, "flex:0 0 70%;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        css(posCol, "min-width:0;display:flex;flex-direction:column;gap:4px;");
         promptRow.appendChild(posCol);
         const negCol = document.createElement("div");
-        css(negCol, "flex:0 0 30%;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        css(negCol, "min-width:0;display:flex;flex-direction:column;gap:4px;");
         promptRow.appendChild(negCol);
 
         const posLabel = makeComfyLabel("Positive prompt");
         posCol.appendChild(posLabel);
         const posTA = makeTextarea(promptState.positive, "masterpiece, best quality", 3);
-        css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;min-height:78px;flex-shrink:0;");
+        css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;outline:none;min-height:78px;flex-shrink:0;");
         posTA.addEventListener("focus", () => posTA.style.borderColor = "#555");
         posTA.addEventListener("blur", () => posTA.style.borderColor = "#333");
         posTA.addEventListener("input", () => { promptState.positive = posTA.value; });
+        attachAutoGrow(posTA);
         // Positive prompt is required, but we still wrap it so the styling is
         // consistent with the negative side; no remove button needed though, so
         // hover-X helper isn't applied here — only on negative.
@@ -480,13 +481,19 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
 
         function renderNegative() {
             negCol.replaceChildren();
-            if (promptState.negative != null) {
+            const hasNeg = promptState.negative != null;
+            // Equal split when a negative is present; positive spans the width
+            // and the "+ Negative" stays compact when it's absent (#264).
+            posCol.style.flex = hasNeg ? "1 1 0" : "1 1 auto";
+            negCol.style.flex = hasNeg ? "1 1 0" : "0 0 auto";
+            if (hasNeg) {
                 negCol.appendChild(makeComfyLabel("Negative prompt"));
                 const negTA = makeTextarea(promptState.negative, "worst quality, low quality", 3);
-                css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;min-height:78px;flex-shrink:0;");
+                css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;outline:none;min-height:78px;flex-shrink:0;");
                 negTA.addEventListener("focus", () => negTA.style.borderColor = "#555");
                 negTA.addEventListener("blur", () => negTA.style.borderColor = "#333");
                 negTA.addEventListener("input", () => { promptState.negative = negTA.value; });
+                attachAutoGrow(negTA);
                 const negWrap = makeHoverRemoveWrapper(negTA, () => {
                     promptState.negative = null;
                     renderNegative();
@@ -498,7 +505,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                 const negBtn = document.createElement("button");
                 negBtn.type = "button";
                 negBtn.textContent = "+ Negative";
-                css(negBtn, "flex:1;min-height:78px;cursor:pointer;border-radius:6px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;user-select:none;");
+                css(negBtn, "align-self:flex-start;cursor:pointer;border-radius:6px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;user-select:none;white-space:nowrap;padding:8px 12px;");
                 negBtn.addEventListener("mouseenter", () => { negBtn.style.background = "#333"; });
                 negBtn.addEventListener("mouseleave", () => { negBtn.style.background = "#2a2a2a"; });
                 negBtn.addEventListener("click", () => {

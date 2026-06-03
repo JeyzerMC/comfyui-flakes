@@ -3,7 +3,7 @@ import {
     css, makeButton, makeSmallButton, makeComfyLabel, makeComfyInput,
     makeComfyDropdown, makePanelDropdown, makeSearchableDropdown,
     makeComfyNumberInput, makeComfyValueSlider, makeSmallValueSlider,
-    makeTextarea, makeLabel, makeNumberInput,
+    makeTextarea, makeLabel, makeNumberInput, attachAutoGrow,
     familyFolder, makeHoverRemoveWrapper, CN_MODEL_MAP,
 } from "./utils.js";
 import {
@@ -801,22 +801,32 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     fieldWrap.appendChild(promptBox);
 
                     const posCol = document.createElement("div");
-                    css(posCol, "flex:0 0 70%;display:flex;flex-direction:column;gap:4px;min-width:0;");
+                    css(posCol, "display:flex;flex-direction:column;gap:4px;min-width:0;");
                     promptBox.appendChild(posCol);
 
                     const negCol = document.createElement("div");
-                    css(negCol, "flex:0 0 30%;display:flex;flex-direction:column;gap:4px;min-width:0;");
+                    css(negCol, "display:flex;flex-direction:column;gap:4px;min-width:0;");
                     promptBox.appendChild(negCol);
+
+                    const taCss = "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;outline:none;";
 
                     function renderPrompts() {
                         posCol.replaceChildren();
                         negCol.replaceChildren();
 
+                        const hasNeg = fieldState.prompt?.negative != null;
+                        // Positive spans the width when alone; equal split with a
+                        // negative present. The "+ Negative" placeholder stays
+                        // compact so it never steals the positive's space (#264).
+                        posCol.style.flex = hasNeg ? "1 1 0" : "1 1 auto";
+                        negCol.style.flex = hasNeg ? "1 1 0" : "0 0 auto";
+
                         if (fieldState.prompt?.positive != null) {
                             const posTA = makeTextarea(fieldState.prompt.positive, "positive prompt", 3);
-                            css(posTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                            css(posTA, taCss);
                             posTA.addEventListener("change", () => { fieldState.prompt.positive = posTA.value; });
                             posTA.addEventListener("input", () => { fieldState.prompt.positive = posTA.value; });
+                            attachAutoGrow(posTA);
                             const posWrap = makeHoverRemoveWrapper(posTA, () => {
                                 if (fieldState.prompt.negative == null) {
                                     fieldState.prompt = null;
@@ -842,11 +852,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             posCol.appendChild(posBtn);
                         }
 
-                        if (fieldState.prompt?.negative != null) {
+                        if (hasNeg) {
                             const negTA = makeTextarea(fieldState.prompt.negative, "negative prompt", 2);
-                            css(negTA, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                            css(negTA, taCss);
                             negTA.addEventListener("change", () => { fieldState.prompt.negative = negTA.value; });
                             negTA.addEventListener("input", () => { fieldState.prompt.negative = negTA.value; });
+                            attachAutoGrow(negTA);
                             const negWrap = makeHoverRemoveWrapper(negTA, () => {
                                 if (fieldState.prompt.positive == null) {
                                     fieldState.prompt = null;
@@ -861,7 +872,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         } else {
                             const negBtn = document.createElement("button");
                             negBtn.textContent = "+ Negative";
-                            css(negBtn, "flex:1;min-height:60px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;gap:3px;user-select:none;box-sizing:border-box;white-space:nowrap;padding:0 6px;");
+                            css(negBtn, "align-self:flex-start;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;user-select:none;box-sizing:border-box;white-space:nowrap;padding:6px 10px;");
                             negBtn.addEventListener("mouseenter", () => { negBtn.style.background = "#333"; });
                             negBtn.addEventListener("mouseleave", () => { negBtn.style.background = "#2a2a2a"; });
                             negBtn.addEventListener("click", () => {
@@ -1266,11 +1277,11 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 leftCol.appendChild(promptsWrap);
 
                                 const choicePosCol = document.createElement("div");
-                                css(choicePosCol, "flex:0 0 70%;display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0;");
+                                css(choicePosCol, "display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0;");
                                 promptsWrap.appendChild(choicePosCol);
 
                                 const choiceNegCol = document.createElement("div");
-                                css(choiceNegCol, "flex:0 0 30%;display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0;");
+                                css(choiceNegCol, "display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0;");
                                 promptsWrap.appendChild(choiceNegCol);
 
                                 const rightCol = document.createElement("div");
@@ -1406,6 +1417,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     choicePosCol.replaceChildren();
                                     choiceNegCol.replaceChildren();
 
+                                    // Positive spans the width when alone; equal
+                                    // split with a compact "+ Negative" otherwise (#264).
+                                    const hasNeg = choice.negative != null;
+                                    choicePosCol.style.flex = hasNeg ? "1 1 0" : "1 1 auto";
+                                    choiceNegCol.style.flex = hasNeg ? "1 1 0" : "0 0 auto";
+
                                     if (choice.positive != null) {
                                         const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
                                         // Fill column height (the column matches the image height via align-items:stretch on bodyRow).
@@ -1450,7 +1467,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     } else {
                                         const negBtn = document.createElement("button");
                                         negBtn.textContent = "+ Negative";
-                                        css(negBtn, "flex:1;min-height:50px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;gap:3px;user-select:none;box-sizing:border-box;white-space:nowrap;padding:0 6px;");
+                                        css(negBtn, "align-self:flex-start;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;user-select:none;box-sizing:border-box;white-space:nowrap;padding:6px 10px;");
                                         negBtn.addEventListener("mouseenter", () => { negBtn.style.background = "#333"; });
                                         negBtn.addEventListener("mouseleave", () => { negBtn.style.background = "#2a2a2a"; });
                                         negBtn.addEventListener("click", () => {
