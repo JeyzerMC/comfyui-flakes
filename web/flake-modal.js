@@ -1060,39 +1060,52 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             modelRow.appendChild(modelLabel);
                             rightCol.appendChild(modelRow);
 
-                            // Row 3: Sliders
+                            // Row 3: Strength / Start / End + "use image res"
+                            // checkbox. Labels on top, controls on the bottom —
+                            // two-row layout matching the other fields. The
+                            // checkbox uses the controlnet image's dimensions as
+                            // the generation resolution override (#260).
                             const slidersRow = document.createElement("div");
-                            css(slidersRow, "display:flex;gap:4px;align-items:center;");
+                            css(slidersRow, "display:flex;gap:6px;align-items:flex-end;");
 
-                            const strLabel = document.createElement("span");
-                            strLabel.textContent = "Str";
-                            css(strLabel, "font-size:10px;color:#888;flex-shrink:0;");
-                            slidersRow.appendChild(strLabel);
-                            const strSlider = makeComfyValueSlider(cn.strength ?? 1.0, 0, 2, 0.05, (v) => {
-                                arr[i].strength = v;
-                            });
-                            strSlider.style.flex = "1";
-                            slidersRow.appendChild(strSlider);
+                            const makeSliderCol = (labelText, slider) => {
+                                const col = document.createElement("div");
+                                css(col, "flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;");
+                                const lbl = document.createElement("span");
+                                lbl.textContent = labelText;
+                                css(lbl, "font-size:10px;color:#888;");
+                                slider.style.width = "100%";
+                                col.appendChild(lbl);
+                                col.appendChild(slider);
+                                return col;
+                            };
 
-                            const startLabel = document.createElement("span");
-                            startLabel.textContent = "Start";
-                            css(startLabel, "font-size:10px;color:#888;flex-shrink:0;");
-                            slidersRow.appendChild(startLabel);
-                            const startSlider = makeComfyValueSlider(cn.start_percent ?? 0, 0, 1, 0.05, (v) => {
-                                arr[i].start_percent = v;
-                            });
-                            startSlider.style.flex = "1";
-                            slidersRow.appendChild(startSlider);
+                            const strSlider = makeComfyValueSlider(cn.strength ?? 1.0, 0, 2, 0.05, (v) => { arr[i].strength = v; });
+                            slidersRow.appendChild(makeSliderCol("Str", strSlider));
+                            const startSlider = makeComfyValueSlider(cn.start_percent ?? 0, 0, 1, 0.05, (v) => { arr[i].start_percent = v; });
+                            slidersRow.appendChild(makeSliderCol("Start", startSlider));
+                            const endSlider = makeComfyValueSlider(cn.end_percent ?? 1, 0, 1, 0.05, (v) => { arr[i].end_percent = v; });
+                            slidersRow.appendChild(makeSliderCol("End", endSlider));
 
-                            const endLabel = document.createElement("span");
-                            endLabel.textContent = "End";
-                            css(endLabel, "font-size:10px;color:#888;flex-shrink:0;");
-                            slidersRow.appendChild(endLabel);
-                            const endSlider = makeComfyValueSlider(cn.end_percent ?? 1, 0, 1, 0.05, (v) => {
-                                arr[i].end_percent = v;
-                            });
-                            endSlider.style.flex = "1";
-                            slidersRow.appendChild(endSlider);
+                            // Checkbox column: use this CN image's dimensions as
+                            // the generation resolution override.
+                            const resCol = document.createElement("div");
+                            css(resCol, "flex:0 0 auto;display:flex;flex-direction:column;gap:2px;align-items:center;");
+                            const resLbl = document.createElement("span");
+                            resLbl.textContent = "Img res";
+                            css(resLbl, "font-size:10px;color:#888;white-space:nowrap;");
+                            const resChkWrap = document.createElement("div");
+                            css(resChkWrap, "height:32px;display:flex;align-items:center;justify-content:center;");
+                            const resChk = document.createElement("input");
+                            resChk.type = "checkbox";
+                            resChk.checked = !!cn.resolution_from_image;
+                            resChk.title = "Use this ControlNet image's dimensions as the generation resolution";
+                            css(resChk, "width:16px;height:16px;cursor:pointer;margin:0;");
+                            resChk.addEventListener("change", () => { arr[i].resolution_from_image = resChk.checked; });
+                            resChkWrap.appendChild(resChk);
+                            resCol.appendChild(resLbl);
+                            resCol.appendChild(resChkWrap);
+                            slidersRow.appendChild(resCol);
 
                             rightCol.appendChild(slidersRow);
                             card.appendChild(rightCol);
@@ -1819,7 +1832,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     const cnArr = fieldState.controlnets._ || [];
                     if (cnArr.length > 0) {
                         ordered.controlnets = cnArr.map(cn => {
-                            const { model, model_name, ...rest } = cn;
+                            const { model, model_name, resolution_from_image, ...rest } = cn;
+                            if (resolution_from_image) rest.resolution_from_image = true;
                             return rest;
                         });
                     }

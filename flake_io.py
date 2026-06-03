@@ -244,6 +244,7 @@ class ControlNetEntry:
     strength: float = 1.0
     start_percent: float = 0.0
     end_percent: float = 1.0
+    resolution_from_image: bool = False
 
 
 @dataclass
@@ -621,6 +622,7 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
                 strength=float(cn.get("strength", 1.0)),
                 start_percent=float(cn.get("start_percent", 0.0)),
                 end_percent=float(cn.get("end_percent", 1.0)),
+                resolution_from_image=bool(cn.get("resolution_from_image", False)),
             )
         )
 

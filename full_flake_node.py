@@ -339,6 +339,26 @@ class FlakeStack:
         # --- Apply ControlNets (from flakes) ------------------------------------
         from .flake_compose import _load_cn_image, _fit_cn_image
 
+        # ControlNet "use image dimensions as resolution" override (#260): the
+        # first active CN entry flagged resolution_from_image drives the
+        # generation size, taking precedence over the flake resolution above.
+        for f in flakes:
+            hit = False
+            for cn in f.controlnets:
+                if cn.strength == 0 or not cn.resolution_from_image or not cn.image_name.strip():
+                    continue
+                try:
+                    ov = _load_cn_image(cn.image_name)
+                except Exception as exc:
+                    logging.warning("[flakes] resolution_from_image failed for %s: %s", cn.image_name, exc)
+                    continue
+                new_width, new_height = int(ov.shape[2]), int(ov.shape[1])
+                logging.info("[flakes] resolution override from CN image %s -> %dx%d", cn.image_name, new_width, new_height)
+                hit = True
+                break
+            if hit:
+                break
+
         family_folder = flake_io._FAMILY_MAP.get(model_family, "sdxl")
         cn_model_cache = {}
         cn_loader = ControlNetLoader()
