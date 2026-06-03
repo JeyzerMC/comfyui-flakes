@@ -1074,7 +1074,29 @@ def save_preset(
 
     target = os.path.join(root, f"{canonical}.yaml")
     _ensure_inside(target, root)
+    target_real = os.path.realpath(target)
     os.makedirs(os.path.dirname(target), exist_ok=True)
+
+    # Remove same-name copies in other preset roots so a stale duplicate in
+    # another root can't shadow this save on the next read (edits-lost-on-reopen,
+    # #262 — mirrors the flake fix in #242).
+    for other_root in roots:
+        other_path = os.path.realpath(os.path.join(other_root, f"{canonical}.yaml"))
+        if other_path == target_real:
+            continue
+        if os.path.isfile(other_path):
+            try:
+                os.remove(other_path)
+                print(f"[flakes] removed duplicate preset yaml: {other_path}")
+            except OSError:
+                pass
+            for ext in _COVER_EXTENSIONS:
+                cover_path = os.path.realpath(os.path.join(other_root, f"{canonical}{ext}"))
+                if cover_path != target_real and os.path.isfile(cover_path):
+                    try:
+                        os.remove(cover_path)
+                    except OSError:
+                        pass
 
     # Move existing files if the location changed
     if old_name and old_name != canonical:
