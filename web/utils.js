@@ -439,9 +439,28 @@ export function makeSearchableDropdown(items = [], value = "", placeholder = "")
     row.appendChild(el);
     row.appendChild(arrowBtn);
 
+    // position:fixed so the menu escapes any overflow:auto ancestor (e.g. the
+    // modal body) that would otherwise clip it for fields near the bottom
+    // (#263). Coordinates are computed from the input on open.
     const dropdown = document.createElement("div");
-    css(dropdown, "position:absolute;top:calc(100% + 2px);left:0;right:0;max-height:200px;overflow-y:auto;background:#1e1e1e;border:1px solid #444;border-radius:6px;z-index:200;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.5);");
+    css(dropdown, "position:fixed;max-height:200px;overflow-y:auto;background:#1e1e1e;border:1px solid #444;border-radius:6px;z-index:10000;display:none;box-shadow:0 4px 12px rgba(0,0,0,0.5);");
     wrap.appendChild(dropdown);
+
+    function positionDropdown() {
+        const r = el.getBoundingClientRect();
+        const maxH = 200;
+        const below = window.innerHeight - r.bottom;
+        dropdown.style.left = `${r.left}px`;
+        dropdown.style.width = `${r.width}px`;
+        if (below < maxH && r.top > below) {
+            // Not enough room below — open upward.
+            dropdown.style.top = "auto";
+            dropdown.style.bottom = `${window.innerHeight - r.top + 2}px`;
+        } else {
+            dropdown.style.bottom = "auto";
+            dropdown.style.top = `${r.bottom + 2}px`;
+        }
+    }
 
     let allItems = [...items];
     let dropdownOpen = false;
@@ -475,15 +494,22 @@ export function makeSearchableDropdown(items = [], value = "", placeholder = "")
         }
     }
 
+    function _reposition() { if (dropdownOpen) positionDropdown(); }
+
     function openDropdown() {
         dropdownOpen = true;
         dropdown.style.display = "block";
+        positionDropdown();
         renderDropdown(el.value);
+        window.addEventListener("scroll", _reposition, true);
+        window.addEventListener("resize", _reposition);
     }
 
     function closeDropdown() {
         dropdownOpen = false;
         dropdown.style.display = "none";
+        window.removeEventListener("scroll", _reposition, true);
+        window.removeEventListener("resize", _reposition);
     }
 
     el.addEventListener("focus", () => { openDropdown(); });
