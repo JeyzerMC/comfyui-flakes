@@ -376,7 +376,11 @@ async def _get_preset(request: web.Request) -> web.Response:
     except Exception as exc:
         logging.exception("[flakes] failed to read preset %s", name)
         return _server_error(str(exc))
-    return web.json_response({"name": name, "data": data})
+    try:
+        base_root_index = flake_io._find_preset_root_index(name)
+    except Exception:
+        base_root_index = None
+    return web.json_response({"name": name, "data": data, "base_root_index": base_root_index})
 
 
 @routes.put("/flakes/presets/save")

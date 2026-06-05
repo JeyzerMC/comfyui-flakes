@@ -190,7 +190,7 @@ export function setupFlakeModelComboWidget(node) {
                     if (!presetName) return;
                     const { openPresetEditModal } = await import("../preset-modal.js");
                     const data = await fetchPreset(presetName);
-                    const result = await openPresetEditModal({ mode: "edit", name: presetName, data });
+                    const result = await openPresetEditModal({ mode: "edit", name: presetName, data, family: getFamily() });
                     if (result) {
                         const name = await fetchDisplayName(presetName);
                         node.properties._combo_display_names[presetName] = name;

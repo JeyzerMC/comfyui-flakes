@@ -981,6 +981,21 @@ def _resolve_preset_file(name: str) -> str:
     raise FileNotFoundError(f"Preset '{name}' not found under any registered model_presets/ directory")
 
 
+def _find_preset_root_index(name: str) -> int:
+    """Index into ``_presets_roots()`` of the root that holds the preset's
+    YAML, so the editor can preselect the correct base path on edit (mirrors
+    ``_find_flake_root_index``)."""
+    _validate_name(name)
+    roots = _presets_roots()
+    for idx, root in enumerate(roots):
+        for ext in (".yaml", ".yml"):
+            candidate = os.path.join(root, f"{name}{ext}")
+            if os.path.isfile(candidate):
+                _ensure_inside(candidate, root)
+                return idx
+    raise FileNotFoundError(f"Preset '{name}' not found under any registered model_presets/ directory")
+
+
 def list_presets(family: str | None = None) -> list[str]:
     names: set[str] = set()
     for root in _presets_roots():

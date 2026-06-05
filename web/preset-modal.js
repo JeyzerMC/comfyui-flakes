@@ -4,7 +4,7 @@ import {
     makeComfyDropdown, makeSearchableDropdown, makeComfySlider,
     makeTextarea, makeHoverRemoveWrapper, attachAutoGrow,
 } from "./utils.js";
-import { fetchPreset, fetchCheckpoints, fetchVaes, fetchEmbeddings } from "./api.js";
+import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchVaes, fetchEmbeddings } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
 import { app } from "../../scripts/app.js";
 
@@ -163,6 +163,14 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                     opt.textContent = "(no roots configured)";
                     opt.value = "0";
                     baseRootSelect.appendChild(opt);
+                }
+                // On edit, preselect the root the preset actually lives in, so
+                // saving doesn't relocate it to "Comfy Install" (root 0).
+                if (mode !== "create" && name) {
+                    const savedIdx = await fetchPresetRootIndex(name);
+                    if (savedIdx != null && availableRoots.some(r => r.index === savedIdx)) {
+                        baseRootSelect.value = String(savedIdx);
+                    }
                 }
                 if (mode === "create" && !pathManuallyEdited) syncOutputPath();
                 updateResolvedPath();

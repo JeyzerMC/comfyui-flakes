@@ -115,6 +115,20 @@ export async function fetchPreset(name) {
     return (await r.json()).data || {};
 }
 
+// Resolve which registered model_presets root the preset currently lives in,
+// so the editor can preselect the correct base path on edit. Returns null when
+// unknown. Kept separate from fetchPreset so existing callers are untouched.
+export async function fetchPresetRootIndex(name) {
+    try {
+        const r = await fetch(`/flakes/preset?name=${encodeURIComponent(name)}`);
+        if (!r.ok) return null;
+        const d = await r.json();
+        return d.base_root_index ?? null;
+    } catch {
+        return null;
+    }
+}
+
 export async function fetchPresets(family = "") {
     const query = family ? `?family=${encodeURIComponent(family)}` : "";
     const r = await fetch(`/flakes/presets${query}`, { cache: "no-store" });
