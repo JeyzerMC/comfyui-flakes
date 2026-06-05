@@ -83,26 +83,37 @@ export function buildModel(startNode) {
         } else if (type === "FlakeModelCombo") {
             const allPresets = node.properties?._combo_presets || [];
             const bypassed = new Set(node.properties?._combo_bypassed || []);
-            const presets = allPresets.filter(p => !bypassed.has(p));
+            // Keep each kept preset's ORIGINAL index within _combo_presets so the
+            // overlay's combo key matches the key queue.js stamps (which uses the
+            // original index). Filtering shifts positions otherwise (#268).
+            const presets = allPresets
+                .map((p, i) => ({ p, i }))
+                .filter(({ p }) => !bypassed.has(p));
             if (presets.length === 0) continue;
             axes.push({
                 node, kind: "model",
                 label: "Model Preset",
-                items: presets.map(p => ({
+                items: presets.map(({ p, i }) => ({
                     label: (node.properties?._combo_display_names?.[p]) || p.split(/[\/\\]+/).pop() || p,
                     presetName: p,
                     coverUrl: `/flakes/preset_cover?name=${encodeURIComponent(p)}`,
+                    originalIndex: i,
                 })),
             });
         } else if (type === "FlakeStack") {
             for (const e of activeEntries(node, "FlakeStack")) fixed.stackFlakes.push(e);
         } else if (type === "FlakeCombo") {
-            const flakes = activeEntries(node, "FlakeCombo");
+            // Preserve the ORIGINAL index within _combo_flakes (the array queue.js
+            // iterates) so the overlay combo key aligns with the queued key (#268).
+            const allFlakes = node.properties?._combo_flakes || [];
+            const flakes = Array.isArray(allFlakes)
+                ? allFlakes.map((e, i) => ({ e, i })).filter(({ e }) => !e.inline && !e.bypassed && e.name)
+                : [];
             if (flakes.length === 0) continue;
             axes.push({
                 node, kind: "flake",
                 label: "Flake Combo",
-                items: flakes.map(e => {
+                items: flakes.map(({ e, i }) => {
                     // #237: fall back to the flake's main cover image when no
                     // variant is selected (or when the variant image 404s —
                     // see card render where we probe-load below).
@@ -117,6 +128,7 @@ export function buildModel(startNode) {
                         coverUrl: variantCover || baseCover,
                         baseCoverUrl: baseCover,
                         variantCoverUrl: variantCover,
+                        originalIndex: i,
                     };
                 }),
             });
@@ -336,7 +348,7 @@ async function combinationData(model, selection) {
 // queue.js stamps onto FlakeGenerate at queue time.
 export function combinationKeyFor(model, selIdx) {
     return model.axes
-        .map((axis, i) => [axis.node.id, selIdx[i]])
+        .map((axis, i) => [axis.node.id, axis.items[selIdx[i]]?.originalIndex ?? selIdx[i]])
         .sort((a, b) => a[0] - b[0])
         .map(([id, idx]) => `${id}:${idx}`)
         .join("|");
@@ -413,7 +425,9 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             axis.items.forEach((item, ii) => {
                 const card = document.createElement("div");
                 card.dataset.nodeId = String(axis.node.id);
-                card.dataset.itemIdx = String(ii);
+                // Use the original index so progress-bar matching against the
+                // queued comboKey (original indices) aligns (#268).
+                card.dataset.itemIdx = String(item.originalIndex ?? ii);
                 css(card, `position:relative;flex:0 0 auto;width:72px;height:80px;border-radius:4px;cursor:pointer;background:#2a2a2a;background-size:cover;background-position:center;border:2px solid ${ii === selIdx[ai] ? ACCENT : "transparent"};box-sizing:border-box;`);
                 // #237: probe-load variant image and fall back to base cover if 404,
                 // matching the flake-combo node grid behavior. Without this the
