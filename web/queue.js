@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js";
+import { collectChain } from "./widgets/generation-data.js";
 
 export function getComboFlakes(node) {
     return node.properties?._combo_flakes || [];
@@ -257,49 +258,80 @@ function setupBatchTracking(combinations, comboKeys) {
     return { promptIds, cleanup };
 }
 
-app.queuePrompt = async function(number, batchCount = 1) {
-    const comboNodes = app.graph.nodes.filter(n => n.type === "FlakeCombo");
-    const modelComboNodes = app.graph.nodes.filter(n => n.type === "FlakeModelCombo");
+// Order the combinatorial nodes (FlakeCombo + FlakeModelCombo) by their
+// position in the pipeline connection chain (source -> sink), so the loop
+// nesting follows the graph flow rather than node creation order. The
+// FlakeModelCombo is the chain source (it loads the heavy checkpoint), so it
+// lands first = outermost loop = reloaded least; each subsequent FlakeCombo
+// toward FlakeGenerate becomes a deeper inner loop. Combo nodes not reachable
+// from any FlakeGenerate (orphans) are appended in creation order so
+// disconnected graphs keep working.
+function orderedComboNodes() {
+    const isCombo = (n) => n.type === "FlakeCombo" || n.type === "FlakeModelCombo";
+    const ordered = [];
+    const seen = new Set();
+    for (const gen of app.graph.nodes) {
+        if (gen.type !== "FlakeGenerate") continue;
+        const fdInput = gen.inputs?.find(i => i.name === "flake_data");
+        if (fdInput?.link == null) continue;
+        const link = app.graph.links?.[fdInput.link];
+        if (!link) continue;
+        const startNode = app.graph.getNodeById(link.origin_id);
+        if (!startNode) continue;
+        let chain = [];
+        try { chain = collectChain(startNode); } catch { chain = []; }
+        for (const { node } of chain) {
+            if (isCombo(node) && !seen.has(node.id)) { seen.add(node.id); ordered.push(node); }
+        }
+    }
+    for (const node of app.graph.nodes) {
+        if (isCombo(node) && !seen.has(node.id)) { seen.add(node.id); ordered.push(node); }
+    }
+    return ordered;
+}
 
-    if (comboNodes.length === 0 && modelComboNodes.length === 0) {
+app.queuePrompt = async function(number, batchCount = 1) {
+    const orderedNodes = orderedComboNodes();
+
+    if (orderedNodes.length === 0) {
         return _originalQueuePrompt.call(this, number, batchCount);
     }
 
     const optionsArrays = [];
 
-    for (const node of comboNodes) {
-        const flakes = getComboFlakes(node);
-        if (flakes.length === 0) {
-            window.alert("FlakeCombo node has no flakes selected.");
-            return;
+    for (const node of orderedNodes) {
+        if (node.type === "FlakeCombo") {
+            const flakes = getComboFlakes(node);
+            if (flakes.length === 0) {
+                window.alert("FlakeCombo node has no flakes selected.");
+                return;
+            }
+            const activeFlakes = flakes
+                .map((flake, i) => ({ flake, i }))
+                .filter(({ flake }) => !flake.bypassed);
+            if (activeFlakes.length === 0) {
+                window.alert("FlakeCombo node has no active (non-bypassed) flakes.");
+                return;
+            }
+            optionsArrays.push(activeFlakes.map(({ flake, i }) => ({
+                node,
+                type: "combo",
+                value: flake,
+                index: i,
+            })));
+        } else {
+            const presets = getComboPresets(node);
+            if (presets.length === 0) {
+                window.alert("FlakeModelCombo node has no presets selected.");
+                return;
+            }
+            optionsArrays.push(presets.map((preset, i) => ({
+                node,
+                type: "model_combo",
+                value: preset,
+                index: i,
+            })));
         }
-        const activeFlakes = flakes
-            .map((flake, i) => ({ flake, i }))
-            .filter(({ flake }) => !flake.bypassed);
-        if (activeFlakes.length === 0) {
-            window.alert("FlakeCombo node has no active (non-bypassed) flakes.");
-            return;
-        }
-        optionsArrays.push(activeFlakes.map(({ flake, i }) => ({
-            node,
-            type: "combo",
-            value: flake,
-            index: i,
-        })));
-    }
-
-    for (const node of modelComboNodes) {
-        const presets = getComboPresets(node);
-        if (presets.length === 0) {
-            window.alert("FlakeModelCombo node has no presets selected.");
-            return;
-        }
-        optionsArrays.push(presets.map((preset, i) => ({
-            node,
-            type: "model_combo",
-            value: preset,
-            index: i,
-        })));
     }
 
     const combinations = cartesianProduct(optionsArrays);
