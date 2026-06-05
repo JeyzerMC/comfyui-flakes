@@ -787,7 +787,9 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
                         const addBtn = makeSmallButton("+ Add LoRA");
                         addBtn.addEventListener("click", () => {
-                            fieldState.loras.push({ name: "", url: "", path: "", strength: 1.0 });
+                            // Open new LoRA entries expanded (name + URL visible).
+                            // _editing is runtime-only and stripped on save.
+                            fieldState.loras.push({ name: "", url: "", path: "", strength: 1.0, _editing: true });
                             renderLoras();
                         });
                         loraBox.appendChild(addBtn);
@@ -1748,7 +1750,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                 fieldMenu.style.display = "none";
                 if (activeFields.includes(ft.key)) return;
                 activeFields.push(ft.key);
-                if (ft.key === "lora") fieldState.loras = [{ name: "", url: "", path: "", strength: 1.0 }];
+                if (ft.key === "lora") fieldState.loras = [{ name: "", url: "", path: "", strength: 1.0, _editing: true }];
                 if (ft.key === "prompt") fieldState.prompt = {};
                 if (ft.key === "resolution") fieldState.resolution = [1024, 1024];
                 if (ft.key === "controlnets") fieldState.controlnets._ = [];
