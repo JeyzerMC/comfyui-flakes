@@ -81,7 +81,9 @@ export function buildModel(startNode) {
                 fixed.presetName = v;
             }
         } else if (type === "FlakeModelCombo") {
-            const presets = node.properties?._combo_presets || [];
+            const allPresets = node.properties?._combo_presets || [];
+            const bypassed = new Set(node.properties?._combo_bypassed || []);
+            const presets = allPresets.filter(p => !bypassed.has(p));
             if (presets.length === 0) continue;
             axes.push({
                 node, kind: "model",

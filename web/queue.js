@@ -14,6 +14,13 @@ function activeComboFlakes(node) {
     return getComboFlakes(node).filter(f => !f.bypassed);
 }
 
+// Active (non-bypassed) presets for a FlakeModelCombo node. Bypass is keyed by
+// preset name in node.properties._combo_bypassed.
+function activeComboPresets(node) {
+    const bypassed = new Set(node.properties?._combo_bypassed || []);
+    return getComboPresets(node).filter(p => !bypassed.has(p));
+}
+
 // Number of prompts a generation will queue: the product of each
 // FlakeCombo's active-flake count and each FlakeModelCombo's preset count.
 // Returns 1 when there are combo nodes but a single combination, or 1 when
@@ -27,7 +34,7 @@ export function computeJobCount(graph) {
             const n = activeComboFlakes(node).length;
             if (n > 0) count *= n;
         } else if (node.type === "FlakeModelCombo") {
-            const n = getComboPresets(node).length;
+            const n = activeComboPresets(node).length;
             if (n > 0) count *= n;
         }
     }
@@ -325,7 +332,16 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 window.alert("FlakeModelCombo node has no presets selected.");
                 return;
             }
-            optionsArrays.push(presets.map((preset, i) => ({
+            const bypassed = new Set(node.properties?._combo_bypassed || []);
+            const activePresets = presets
+                .map((preset, i) => ({ preset, i }))
+                .filter(({ preset }) => !bypassed.has(preset));
+            if (activePresets.length === 0) {
+                window.alert("FlakeModelCombo node has no active (non-bypassed) presets.");
+                return;
+            }
+            // Keep the original preset index so combo highlighting maps correctly.
+            optionsArrays.push(activePresets.map(({ preset, i }) => ({
                 node,
                 type: "model_combo",
                 value: preset,

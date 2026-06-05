@@ -1,11 +1,11 @@
 import {
-    css, svgIcon, makeGridItemOverlay, makeHoverButton,
+    css, svgIcon, makeGridItemOverlay, makeHoverButton, makeBypassStrike,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators,
 } from "../utils.js";
 import { openPresetPicker } from "../pickers.js";
 import { fetchPreset } from "../api.js";
 
-export function makeModelComboBlock({ preset, display_name, idx, isActive, isGenerating, onActivate, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
+export function makeModelComboBlock({ preset, display_name, idx, isActive, isBypassed, isGenerating, onActivate, onToggleBypass, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const block = document.createElement("div");
     block.dataset.idx = String(idx);
 
@@ -13,7 +13,7 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isGen
         isGenerating ? "2px solid #4a9eff" : "1px solid #444"
     };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(preset)});background-size:cover;background-position:center;${
         isGenerating ? "box-shadow:inset 0 0 0 2px rgba(74,158,255,0.7);" : ""
-    }`);
+    }${isBypassed ? "opacity:0.45;" : ""}`);
 
     // Dark overlay, hover buttons — using shared helper (no triangle for model combo)
     makeGridItemOverlay({
@@ -33,6 +33,23 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isGen
     css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;border-radius:3px;");
     nameEl.textContent = fullName;
     block.appendChild(nameEl);
+
+    // Strikethrough when bypassed (mirrors FlakeCombo's disabled visual).
+    if (isBypassed) block.appendChild(makeBypassStrike());
+
+    // Enable/disable checkbox (top-right). Checked = active; unchecked =
+    // bypassed (excluded from the generation product). Sits above the hover
+    // overlay so it stays clickable on hover.
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.checked = !isBypassed;
+    toggle.title = isBypassed ? "Preset disabled (click to enable)" : "Preset enabled (click to disable)";
+    css(toggle, "position:absolute;top:3px;right:3px;z-index:6;cursor:pointer;margin:0;width:14px;height:14px;");
+    toggle.addEventListener("click", (e) => { e.stopPropagation(); });
+    toggle.addEventListener("mousedown", (e) => e.stopPropagation());
+    toggle.addEventListener("dblclick", (e) => e.stopPropagation());
+    toggle.addEventListener("change", (e) => { e.stopPropagation(); onToggleBypass(idx); });
+    block.appendChild(toggle);
 
     block.draggable = true;
     block.style.cursor = "grab";
@@ -77,12 +94,23 @@ export function setupFlakeModelComboWidget(node) {
     if (!node.properties._combo_presets) node.properties._combo_presets = [];
     if (node.properties._combo_active_index == null) node.properties._combo_active_index = 0;
     if (!node.properties._combo_display_names) node.properties._combo_display_names = {};
+    // Bypassed presets, keyed by preset name (survives drag/remove reindexing).
+    if (!Array.isArray(node.properties._combo_bypassed)) node.properties._combo_bypassed = [];
 
     function readPresets() {
         return node.properties._combo_presets || [];
     }
+    function isPresetBypassed(preset) {
+        return (node.properties._combo_bypassed || []).includes(preset);
+    }
+    // Drop bypass entries for presets no longer present in the combo.
+    function reconcileBypassed() {
+        const present = new Set(readPresets());
+        node.properties._combo_bypassed = (node.properties._combo_bypassed || []).filter(p => present.has(p));
+    }
     function writePresets(presets) {
         node.properties._combo_presets = presets;
+        reconcileBypassed();
         updateActivePreset();
     }
     function updateActivePreset() {
@@ -123,10 +151,19 @@ export function setupFlakeModelComboWidget(node) {
                 display_name: displayName,
                 idx: i,
                 isActive: i === activeIdx,
+                isBypassed: isPresetBypassed(presets[i]),
                 isGenerating: generatingIdx != null && i === generatingIdx,
                 onActivate: (idx) => {
                     node.properties._combo_active_index = idx;
                     updateActivePreset();
+                    render();
+                },
+                onToggleBypass: (idx) => {
+                    const p = readPresets()[idx];
+                    if (!p) return;
+                    const arr = node.properties._combo_bypassed || (node.properties._combo_bypassed = []);
+                    const at = arr.indexOf(p);
+                    if (at >= 0) arr.splice(at, 1); else arr.push(p);
                     render();
                 },
                 onRemove: (idx) => {
