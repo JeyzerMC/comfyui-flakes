@@ -50,6 +50,32 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         let outputStemInput = null;
         let selectedType = data.flake_type || "";
         const FLAKE_TYPES = ["Style", "Slider", "Character", "Pose", "Concept", "Other"];
+        // Optional fields seeded when a type is chosen while creating a flake.
+        // The user can remove any of them afterwards.
+        const DEFAULT_FIELDS_BY_TYPE = {
+            Character: ["lora", "prompt", "variants"],
+            Slider: ["lora"],
+            Style: ["lora", "prompt"],
+            Pose: ["prompt", "controlnets"],
+        };
+        // Seed a type's default optional fields, skipping any already present so
+        // user-entered fields are never clobbered. Hoisted so the type dropdown
+        // handler (defined above the field state) can call it at event time.
+        function applyTypeDefaults(type) {
+            const keys = DEFAULT_FIELDS_BY_TYPE[type];
+            if (!keys) return;
+            let changed = false;
+            for (const key of keys) {
+                if (activeFields.includes(key)) continue;
+                activeFields.push(key);
+                changed = true;
+                if (key === "lora") fieldState.loras = [{ name: "", url: "", path: "", strength: 1.0, _editing: true }];
+                else if (key === "prompt") fieldState.prompt = {};
+                else if (key === "controlnets") fieldState.controlnets._ = [];
+                else if (key === "variants") fieldState.variants = type === "Character" ? { outfit: { classic: {} } } : {};
+            }
+            if (changed) renderFields();
+        }
         let typeDropdown = null;
         let baseRootSelectRef = null;
         // The Save button is gated on `rootsLoaded` so create/edit can't save
@@ -132,6 +158,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             typeDropdown.element.addEventListener("change", () => {
                 selectedType = typeDropdown.element.value;
                 updatePrefillPath();
+                if (mode === "create") applyTypeDefaults(selectedType);
             });
             typeWrap.appendChild(typeDropdown.container);
             typeRow.appendChild(typeWrap);
