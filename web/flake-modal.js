@@ -752,6 +752,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 const nameInput = makeComfyInput(lora.name || "", "Display name");
                                 nameInput.addEventListener("change", () => {
                                     lora.name = nameInput.value;
+                                    if (lora.tag_name) recomputePrefills();
                                     renderLoras();
                                 });
                                 const urlInput = makeComfyInput(lora.url || "", "https://civitai.com/models/...");
@@ -761,6 +762,26 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 });
                                 editRow.appendChild(makeLabel("Name"));
                                 editRow.appendChild(nameInput);
+                                // Tag-name checkbox (#274): append this LoRA's name to the
+                                // output stem, output path, and grid display name.
+                                const tagRow = document.createElement("div");
+                                css(tagRow, "display:flex;align-items:center;gap:6px;margin-top:2px;");
+                                const tagChk = document.createElement("input");
+                                tagChk.type = "checkbox";
+                                tagChk.checked = !!lora.tag_name;
+                                css(tagChk, "cursor:pointer;margin:0;");
+                                const tagLbl = document.createElement("label");
+                                tagLbl.textContent = "Tag flake with this LoRA's name";
+                                css(tagLbl, "font-size:11px;color:#aaa;cursor:pointer;");
+                                const toggleTag = () => {
+                                    lora.tag_name = tagChk.checked;
+                                    recomputePrefills();
+                                };
+                                tagChk.addEventListener("change", toggleTag);
+                                tagLbl.addEventListener("click", () => { tagChk.checked = !tagChk.checked; toggleTag(); });
+                                tagRow.appendChild(tagChk);
+                                tagRow.appendChild(tagLbl);
+                                editRow.appendChild(tagRow);
                                 editRow.appendChild(makeLabel("URL"));
                                 editRow.appendChild(urlInput);
                                 card.appendChild(editRow);
@@ -1902,6 +1923,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         url: l.url || "",
                         path: l.path || "",
                         strength: l.strength ?? 1.0,
+                        ...(l.tag_name ? { tag_name: true } : {}),
                     }));
                 }
                 if (ft === "prompt" && fieldState.prompt) {

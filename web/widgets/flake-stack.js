@@ -8,6 +8,16 @@ import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta,
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 
+// Append the names of any tag-name LoRAs (#274) to a flake's grid display name,
+// e.g. "Askeladd" + a tagged "Some Author Name" -> "Askeladd — Some Author Name".
+function appendLoraTags(baseName, loras) {
+    if (!baseName || !Array.isArray(loras)) return baseName;
+    const tags = loras
+        .filter(l => l && l.tag_name && (l.name || "").trim())
+        .map(l => l.name.trim());
+    return tags.length ? `${baseName} — ${tags.join(", ")}` : baseName;
+}
+
 function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const isDefault = !!entry.inline;
     const isBypassed = !!entry.bypassed;
@@ -575,6 +585,7 @@ export function setupFlakeWidget(node) {
             if (result.name && result.name !== arr[idx].name) arr[idx].name = result.name;
             arr[idx]._edited_at = Date.now();
             arr[idx].flake_type = result.data?.flake_type || null;
+            if (result.data?.name) arr[idx].display_name = appendLoraTags(result.data.name, result.data.loras);
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
             // Clear per-instance overrides so the grid item reflects the new
             // defaults instead of masking them with stale values.
@@ -622,7 +633,7 @@ export function setupFlakeWidget(node) {
         try {
             const d = await fetchFlake(result.name);
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
-            display_name = d.name || null;
+            display_name = appendLoraTags(d.name || null, d.loras);
             flake_type = d.flake_type || null;
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
@@ -667,6 +678,7 @@ export function setupFlakeWidget(node) {
                 flake_type = flake_type || d.flake_type || null;
             } catch {}
         }
+        display_name = appendLoraTags(display_name, result.data?.loras);
         arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type });
         writeEntries(arr);
         render();
@@ -684,7 +696,7 @@ export function setupFlakeWidget(node) {
         try {
             const d = await fetchFlake(result.name);
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
-            display_name = d.name || null;
+            display_name = appendLoraTags(d.name || null, d.loras);
             flake_type = d.flake_type || null;
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
