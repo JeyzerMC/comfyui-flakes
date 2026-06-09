@@ -64,17 +64,17 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         function applyTypeDefaults(type) {
             const keys = DEFAULT_FIELDS_BY_TYPE[type];
             if (!keys) return;
-            let changed = false;
+            let lastAdded = null;
             for (const key of keys) {
                 if (activeFields.includes(key)) continue;
                 activeFields.push(key);
-                changed = true;
+                lastAdded = key;
                 if (key === "lora") fieldState.loras = [{ name: "", url: "", path: "", strength: 1.0, _editing: true }];
                 else if (key === "prompt") fieldState.prompt = {};
                 else if (key === "controlnets") fieldState.controlnets._ = [];
                 else if (key === "variants") fieldState.variants = type === "Character" ? { outfit: { classic: {} } } : {};
             }
-            if (changed) renderFields();
+            if (lastAdded) { renderFields(); scrollToFieldKey(lastAdded); }
         }
         let typeDropdown = null;
         let baseRootSelectRef = null;
@@ -556,6 +556,18 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
         let dragFieldIdx = null;
 
+        // Scroll a just-added field into view (#271) once it has rendered, so a
+        // field that spawns below the fold is revealed instead of staying hidden.
+        function scrollToFieldKey(key) {
+            if (!key) return;
+            requestAnimationFrame(() => {
+                const el = optionalBox.querySelector(`[data-field-key="${key}"]`);
+                if (!el || typeof el.scrollIntoView !== "function") return;
+                const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+                el.scrollIntoView({ block: "nearest", behavior: reduceMotion ? "auto" : "smooth" });
+            });
+        }
+
         function renderFields() {
             optionalBox.replaceChildren();
 
@@ -564,6 +576,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                 const fieldWrap = document.createElement("div");
                 css(fieldWrap, "background:#1a1a1a;padding:10px;border-radius:6px;border:1px solid #2a2a2a;display:flex;flex-direction:column;gap:6px;");
                 fieldWrap.dataset.fieldIdx = String(fi);
+                fieldWrap.dataset.fieldKey = fieldType;
 
                 const header = document.createElement("div");
                 css(header, "display:flex;gap:6px;align-items:center;");
@@ -1849,6 +1862,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                 if (ft.key === "variants") fieldState.variants = {};
                 if (ft.key === "flake_link") fieldState.flake_link = { target: "", variant: {}, lora_strengths: [] };
                 renderFields();
+                scrollToFieldKey(ft.key);
             });
             fieldMenu.appendChild(item);
         }
