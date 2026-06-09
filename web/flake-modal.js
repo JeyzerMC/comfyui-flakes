@@ -84,31 +84,11 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         // Default flake can never be saved (#253).
         let rootsLoaded = mode === "default";
 
-        if (mode !== "default") {
-            const nameStemRow = document.createElement("div");
-            css(nameStemRow, "display:flex;gap:8px;align-items:flex-start;");
-            const nameWrap = document.createElement("div");
-            css(nameWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            nameWrap.appendChild(makeComfyLabel("Display name"));
-            displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
-            nameWrap.appendChild(displayNameInput);
-            nameStemRow.appendChild(nameWrap);
-            const stemWrap = document.createElement("div");
-            css(stemWrap, "flex:0 0 140px;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            stemWrap.appendChild(makeComfyLabel("Output Stem"));
-            outputStemInput = makeComfyInput(data.output_stem ?? "", "e.g. musashi/");
-            outputStemInput.addEventListener("change", () => {
-                fieldState.output_stem = outputStemInput.value || null;
-            });
-            stemWrap.appendChild(outputStemInput);
-            nameStemRow.appendChild(stemWrap);
-            leftCol.appendChild(nameStemRow);
-        }
-
-        // ---- Base + Flake type on same row ----
+        // ---- Resolved-path helpers (shared across the field rows below) ----
         let currentRootPath = "";
         let rootsCache = [];
         let resolvedPathLabel = null;
+        let serieInput = null;
 
         function getOutputPrefix() {
             const folder = familyFolder(currentFamily);
@@ -137,17 +117,47 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             resolvedPathLabel.textContent = fullPath;
         }
 
+        // ---- Prefill chain (#272/#273/#274) ----
+        // In create mode, while a field hasn't been manually edited, compose
+        // Output Path and Output Stem from Serie -> Display Name -> tagged LoRA
+        // names. Serie precedes the display name; tagged LoRA names follow it.
+        let pathManuallyEdited = mode !== "create";
+        let stemManuallyEdited = mode !== "create";
+        function slugPart(s) { return (s || "").trim().replace(/ /g, "_").toLowerCase(); }
+        function taggedLoraSlugs() {
+            return (fieldState.loras || [])
+                .filter(l => l && l.tag_name && (l.name || "").trim())
+                .map(l => slugPart(l.name));
+        }
+        function recomputePrefills() {
+            if (mode !== "create") return;
+            const dn = slugPart(displayNameInput?.value);
+            const serie = slugPart(serieInput?.value);
+            const tags = taggedLoraSlugs();
+            if (!pathManuallyEdited && pathInput) {
+                const typeFolder = selectedType ? selectedType.toLowerCase() + "s" : "";
+                pathInput.value = [typeFolder, serie, dn, ...tags].filter(Boolean).join("/");
+                updateResolvedPath();
+            }
+            if (!stemManuallyEdited && outputStemInput) {
+                // Display name contributes to the stem only for Character flakes (#273).
+                const stemDn = selectedType === "Character" ? dn : "";
+                const stemParts = [serie, stemDn, ...tags].filter(Boolean);
+                outputStemInput.value = stemParts.length ? stemParts.join("/") + "/" : "";
+                fieldState.output_stem = outputStemInput.value || null;
+            }
+        }
+
         if (mode !== "default") {
-            const typeRow = document.createElement("div");
-            css(typeRow, "display:flex;gap:8px;align-items:flex-start;");
-            const baseWrap = document.createElement("div");
-            css(baseWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-            baseWrap.appendChild(makeComfyLabel("Base Directory"));
-            const baseRootSelect = document.createElement("select");
-            css(baseRootSelect, "width:100%;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;box-sizing:border-box;");
-            baseWrap.appendChild(baseRootSelect);
-            baseRootSelectRef = baseRootSelect;
-            typeRow.appendChild(baseWrap);
+            // ---- Row 1: Display Name + Flake Type ----
+            const row1 = document.createElement("div");
+            css(row1, "display:flex;gap:8px;align-items:flex-start;");
+            const nameWrap = document.createElement("div");
+            css(nameWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            nameWrap.appendChild(makeComfyLabel("Display name"));
+            displayNameInput = makeComfyInput(data.name || "", "e.g. My Flake");
+            nameWrap.appendChild(displayNameInput);
+            row1.appendChild(nameWrap);
             const typeWrap = document.createElement("div");
             css(typeWrap, "flex:0 0 140px;min-width:0;display:flex;flex-direction:column;gap:4px;");
             typeWrap.appendChild(makeComfyLabel("Flake type"));
@@ -157,12 +167,69 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             );
             typeDropdown.element.addEventListener("change", () => {
                 selectedType = typeDropdown.element.value;
-                updatePrefillPath();
+                recomputePrefills();
                 if (mode === "create") applyTypeDefaults(selectedType);
             });
             typeWrap.appendChild(typeDropdown.container);
-            typeRow.appendChild(typeWrap);
-            leftCol.appendChild(typeRow);
+            row1.appendChild(typeWrap);
+            leftCol.appendChild(row1);
+
+            // ---- Row 2: Serie + Output Stem (50/50) ----
+            const row2 = document.createElement("div");
+            css(row2, "display:flex;gap:8px;align-items:flex-start;");
+            const serieWrap = document.createElement("div");
+            css(serieWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            serieWrap.appendChild(makeComfyLabel("Serie"));
+            const serieDD = makeSearchableDropdown([], data.serie || "", "e.g. Vinland Saga");
+            serieInput = serieDD.element;
+            serieWrap.appendChild(serieDD.container);
+            row2.appendChild(serieWrap);
+            // Populate the serie suggestions from existing flakes' series.
+            (async () => {
+                try {
+                    const r = await fetch("/flakes/series");
+                    const d = await r.json();
+                    for (const s of (d.series || [])) {
+                        serieDD.datalist.appendChild(Object.assign(document.createElement("option"), { value: s }));
+                    }
+                } catch { /* ignore */ }
+            })();
+            serieInput.addEventListener("input", recomputePrefills);
+            serieInput.addEventListener("change", () => {
+                fieldState.serie = serieInput.value.trim() || null;
+                recomputePrefills();
+            });
+
+            const stemWrap = document.createElement("div");
+            css(stemWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            stemWrap.appendChild(makeComfyLabel("Output Stem"));
+            outputStemInput = makeComfyInput(data.output_stem ?? "", "e.g. musashi/");
+            outputStemInput.addEventListener("change", () => {
+                fieldState.output_stem = outputStemInput.value || null;
+            });
+            outputStemInput.addEventListener("input", () => { stemManuallyEdited = true; });
+            stemWrap.appendChild(outputStemInput);
+            row2.appendChild(stemWrap);
+            leftCol.appendChild(row2);
+
+            // ---- Row 3: Base Directory + Output Path (50/50) ----
+            const row3 = document.createElement("div");
+            css(row3, "display:flex;gap:8px;align-items:flex-start;");
+            const baseWrap = document.createElement("div");
+            css(baseWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            baseWrap.appendChild(makeComfyLabel("Base Directory"));
+            const baseRootSelect = document.createElement("select");
+            css(baseRootSelect, "width:100%;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;box-sizing:border-box;");
+            baseWrap.appendChild(baseRootSelect);
+            baseRootSelectRef = baseRootSelect;
+            row3.appendChild(baseWrap);
+            const pathWrap = document.createElement("div");
+            css(pathWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+            pathWrap.appendChild(makeComfyLabel("Output path"));
+            pathInput = makeComfyInput("", "characters/musashi");
+            pathWrap.appendChild(pathInput);
+            row3.appendChild(pathWrap);
+            leftCol.appendChild(row3);
             (async () => {
                 try {
                     const r = await fetch("/flakes/roots?type=flakes");
@@ -211,14 +278,6 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 saveBtn.disabled = false;
             })();
 
-            // ---- Output Path on its own row ----
-            const pathRow = document.createElement("div");
-            css(pathRow, "display:flex;flex-direction:column;gap:2px;");
-            const pathLabel = makeComfyLabel("Output path");
-            pathRow.appendChild(pathLabel);
-            pathInput = makeComfyInput("", "characters/musashi");
-            pathRow.appendChild(pathInput);
-
             (async () => {
                 try {
                     const r = await fetch("/flakes/roots?type=flakes");
@@ -244,26 +303,10 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 pathInput.value = stripped;
             }
 
-            leftCol.appendChild(pathRow);
-
-            // Auto-fill path from display name + tag (create mode only)
-            let pathManuallyEdited = mode !== "create";
+            // Auto-fill path/stem from serie + display name + tagged loras
+            // (create mode only; a manual edit disables that field's prefill).
             pathInput.addEventListener("input", () => { pathManuallyEdited = true; updateResolvedPath(); });
-            function updatePrefillPath() {
-                if (pathManuallyEdited) return;
-                const dn = displayNameInput?.value?.trim() || "";
-                const tag = selectedType;
-                if (!dn && !tag) { pathInput.value = ""; updateResolvedPath(); return; }
-                const tagFolder = tag ? tag.toLowerCase() + "s" : "";
-                const formatted = dn.replace(/ /g, "_").toLowerCase();
-                if (tagFolder && formatted) {
-                    pathInput.value = `${tagFolder}/${formatted}`;
-                } else {
-                    pathInput.value = tagFolder || formatted;
-                }
-                updateResolvedPath();
-            }
-            displayNameInput?.addEventListener("input", updatePrefillPath);
+            displayNameInput?.addEventListener("input", recomputePrefills);
         }
         topSection.appendChild(leftCol);
 
@@ -477,6 +520,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             controlnets: JSON.parse(JSON.stringify(data.controlnets || [])),
             variants: JSON.parse(JSON.stringify(data.variants || data.options || {})),
             output_stem: data.output_stem ?? null,
+            serie: data.serie ?? null,
             // Flake link: yaml defaults — { target, variant, lora_strengths }
             flake_link: data.flake_link ? {
                 target: String(data.flake_link.target || ""),
@@ -1847,6 +1891,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
             const ordered = {};
             if (displayNameInput && displayNameInput.value) ordered.name = displayNameInput.value.trim();
             if (selectedType) ordered.flake_type = selectedType;
+            if (serieInput && serieInput.value.trim()) ordered.serie = serieInput.value.trim();
             if (outputStemInput && outputStemInput.value.trim()) ordered.output_stem = outputStemInput.value.trim();
 
             // Save fields in the user-selected order so YAML key order is preserved

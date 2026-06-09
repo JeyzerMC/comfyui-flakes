@@ -41,6 +41,17 @@ async def _list_flakes(request: web.Request) -> web.Response:
     return web.json_response({"flakes": names, "directories": dirs, "display_names": display_names})
 
 
+@routes.get("/flakes/series")
+async def _list_series(request: web.Request) -> web.Response:
+    family = request.query.get("family", "").strip() or None
+    try:
+        series = flake_io.list_series(family=family)
+    except Exception as exc:
+        logging.exception("[flakes] failed to list series")
+        return _server_error(str(exc))
+    return web.json_response({"series": series})
+
+
 @routes.get("/flakes/meta")
 async def _flake_meta(request: web.Request) -> web.Response:
     name = request.query.get("name", "").strip()

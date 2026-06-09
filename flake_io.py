@@ -444,6 +444,20 @@ def list_flake_display_names(family: str | None = None) -> dict[str, str]:
     return display_names
 
 
+def list_series(family: str | None = None) -> list[str]:
+    """Distinct, non-empty `serie` values across flakes (sorted)."""
+    series: set[str] = set()
+    for name in list_flakes(family=family):
+        try:
+            raw = read_flake_raw(name)
+        except Exception:
+            continue
+        value = raw.get("serie")
+        if isinstance(value, str) and value.strip():
+            series.add(value.strip())
+    return sorted(series)
+
+
 def list_dirs(family: str | None = None) -> list[str]:
     dirs: set[str] = set()
     for root in _flakes_roots():
