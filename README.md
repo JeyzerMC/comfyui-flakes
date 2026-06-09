@@ -91,6 +91,17 @@ controlnets:
 # Filename stem injected into `Save Image`'s filename_prefix when this flake
 # is in the stack. Multiple flakes' stems are joined with underscores.
 output_stem: "musashi"
+
+# Flake links — pull in one or more other flakes' loras + prompts when this
+# flake is used. Each link can set default variant choices and lora-strength
+# overrides for its target. (A single legacy `flake_link:` mapping is still
+# read for backwards compatibility.)
+flake_links:
+  - target: "styles/ink_wash"          # another flake's output path
+    variant:
+      intensity: heavy                 # default variant choice on the target
+    lora_strengths: [0.8]              # per-lora overrides (null = target default)
+  - target: "poses/standing"
 ```
 
 Prompts are joined with `BREAK` between flakes so each flake acts as an independent CLIP region. LoRA strengths and variant choices can be overridden per-instance from the grid item's option panel without modifying the file on disk.

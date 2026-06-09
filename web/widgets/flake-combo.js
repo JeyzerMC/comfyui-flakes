@@ -124,7 +124,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
     let optionsLoaded = false;
     let hasOptions = null;
     let flakeData = null;
-    let linkedFlakeData = null;
+    let linkedFlakeDataList = [];
 
     function rebuildPanel() {
         nativeColumn.replaceChildren();
@@ -217,84 +217,99 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
     }
 
     function rebuildLinkedPanel() {
-        if (!flakeData?.flake_link?.target || !linkedFlakeData) {
+        const links = flakeData?.flake_links || (flakeData?.flake_link ? [flakeData.flake_link] : []);
+        if (!links.length || !linkedFlakeDataList.some(Boolean)) {
             linkedColumn.style.display = "none";
             return;
         }
         linkedColumn.style.display = "flex";
         linkedColumn.replaceChildren();
 
-        entry.flake_link_override = entry.flake_link_override || { variant: {}, lora_strengths: [] };
-        const ovr = entry.flake_link_override;
-        ovr.variant = ovr.variant || {};
-        ovr.lora_strengths = ovr.lora_strengths || [];
+        // Migrate the legacy single override into the per-link array (#234).
+        if (!Array.isArray(entry.flake_link_overrides)) {
+            entry.flake_link_overrides = entry.flake_link_override ? [entry.flake_link_override] : [];
+        }
 
-        const yamlDefaults = flakeData.flake_link;
+        links.forEach((link, li) => {
+            const linkedFlakeData = linkedFlakeDataList[li];
+            if (!link?.target || !linkedFlakeData) return;
+            entry.flake_link_overrides[li] = entry.flake_link_overrides[li] || { variant: {}, lora_strengths: [] };
+            const ovr = entry.flake_link_overrides[li];
+            ovr.variant = ovr.variant || {};
+            ovr.lora_strengths = ovr.lora_strengths || [];
+            const yamlDefaults = link;
 
-        const title = document.createElement("div");
-        title.textContent = (linkedFlakeData.name || flakeData.flake_link.target).split("/").pop();
-        title.title = `Linked: ${flakeData.flake_link.target}`;
-        css(title, "font-size:9px;opacity:0.8;text-align:center;font-weight:600;color:#4a9eff;padding:2px 0;");
-        linkedColumn.appendChild(title);
-
-        const linkedLoras = Array.isArray(linkedFlakeData.loras) ? linkedFlakeData.loras : [];
-        if (linkedLoras.length > 0) {
-            const sep = document.createElement("div");
-            css(sep, "border-top:1px solid #333;margin:2px 0;");
-            linkedColumn.appendChild(sep);
-            for (let i = 0; i < linkedLoras.length; i++) {
-                const sliderRow = document.createElement("div");
-                css(sliderRow, "padding:2px 0;");
-                const name = linkedLoras[i]?.name || "LoRA";
-                const label = document.createElement("div");
-                label.textContent = name;
-                css(label, "font-size:9px;opacity:0.7;padding:2px 0;text-align:center;");
-                sliderRow.appendChild(label);
-                let initial = ovr.lora_strengths[i];
-                if (initial === null || initial === undefined) initial = (yamlDefaults.lora_strengths || [])[i];
-                if (initial === null || initial === undefined) initial = linkedLoras[i]?.strength ?? 1.0;
-                const strSlider = makeSmallValueSlider(initial, -10, 10, 0.05, (v) => {
-                    while (ovr.lora_strengths.length <= i) ovr.lora_strengths.push(null);
-                    ovr.lora_strengths[i] = v;
-                    onChanged();
-                });
-                sliderRow.appendChild(strSlider);
-                linkedColumn.appendChild(sliderRow);
+            if (li > 0) {
+                const gap = document.createElement("div");
+                css(gap, "border-top:2px solid #444;margin:4px 0;");
+                linkedColumn.appendChild(gap);
             }
-        }
 
-        const linkedVariants = linkedFlakeData.variants || linkedFlakeData.options || {};
-        if (Object.keys(linkedVariants).length > 0) {
-            const sep = document.createElement("div");
-            css(sep, "border-top:1px solid #333;margin:2px 0;");
-            linkedColumn.appendChild(sep);
-            for (const group of Object.keys(linkedVariants)) {
-                const row = document.createElement("div");
-                css(row, "display:flex;flex-direction:column;gap:2px;");
-                const gLabel = document.createElement("span");
-                gLabel.textContent = group;
-                css(gLabel, "font-size:9px;opacity:0.7;text-align:center;");
-                row.appendChild(gLabel);
-                const ddOptions = [{ value: "", label: "-" }];
-                for (const ch of Object.keys(linkedVariants[group])) ddOptions.push({ value: ch, label: ch });
-                const current = ovr.variant[group] || (yamlDefaults.variant || {})[group] || "";
-                const dd = makePanelDropdown(ddOptions, current);
-                dd.element.addEventListener("change", () => {
-                    if (dd.element.value) ovr.variant[group] = dd.element.value;
-                    else delete ovr.variant[group];
-                    onChanged();
-                });
-                row.appendChild(dd.container);
-                linkedColumn.appendChild(row);
+            const title = document.createElement("div");
+            title.textContent = (linkedFlakeData.name || link.target).split("/").pop();
+            title.title = `Linked: ${link.target}`;
+            css(title, "font-size:9px;opacity:0.8;text-align:center;font-weight:600;color:#4a9eff;padding:2px 0;");
+            linkedColumn.appendChild(title);
+
+            const linkedLoras = Array.isArray(linkedFlakeData.loras) ? linkedFlakeData.loras : [];
+            if (linkedLoras.length > 0) {
+                const sep = document.createElement("div");
+                css(sep, "border-top:1px solid #333;margin:2px 0;");
+                linkedColumn.appendChild(sep);
+                for (let i = 0; i < linkedLoras.length; i++) {
+                    const sliderRow = document.createElement("div");
+                    css(sliderRow, "padding:2px 0;");
+                    const name = linkedLoras[i]?.name || "LoRA";
+                    const label = document.createElement("div");
+                    label.textContent = name;
+                    css(label, "font-size:9px;opacity:0.7;padding:2px 0;text-align:center;");
+                    sliderRow.appendChild(label);
+                    let initial = ovr.lora_strengths[i];
+                    if (initial === null || initial === undefined) initial = (yamlDefaults.lora_strengths || [])[i];
+                    if (initial === null || initial === undefined) initial = linkedLoras[i]?.strength ?? 1.0;
+                    const strSlider = makeSmallValueSlider(initial, -10, 10, 0.05, (v) => {
+                        while (ovr.lora_strengths.length <= i) ovr.lora_strengths.push(null);
+                        ovr.lora_strengths[i] = v;
+                        onChanged();
+                    });
+                    sliderRow.appendChild(strSlider);
+                    linkedColumn.appendChild(sliderRow);
+                }
             }
-        }
 
-        if (linkedLoras.length === 0 && Object.keys(linkedVariants).length === 0) {
-            const empty = document.createElement("div");
-            css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
-            empty.textContent = "no overrides";
-            linkedColumn.appendChild(empty);
-        }
+            const linkedVariants = linkedFlakeData.variants || linkedFlakeData.options || {};
+            if (Object.keys(linkedVariants).length > 0) {
+                const sep = document.createElement("div");
+                css(sep, "border-top:1px solid #333;margin:2px 0;");
+                linkedColumn.appendChild(sep);
+                for (const group of Object.keys(linkedVariants)) {
+                    const row = document.createElement("div");
+                    css(row, "display:flex;flex-direction:column;gap:2px;");
+                    const gLabel = document.createElement("span");
+                    gLabel.textContent = group;
+                    css(gLabel, "font-size:9px;opacity:0.7;text-align:center;");
+                    row.appendChild(gLabel);
+                    const ddOptions = [{ value: "", label: "-" }];
+                    for (const ch of Object.keys(linkedVariants[group])) ddOptions.push({ value: ch, label: ch });
+                    const current = ovr.variant[group] || (yamlDefaults.variant || {})[group] || "";
+                    const dd = makePanelDropdown(ddOptions, current);
+                    dd.element.addEventListener("change", () => {
+                        if (dd.element.value) ovr.variant[group] = dd.element.value;
+                        else delete ovr.variant[group];
+                        onChanged();
+                    });
+                    row.appendChild(dd.container);
+                    linkedColumn.appendChild(row);
+                }
+            }
+
+            if (linkedLoras.length === 0 && Object.keys(linkedVariants).length === 0) {
+                const empty = document.createElement("div");
+                css(empty, "font-size:9px;opacity:0.5;padding:4px;text-align:center;");
+                empty.textContent = "no overrides";
+                linkedColumn.appendChild(empty);
+            }
+        });
     }
 
     async function loadOptions() {
@@ -304,9 +319,10 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             optionsLoaded = true;
             hasOptions = variants;
             flakeData = fdata;
-            if (fdata?.flake_link?.target) {
-                try { linkedFlakeData = await fetchFlake(fdata.flake_link.target); } catch { /* leave null */ }
-            }
+            const links = fdata?.flake_links || (fdata?.flake_link ? [fdata.flake_link] : []);
+            linkedFlakeDataList = await Promise.all(links.map(l =>
+                l?.target ? fetchFlake(l.target).catch(() => null) : Promise.resolve(null)
+            ));
             rebuildPanel();
         } catch { /* ignore */ }
     }

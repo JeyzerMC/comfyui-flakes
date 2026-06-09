@@ -282,6 +282,9 @@ class Flake:
     controlnets: list[ControlNetEntry] = field(default_factory=list)
     variants: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
     output_stem: str | None = None
+    # Multiple flake links (#234). `flake_link` is kept as a convenience alias
+    # for the first link so older readers keep working.
+    flake_links: list[FlakeLink] = field(default_factory=list)
     flake_link: FlakeLink | None = None
 
 # ---------------------------------------------------------------------------
@@ -663,18 +666,28 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
             )
         )
 
-    # Parse flake_link (#232) — defaults stored on the host yaml. Optional.
-    link_obj = None
-    link_raw = raw.get("flake_link")
-    if isinstance(link_raw, dict) and link_raw.get("target"):
-        link_obj = FlakeLink(
-            target=str(link_raw["target"]),
-            variant={str(g): str(c) for g, c in (link_raw.get("variant") or {}).items() if c},
+    # Parse flake links (#232/#234) — defaults stored on the host yaml. Optional.
+    # New format: `flake_links:` is a list. Legacy: a single `flake_link:` dict.
+    def _parse_link(d: dict[str, Any]) -> FlakeLink:
+        return FlakeLink(
+            target=str(d["target"]),
+            variant={str(g): str(c) for g, c in (d.get("variant") or {}).items() if c},
             lora_strengths=[
                 (float(s) if isinstance(s, (int, float)) else None)
-                for s in (link_raw.get("lora_strengths") or [])
+                for s in (d.get("lora_strengths") or [])
             ],
         )
+
+    links: list[FlakeLink] = []
+    raw_links = raw.get("flake_links")
+    if isinstance(raw_links, list):
+        for lr in raw_links:
+            if isinstance(lr, dict) and lr.get("target"):
+                links.append(_parse_link(lr))
+    else:
+        link_raw = raw.get("flake_link")
+        if isinstance(link_raw, dict) and link_raw.get("target"):
+            links.append(_parse_link(link_raw))
 
     return Flake(
         name=name,
@@ -687,7 +700,8 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
         controlnets=cns,
         variants=raw.get("variants") or raw.get("options") or {},
         output_stem=raw.get("output_stem") or None,
-        flake_link=link_obj,
+        flake_links=links,
+        flake_link=(links[0] if links else None),
     )
 
 
@@ -749,25 +763,37 @@ def resolve(entry: dict[str, Any]) -> Flake:
 
 
 def _apply_flake_link(host: "Flake", entry: dict[str, Any], _visited: set[str] | None = None) -> None:
-    """Apply the host flake's ``flake_link`` (if any) by resolving the linked
-    flake with merged overrides and appending its loras + prompts.
+    """Apply each of the host flake's links (#232/#234) by resolving the linked
+    flakes with merged overrides and appending their loras + prompts.
 
     Override precedence (highest wins):
-      1. Per-grid placement override (entry["flake_link_override"])
-      2. Host yaml flake_link.variant / .lora_strengths
+      1. Per-grid placement override (entry["flake_link_overrides"][i], or the
+         legacy single entry["flake_link_override"] applied to the first link)
+      2. Host yaml flake_links[i].variant / .lora_strengths
       3. Linked flake's own defaults
     """
-    link = host.flake_link
-    if not link or not link.target:
+    links = host.flake_links or ([host.flake_link] if host.flake_link else [])
+    if not links:
         return
 
+    overrides = entry.get("flake_link_overrides")
+    legacy_override = entry.get("flake_link_override") or {}
+
     _visited = set(_visited or [])
-    if link.target in _visited:
-        return  # cycle guard
     _visited.add(host.name)
 
+    for i, link in enumerate(links):
+        if not link or not link.target or link.target in _visited:
+            continue  # cycle guard / empty slot
+        if isinstance(overrides, list):
+            grid_override = overrides[i] if (i < len(overrides) and isinstance(overrides[i], dict)) else {}
+        else:
+            grid_override = legacy_override if i == 0 else {}
+        _apply_single_link(host, link, grid_override)
+
+
+def _apply_single_link(host: "Flake", link: "FlakeLink", grid_override: dict[str, Any]) -> None:
     # Build the effective entry for the linked flake.
-    grid_override = entry.get("flake_link_override") or {}
     link_variant = dict(link.variant)
     link_variant.update({str(k): str(v) for k, v in (grid_override.get("variant") or {}).items() if v})
 
