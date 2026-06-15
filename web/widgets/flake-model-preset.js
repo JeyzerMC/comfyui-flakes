@@ -1,4 +1,4 @@
-import { css } from "../utils.js";
+import { css, makeModelOverridePanel, serializeModelOverrides } from "../utils.js";
 import { fetchPreset } from "../api.js";
 import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
 import { openPresetPicker } from "../pickers.js";
@@ -232,6 +232,38 @@ export function setupFlakeModelPresetWidget(node) {
     const nameLabel = document.createElement("div");
     css(nameLabel, "font-size:12px;color:#aaa;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px;");
     selectedWrap.appendChild(nameLabel);
+
+    // Per-instance overrides (#279): steps/cfg/sampler/scheduler/filename_prefix
+    // applied on top of the preset without editing its file. Stored in
+    // node.properties._overrides and mirrored to the hidden overrides_json widget.
+    if (!node.properties) node.properties = {};
+    if (!node.properties._overrides || typeof node.properties._overrides !== "object") node.properties._overrides = {};
+    const overridesWidget = node.widgets?.find(w => w.name === "overrides_json");
+    if (overridesWidget) {
+        overridesWidget.computeSize = () => [0, -4];
+        overridesWidget.type = "hidden";
+        overridesWidget.hidden = true;
+        if (overridesWidget.element) { overridesWidget.element.remove(); overridesWidget.element = null; }
+        if (overridesWidget.inputEl) { overridesWidget.inputEl.remove(); overridesWidget.inputEl = null; }
+    }
+    function syncOverridesWidget() {
+        if (overridesWidget) overridesWidget.value = serializeModelOverrides(node.properties._overrides);
+    }
+    syncOverridesWidget();
+
+    const ovrToggle = document.createElement("button");
+    ovrToggle.type = "button";
+    ovrToggle.textContent = "⚙ Overrides";
+    css(ovrToggle, "align-self:center;cursor:pointer;border-radius:4px;font-size:11px;background:#2a2a2a;color:#999;border:1px solid #444;padding:3px 8px;user-select:none;");
+    const ovrPanelWrap = document.createElement("div");
+    css(ovrPanelWrap, "display:none;justify-content:center;");
+    ovrPanelWrap.appendChild(makeModelOverridePanel(node.properties._overrides, syncOverridesWidget));
+    ovrToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        ovrPanelWrap.style.display = ovrPanelWrap.style.display === "none" ? "flex" : "none";
+    });
+    selectedWrap.appendChild(ovrToggle);
+    selectedWrap.appendChild(ovrPanelWrap);
 
     container.appendChild(selectedWrap);
 

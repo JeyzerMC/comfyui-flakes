@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { collectChain } from "./widgets/generation-data.js";
+import { serializeModelOverrides } from "./utils.js";
 
 export function getComboFlakes(node) {
     return node.properties?._combo_flakes || [];
@@ -364,7 +365,11 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 nodeOriginals.set(item.node.id, { node: item.node, widget: w, value: w?.value });
             } else {
                 const w = item.node.widgets?.find(w => w.name === "preset");
-                nodeOriginals.set(item.node.id, { node: item.node, widget: w, value: w?.value });
+                const ow = item.node.widgets?.find(w => w.name === "overrides_json");
+                nodeOriginals.set(item.node.id, {
+                    node: item.node, widget: w, value: w?.value,
+                    overrideWidget: ow, overrideValue: ow?.value,
+                });
             }
         }
     }
@@ -400,6 +405,12 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 } else {
                     const w = item.node.widgets?.find(w => w.name === "preset");
                     if (w) w.value = item.value;
+                    // Per-instance preset overrides for this combination (#279).
+                    const ow = item.node.widgets?.find(w => w.name === "overrides_json");
+                    if (ow) {
+                        const ovr = (item.node.properties?._combo_overrides || [])[item.index] || {};
+                        ow.value = serializeModelOverrides(ovr);
+                    }
                 }
             }
             const comboKey = combination
@@ -421,6 +432,7 @@ app.queuePrompt = async function(number, batchCount = 1) {
     } finally {
         for (const orig of nodeOriginals.values()) {
             if (orig.widget) orig.widget.value = orig.value;
+            if (orig.overrideWidget) orig.overrideWidget.value = orig.overrideValue;
         }
         // If no tracker is available, clear highlights immediately as fallback
         if (!tracker) {

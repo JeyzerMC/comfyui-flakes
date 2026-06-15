@@ -986,6 +986,101 @@ export function attachHoldToSingleOut(checkbox, onSingleOut, holdMs = 450) {
     }, true);
 }
 
+// Cached sampler/scheduler option lists from the backend (Advanced KSampler
+// parity, #285). Shared by the model-preset override panel (#279).
+let _samplerListCache = null;
+export async function fetchSamplerLists() {
+    if (_samplerListCache) return _samplerListCache;
+    try {
+        const r = await fetch("/flakes/samplers");
+        const d = await r.json();
+        _samplerListCache = { samplers: d.samplers || [], schedulers: d.schedulers || [] };
+    } catch {
+        _samplerListCache = { samplers: [], schedulers: [] };
+    }
+    return _samplerListCache;
+}
+
+// Serialize a model-preset override object to the JSON consumed by the backend
+// `overrides_json` widget (#279). Drops empty fields so the preset's own values
+// pass through. Returns "" when there are no overrides.
+export function serializeModelOverrides(ovr) {
+    if (!ovr || typeof ovr !== "object") return "";
+    const out = {};
+    if (ovr.filename_prefix) out.filename_prefix = ovr.filename_prefix;
+    if (ovr.steps != null && ovr.steps !== "") out.steps = ovr.steps;
+    if (ovr.cfg != null && ovr.cfg !== "") out.cfg = ovr.cfg;
+    if (ovr.sampler) out.sampler = ovr.sampler;
+    if (ovr.scheduler) out.scheduler = ovr.scheduler;
+    return Object.keys(out).length ? JSON.stringify(out) : "";
+}
+
+// Build a per-instance override panel for a model preset (#279): Filename
+// Prefix, Steps, CFG, Sampler, Scheduler. Mutates the passed `overrides`
+// object in place and calls `onChange` on every edit. Empty fields mean
+// "use the preset's value".
+export function makeModelOverridePanel(overrides, onChange) {
+    const col = document.createElement("div");
+    css(col, "width:180px;padding:6px;display:flex;flex-direction:column;gap:3px;box-sizing:border-box;");
+    const inputCss = "width:100%;box-sizing:border-box;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:2px 4px;border-radius:3px;font-size:10px;outline:none;";
+    const label = (text) => {
+        const l = document.createElement("div");
+        l.textContent = text;
+        css(l, "font-size:9px;opacity:0.7;text-align:center;");
+        col.appendChild(l);
+    };
+
+    label("Filename Prefix");
+    const fp = document.createElement("input");
+    fp.type = "text";
+    fp.value = overrides.filename_prefix || "";
+    fp.placeholder = "(preset default)";
+    css(fp, inputCss);
+    fp.addEventListener("input", () => { overrides.filename_prefix = fp.value || ""; onChange(); });
+    col.appendChild(fp);
+
+    const numField = (text, key, step) => {
+        label(text);
+        const inp = document.createElement("input");
+        inp.type = "number";
+        inp.step = step;
+        inp.value = overrides[key] ?? "";
+        inp.placeholder = "default";
+        css(inp, inputCss);
+        inp.addEventListener("input", () => { overrides[key] = inp.value === "" ? null : inp.value; onChange(); });
+        col.appendChild(inp);
+    };
+    numField("Steps", "steps", "1");
+    numField("CFG", "cfg", "0.1");
+
+    label("Sampler");
+    const sampDD = makePanelDropdown([{ value: "", label: "(default)" }], overrides.sampler || "");
+    sampDD.element.addEventListener("change", () => { overrides.sampler = sampDD.element.value || ""; onChange(); });
+    col.appendChild(sampDD.container);
+
+    label("Scheduler");
+    const schedDD = makePanelDropdown([{ value: "", label: "(default)" }], overrides.scheduler || "");
+    schedDD.element.addEventListener("change", () => { overrides.scheduler = schedDD.element.value || ""; onChange(); });
+    col.appendChild(schedDD.container);
+
+    fetchSamplerLists().then(({ samplers, schedulers }) => {
+        for (const s of samplers) {
+            const o = document.createElement("option");
+            o.value = s; o.textContent = s;
+            if (s === overrides.sampler) o.selected = true;
+            sampDD.element.appendChild(o);
+        }
+        for (const s of schedulers) {
+            const o = document.createElement("option");
+            o.value = s; o.textContent = s;
+            if (s === overrides.scheduler) o.selected = true;
+            schedDD.element.appendChild(o);
+        }
+    });
+
+    return col;
+}
+
 // ---------- Drag indicator helpers ----------
 
 export function _showDropIndicator(block) {

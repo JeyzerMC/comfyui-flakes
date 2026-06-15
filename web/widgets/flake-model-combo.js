@@ -1,12 +1,13 @@
 import {
     css, svgIcon, makeGridItemOverlay, makeHoverButton, makeBypassStrike,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, attachHoldToSingleOut, makeAddBlock,
+    makeModelOverridePanel, serializeModelOverrides,
 } from "../utils.js";
 import { openPresetPicker } from "../pickers.js";
 import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
 import { fetchPreset } from "../api.js";
 
-export function makeModelComboBlock({ preset, display_name, idx, isActive, isBypassed, isGenerating, onActivate, onToggleBypass, onSingleOut, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
+export function makeModelComboBlock({ preset, display_name, idx, isActive, isBypassed, isGenerating, overrides, onOverrideChange, onActivate, onToggleBypass, onSingleOut, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const block = document.createElement("div");
     block.dataset.idx = String(idx);
 
@@ -16,8 +17,8 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
         isGenerating ? "box-shadow:inset 0 0 0 2px rgba(74,158,255,0.7);" : ""
     }${isBypassed ? "opacity:0.45;" : ""}`);
 
-    // Dark overlay, hover buttons — using shared helper (no triangle for model combo)
-    makeGridItemOverlay({
+    // Dark overlay, hover buttons, and triangle dropdown (override panel, #279).
+    const { triangleBtn } = makeGridItemOverlay({
         block,
         showHoverButtons: true,
         buttons: [
@@ -25,7 +26,7 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
             makeHoverButton({ svg: `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`, title: "Edit Preset", onClick: () => onEdit(idx) }),
             makeHoverButton({ svg: `<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>`, title: "Remove from Combo", onClick: () => onRemove(idx) }),
         ],
-        showTriangle: false,
+        showTriangle: true,
     });
 
     const fullName = display_name || preset.split(/[\/\\]+/).pop() || preset;
@@ -73,12 +74,39 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
     block.addEventListener("dragleave", () => { block.style.outline = ""; block.style.boxShadow = ""; });
     block.addEventListener("drop", (e) => onDrop(e, idx, block));
 
+    // Per-instance override dropdown (#279): Filename Prefix / Steps / CFG /
+    // Sampler / Scheduler — A/B test a preset without editing its file.
+    if (triangleBtn && overrides) {
+        const panel = document.createElement("div");
+        css(panel, "position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#1e1e1e;border:1px solid #444;border-radius:4px;display:none;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-top:1px;");
+        panel.addEventListener("click", (e) => e.stopPropagation());
+        panel.addEventListener("dblclick", (e) => e.stopPropagation());
+        panel.addEventListener("mousedown", (e) => e.stopPropagation());
+        panel.appendChild(makeModelOverridePanel(overrides, () => { if (onOverrideChange) onOverrideChange(); }));
+        block.appendChild(panel);
+
+        let outside = null;
+        const closePanel = () => {
+            panel.style.display = "none";
+            triangleBtn.textContent = "▾";
+            if (outside) { document.removeEventListener("mousedown", outside); outside = null; }
+        };
+        triangleBtn.addEventListener("click", () => {
+            if (panel.style.display === "block") { closePanel(); return; }
+            panel.style.display = "block";
+            triangleBtn.textContent = "▴";
+            outside = (e) => { if (!block.contains(e.target)) closePanel(); };
+            document.addEventListener("mousedown", outside);
+        });
+    }
+
     return block;
 }
 
 export function setupFlakeModelComboWidget(node) {
     const presetWidget = node.widgets?.find(w => w.name === "preset");
     const familyWidget = node.widgets?.find(w => w.name === "model_family");
+    const overridesWidget = node.widgets?.find(w => w.name === "overrides_json");
     if (!presetWidget) return;
 
     // Hide the original ComfyUI combo widget
@@ -87,6 +115,15 @@ export function setupFlakeModelComboWidget(node) {
     presetWidget.hidden = true;
     if (presetWidget.element) { presetWidget.element.remove(); presetWidget.element = null; }
     if (presetWidget.inputEl) { presetWidget.inputEl.remove(); presetWidget.inputEl = null; }
+
+    // Hide the overrides_json widget — it's driven by the per-item panel (#279).
+    if (overridesWidget) {
+        overridesWidget.computeSize = () => [0, -4];
+        overridesWidget.type = "hidden";
+        overridesWidget.hidden = true;
+        if (overridesWidget.element) { overridesWidget.element.remove(); overridesWidget.element = null; }
+        if (overridesWidget.inputEl) { overridesWidget.inputEl.remove(); overridesWidget.inputEl = null; }
+    }
 
     function getFamily() {
         return familyWidget?.value || "SDXL/Base";
@@ -98,9 +135,21 @@ export function setupFlakeModelComboWidget(node) {
     if (!node.properties._combo_display_names) node.properties._combo_display_names = {};
     // Bypassed presets, keyed by preset name (survives drag/remove reindexing).
     if (!Array.isArray(node.properties._combo_bypassed)) node.properties._combo_bypassed = [];
+    // Per-instance overrides, aligned by index with _combo_presets (#279).
+    if (!Array.isArray(node.properties._combo_overrides)) node.properties._combo_overrides = [];
 
     function readPresets() {
         return node.properties._combo_presets || [];
+    }
+    function overridesArr() {
+        if (!Array.isArray(node.properties._combo_overrides)) node.properties._combo_overrides = [];
+        return node.properties._combo_overrides;
+    }
+    function getOverridesAt(i) {
+        const arr = overridesArr();
+        while (arr.length <= i) arr.push({});
+        if (!arr[i] || typeof arr[i] !== "object") arr[i] = {};
+        return arr[i];
     }
     function isPresetBypassed(preset) {
         return (node.properties._combo_bypassed || []).includes(preset);
@@ -120,6 +169,11 @@ export function setupFlakeModelComboWidget(node) {
         const idx = node.properties._combo_active_index || 0;
         const active = presets[idx] || "Select a preset...";
         presetWidget.value = active;
+        // Sync the active preset's overrides to the hidden widget so a single
+        // (non-batch) run uses them; the batch cycler sets it per combination.
+        if (overridesWidget) {
+            overridesWidget.value = serializeModelOverrides(overridesArr()[idx] || {});
+        }
     }
 
     async function fetchDisplayName(presetName) {
@@ -155,6 +209,8 @@ export function setupFlakeModelComboWidget(node) {
                 isActive: i === activeIdx,
                 isBypassed: isPresetBypassed(presets[i]),
                 isGenerating: generatingIdx != null && i === generatingIdx,
+                overrides: getOverridesAt(i),
+                onOverrideChange: () => updateActivePreset(),
                 onActivate: (idx) => {
                     node.properties._combo_active_index = idx;
                     updateActivePreset();
@@ -180,6 +236,7 @@ export function setupFlakeModelComboWidget(node) {
                 onRemove: (idx) => {
                     const arr = readPresets();
                     arr.splice(idx, 1);
+                    overridesArr().splice(idx, 1);
                     if (node.properties._combo_active_index >= arr.length) {
                         node.properties._combo_active_index = Math.max(0, arr.length - 1);
                     }
@@ -191,6 +248,9 @@ export function setupFlakeModelComboWidget(node) {
                     if (!result || !result.name) return;
                     const arr = readPresets();
                     arr[idx] = result.name;
+                    // New preset under this slot — reset its overrides.
+                    getOverridesAt(idx);
+                    overridesArr()[idx] = {};
                     const name = await fetchDisplayName(result.name);
                     node.properties._combo_display_names[result.name] = name;
                     writePresets(arr);
@@ -228,6 +288,11 @@ export function setupFlakeModelComboWidget(node) {
                     let insertIdx = idx;
                     if (dragSrcIdx < idx) insertIdx--;
                     arr.splice(insertIdx, 0, moved);
+                    // Keep per-instance overrides aligned with the reordered presets.
+                    const ov = overridesArr();
+                    while (ov.length < arr.length) ov.push({});
+                    const [movedOv] = ov.splice(dragSrcIdx, 1);
+                    ov.splice(insertIdx, 0, movedOv || {});
                     if (node.properties._combo_active_index === dragSrcIdx) {
                         node.properties._combo_active_index = insertIdx;
                     } else if (node.properties._combo_active_index > dragSrcIdx && node.properties._combo_active_index <= idx) {
@@ -263,6 +328,7 @@ export function setupFlakeModelComboWidget(node) {
         async function pushPreset(name) {
             const arr = readPresets();
             arr.push(name);
+            overridesArr().push({});
             node.properties._combo_display_names[name] = await fetchDisplayName(name);
             writePresets(arr);
             render();
@@ -309,6 +375,10 @@ export function setupFlakeModelComboWidget(node) {
             const arr = readPresets();
             const [moved] = arr.splice(dragSrcIdx, 1);
             arr.push(moved);
+            const ov = overridesArr();
+            while (ov.length < arr.length) ov.push({});
+            const [movedOv] = ov.splice(dragSrcIdx, 1);
+            ov.push(movedOv || {});
             writePresets(arr);
             dragSrcIdx = null;
             render();

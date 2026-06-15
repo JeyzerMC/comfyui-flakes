@@ -219,6 +219,50 @@ def _load_preset_bundle(preset_name: str, model_family: str | None = None):
     return model_bundle, generation_data, sampling_preset
 
 
+def _apply_preset_overrides(overrides_json, model_bundle, generation_data, sampling_preset):
+    """Overlay per-instance overrides (steps/cfg/sampler/scheduler/
+    filename_prefix) onto a loaded preset bundle (#279).
+
+    Empty/blank fields are ignored so the preset's own values pass through.
+    ``filename_prefix`` is appended to the stem chain rather than replacing it.
+    """
+    if not overrides_json:
+        return model_bundle, generation_data, sampling_preset
+    try:
+        ovr = json.loads(overrides_json) or {}
+    except (ValueError, TypeError):
+        return model_bundle, generation_data, sampling_preset
+    if not isinstance(ovr, dict) or not ovr:
+        return model_bundle, generation_data, sampling_preset
+
+    steps, cfg, sampler, scheduler = sampling_preset
+
+    def _conv(key, conv, cur):
+        v = ovr.get(key)
+        if v is None or v == "":
+            return cur
+        try:
+            return conv(v)
+        except (ValueError, TypeError):
+            return cur
+
+    steps = _conv("steps", int, steps)
+    cfg = _conv("cfg", float, cfg)
+    if ovr.get("sampler"):
+        sampler = str(ovr["sampler"])
+    if ovr.get("scheduler"):
+        scheduler = str(ovr["scheduler"])
+    sampling_preset = (steps, cfg, sampler, scheduler)
+
+    fp = (ovr.get("filename_prefix") or "").strip()
+    if fp and isinstance(generation_data, tuple) and len(generation_data) > 7 and isinstance(generation_data[7], dict):
+        fs = dict(generation_data[7])
+        fs["stems"] = list(fs.get("stems", [])) + [fp]
+        generation_data = generation_data[:7] + (fs,)
+
+    return model_bundle, generation_data, sampling_preset
+
+
 _MODEL_FAMILIES = ["SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "ZImage/Base", "ZImage/Turbo", "Anima/Base", "Flux/Klein"]
 
 
@@ -236,6 +280,16 @@ class FlakeModelPreset:
                 "model_family": (_MODEL_FAMILIES, {"default": "SDXL/Base"}),
                 "preset": (["Select a preset..."] + preset_names,),
             },
+            "optional": {
+                # Per-instance overrides (steps/cfg/sampler/scheduler/
+                # filename_prefix) as JSON. Managed by the node's widget; lets a
+                # preset be A/B-tested without editing its file (#279).
+                "overrides_json": ("STRING", {
+                    "default": "",
+                    "multiline": True,
+                    "tooltip": "JSON override of steps/cfg/sampler/scheduler/filename_prefix. Managed by the Flake widget.",
+                }),
+            },
         }
 
     RETURN_TYPES = ("FLAKE_DATA",)
@@ -248,26 +302,30 @@ class FlakeModelPreset:
     )
 
     @classmethod
-    def IS_CHANGED(cls, model_family: str, preset: str):
+    def IS_CHANGED(cls, model_family: str, preset: str, overrides_json: str = ""):
         # Re-run whenever the preset file's contents change on disk, even if the
         # selected preset name (the node input) stays the same. Without this,
         # ComfyUI caches the output and edits to Steps/CFG/etc. are ignored.
+        # The override JSON is part of the signature so override edits re-run too.
         preset_name = preset.strip() if preset else ""
         if not preset_name or preset_name in ("Select a preset...", "No model preset is selected"):
-            return preset_name
+            return f"{preset_name}:{overrides_json}"
         try:
             path = flake_io._resolve_preset_file(preset_name)
             st = os.stat(path)
-            return f"{path}:{st.st_mtime_ns}:{st.st_size}"
+            return f"{path}:{st.st_mtime_ns}:{st.st_size}:{overrides_json}"
         except Exception:
             return float("nan")
 
-    def execute(self, model_family: str, preset: str):
+    def execute(self, model_family: str, preset: str, overrides_json: str = ""):
         preset_name = preset.strip() if preset else ""
         if not preset_name or preset_name in ("Select a preset...", "No model preset is selected"):
             raise ValueError("No model preset is selected — pick one from the dropdown.")
 
         model_bundle, generation_data, sampling_preset = _load_preset_bundle(preset_name, model_family)
+        model_bundle, generation_data, sampling_preset = _apply_preset_overrides(
+            overrides_json, model_bundle, generation_data, sampling_preset
+        )
         return ((model_bundle, generation_data, sampling_preset),)
 
 
