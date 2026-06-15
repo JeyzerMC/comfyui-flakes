@@ -370,6 +370,11 @@ class FlakeGenerate:
                 "adetailer": ("BOOLEAN", {"default": False, "label_on": "Face Detailer", "label_off": "ADetailer off"}),
                 "adetailer_denoise": ("FLOAT", {"default": 0.4, "min": 0.0, "max": 1.0, "step": 0.05}),
                 "adetailer_bbox": ("STRING", {"default": "bbox/face_yolov8m.pt"}),
+                # Upscale post-process (#288). upscale_model is a filename under
+                # models/upscale_models/ (blank = plain rescale to factor).
+                "upscale": ("BOOLEAN", {"default": False, "label_on": "Upscale", "label_off": "Upscale off"}),
+                "upscale_model": ("STRING", {"default": ""}),
+                "upscale_factor": ("FLOAT", {"default": 1.5, "min": 1.0, "max": 8.0, "step": 0.1}),
             },
         }
 
@@ -380,7 +385,8 @@ class FlakeGenerate:
     OUTPUT_NODE = True
 
     def execute(self, flake_data, seed, adetailer=False, adetailer_denoise=0.4,
-                adetailer_bbox="bbox/face_yolov8m.pt"):
+                adetailer_bbox="bbox/face_yolov8m.pt",
+                upscale=False, upscale_model="", upscale_factor=1.5):
         parts = _split_flake_data(flake_data)
         model = parts["model"]
         clip = parts["clip"]
@@ -412,6 +418,11 @@ class FlakeGenerate:
                 seed, steps, cfg, sampler_name, scheduler,
                 denoise=adetailer_denoise, bbox_model=adetailer_bbox,
             )
+
+        # Optional upscale post-process (#288), after detailing.
+        if upscale:
+            from .flake_postprocess import upscale_images
+            images = upscale_images(images, upscale_model, upscale_factor)
 
         saver = SaveImage()
         save_result = saver.save_images(images, filename_prefix=filename_prefix)

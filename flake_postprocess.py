@@ -81,3 +81,39 @@ def run_face_detailer(
     enhanced = result[0] if isinstance(result, (tuple, list)) else result
     logging.info("[flakes] ADetailer (FaceDetailer) pass complete")
     return enhanced
+
+
+def upscale_images(images, upscale_model_name: str = "", factor: float = 1.5):
+    """Upscale an IMAGE batch (#288).
+
+    If ``upscale_model_name`` is set, run it through the core ESRGAN-style model
+    upscaler first; then rescale so the final size is ``factor`` × the original
+    (so the requested factor holds regardless of the model's native scale). Uses
+    core ComfyUI nodes; raises a clear error if they are unavailable.
+    """
+    import comfy.utils
+
+    out = images
+    name = (upscale_model_name or "").strip()
+    if name and name.lower() not in ("(none)", "none", ""):
+        cls = _node_classes("UpscaleModelLoader", "ImageUpscaleWithModel")
+        loader = cls["UpscaleModelLoader"]
+        applier = cls["ImageUpscaleWithModel"]
+        if loader is None or applier is None:
+            raise RuntimeError(
+                "Upscaling with a model requires the core ComfyUI upscale nodes "
+                "(UpscaleModelLoader / ImageUpscaleWithModel)."
+            )
+        upscale_model = loader().load_model(name)[0]
+        out = applier().upscale(upscale_model, out)[0]
+
+    if factor and abs(float(factor) - 1.0) > 1e-3:
+        h, w = int(images.shape[1]), int(images.shape[2])
+        target_w = max(1, int(round(w * float(factor))))
+        target_h = max(1, int(round(h * float(factor))))
+        samples = out.movedim(-1, 1)
+        samples = comfy.utils.common_upscale(samples, target_w, target_h, "lanczos", "disabled")
+        out = samples.movedim(1, -1)
+
+    logging.info("[flakes] upscale pass complete (model=%s factor=%.2f)", name or "none", float(factor))
+    return out
