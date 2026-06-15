@@ -172,6 +172,12 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                         baseRootSelect.value = String(savedIdx);
                     }
                 }
+                // For new presets, default the base folder to the first Extra Path
+                // root (index > 0) when one is configured, instead of Comfy Install.
+                if (mode === "create") {
+                    const extraRoot = availableRoots.find(r => r.index > 0);
+                    if (extraRoot) baseRootSelect.value = String(extraRoot.index);
+                }
                 if (mode === "create" && !pathManuallyEdited) syncOutputPath();
                 updateResolvedPath();
             } catch { /* ignore */ }
