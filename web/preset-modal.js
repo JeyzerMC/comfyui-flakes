@@ -40,6 +40,8 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
             pony: "SDXL/Pony",
             zib: "ZImage/Base",
             zit: "ZImage/Turbo",
+            anima: "Anima/Base",
+            flux_klein: "Flux/Klein",
             common: "Common",
         };
 
@@ -121,6 +123,8 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                 "SDXL/Pony": "pony",
                 "ZImage/Base": "zib",
                 "ZImage/Turbo": "zit",
+                "Anima/Base": "anima",
+                "Flux/Klein": "flux_klein",
                 "Common": "common",
             };
             return map[fam] || "";

@@ -97,7 +97,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
 
         function stripOutputPrefix(val) {
             if (!val) return val;
-            const prefixes = ["img/sdxl/", "img/illustrious/", "img/pony/", "img/zib/", "img/zit/", "img/common/", "img/"];
+            const prefixes = ["img/sdxl/", "img/illustrious/", "img/pony/", "img/zib/", "img/zit/", "img/anima/", "img/flux_klein/", "img/common/", "img/"];
             for (const p of prefixes) {
                 if (val.toLowerCase().startsWith(p)) return val.slice(p.length);
             }
@@ -327,6 +327,8 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 "img/pony/": "SDXL/Pony",
                 "img/zib/": "ZImage/Base",
                 "img/zit/": "ZImage/Turbo",
+                "img/anima/": "Anima/Base",
+                "img/flux_klein/": "Flux/Klein",
                 "img/common/": "Common",
             };
             for (const [prefix, fam] of Object.entries(FAMILY_PATH_MAP)) {

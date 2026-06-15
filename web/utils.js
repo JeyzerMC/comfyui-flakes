@@ -6,6 +6,8 @@ export const FAMILY_FOLDERS = {
     "SDXL/Pony": "pony",
     "ZImage/Base": "zib",
     "ZImage/Turbo": "zit",
+    "Anima/Base": "anima",
+    "Flux/Klein": "flux_klein",
     "Common": "common",
 };
 
@@ -92,6 +94,32 @@ export const CN_MODEL_MAP = {
         seg: "controlnet_seg_sdxl",
         tile: "controlnet_tile_sdxl",
         ip2p: "controlnet_ip2p_sdxl",
+    },
+    anima: {
+        openpose: "controlnet_openpose_anima",
+        depth: "controlnet_depth_anima",
+        canny: "controlnet_canny_anima",
+        lineart: "controlnet_lineart_anima",
+        lineart_anime: "controlnet_lineart_anime_anima",
+        softedge: "controlnet_softedge_anima",
+        scribble: "controlnet_scribble_anima",
+        normalbae: "controlnet_normalbae_anima",
+        seg: "controlnet_seg_anima",
+        tile: "controlnet_tile_anima",
+        ip2p: "controlnet_ip2p_anima",
+    },
+    flux_klein: {
+        openpose: "controlnet_openpose_flux",
+        depth: "controlnet_depth_flux",
+        canny: "controlnet_canny_flux",
+        lineart: "controlnet_lineart_flux",
+        lineart_anime: "controlnet_lineart_anime_flux",
+        softedge: "controlnet_softedge_flux",
+        scribble: "controlnet_scribble_flux",
+        normalbae: "controlnet_normalbae_flux",
+        seg: "controlnet_seg_flux",
+        tile: "controlnet_tile_flux",
+        ip2p: "controlnet_ip2p_flux",
     },
 };
 

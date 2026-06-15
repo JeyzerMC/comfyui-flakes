@@ -35,6 +35,8 @@ _FAMILY_MAP = {
     "SDXL/Pony": "pony",
     "ZImage/Base": "zib",
     "ZImage/Turbo": "zit",
+    "Anima/Base": "anima",
+    "Flux/Klein": "flux_klein",
     "Common": "common",
 }
 
@@ -44,6 +46,8 @@ _FAMILY_COMPAT = {
     "SDXL/Pony": {"common", "sdxl", "pony"},
     "ZImage/Base": {"common", "zib"},
     "ZImage/Turbo": {"common", "zit"},
+    "Anima/Base": {"common", "anima"},
+    "Flux/Klein": {"common", "flux_klein"},
 }
 
 _FAMILY_FROM_FOLDER = {v: k for k, v in _FAMILY_MAP.items()}
@@ -127,6 +131,35 @@ _CN_MODEL_MAP = {
         "tile": "controlnet_tile_sdxl",
         "ip2p": "controlnet_ip2p_sdxl",
     },
+    # Controlnet model names follow the `controlnet_<type>_<family>` convention;
+    # they resolve only if the user has matching files (LoRA support is family-
+    # agnostic and works regardless). Adjust if your models are named otherwise.
+    "anima": {
+        "openpose": "controlnet_openpose_anima",
+        "depth": "controlnet_depth_anima",
+        "canny": "controlnet_canny_anima",
+        "lineart": "controlnet_lineart_anima",
+        "lineart_anime": "controlnet_lineart_anime_anima",
+        "softedge": "controlnet_softedge_anima",
+        "scribble": "controlnet_scribble_anima",
+        "normalbae": "controlnet_normalbae_anima",
+        "seg": "controlnet_seg_anima",
+        "tile": "controlnet_tile_anima",
+        "ip2p": "controlnet_ip2p_anima",
+    },
+    "flux_klein": {
+        "openpose": "controlnet_openpose_flux",
+        "depth": "controlnet_depth_flux",
+        "canny": "controlnet_canny_flux",
+        "lineart": "controlnet_lineart_flux",
+        "lineart_anime": "controlnet_lineart_anime_flux",
+        "softedge": "controlnet_softedge_flux",
+        "scribble": "controlnet_scribble_flux",
+        "normalbae": "controlnet_normalbae_flux",
+        "seg": "controlnet_seg_flux",
+        "tile": "controlnet_tile_flux",
+        "ip2p": "controlnet_ip2p_flux",
+    },
 }
 
 
@@ -146,6 +179,8 @@ _CN_SUBFOLDER = {
     "common": "sdxl",
     "zib": "zimage",
     "zit": "zimage",
+    "anima": "anima",
+    "flux_klein": "flux",
 }
 
 

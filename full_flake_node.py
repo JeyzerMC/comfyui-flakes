@@ -219,7 +219,7 @@ def _load_preset_bundle(preset_name: str, model_family: str | None = None):
     return model_bundle, generation_data, sampling_preset
 
 
-_MODEL_FAMILIES = ["SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "ZImage/Base", "ZImage/Turbo"]
+_MODEL_FAMILIES = ["SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "ZImage/Base", "ZImage/Turbo", "Anima/Base", "Flux/Klein"]
 
 
 class FlakeModelPreset:
