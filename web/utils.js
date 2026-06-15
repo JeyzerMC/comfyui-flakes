@@ -981,7 +981,7 @@ export function _hideAllDropIndicators() {
     }
 }
 
-export function makeAddBlock({ onNew, onLoad }) {
+export function makeAddBlock({ onNew, onLoad, addLabel = "Add flake", newLabel = "+ New flake", loadLabel = "↑ Load flake" }) {
     const block = document.createElement("div");
     css(block, `position:relative;height:80px;background:#2a2a2a;border:1px dashed #555;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;color:#999;user-select:none;box-sizing:border-box;`);
 
@@ -992,17 +992,17 @@ export function makeAddBlock({ onNew, onLoad }) {
 
     const label = document.createElement("div");
     css(label, "font-size:9px;text-align:center;");
-    label.textContent = "Add flake";
+    label.textContent = addLabel;
     block.appendChild(label);
 
     const menu = document.createElement("div");
     css(menu, "position:absolute;top:100%;left:0;right:0;background:#1e1e1e;border:1px solid #444;border-radius:4px;display:none;flex-direction:column;padding:2px;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-top:2px;");
 
     const newBtn = document.createElement("button");
-    newBtn.textContent = "+ New flake";
+    newBtn.textContent = newLabel;
     css(newBtn, "width:100%;padding:6px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;text-align:left;margin-bottom:2px;");
     const loadBtn = document.createElement("button");
-    loadBtn.textContent = "\u2191 Load flake";
+    loadBtn.textContent = loadLabel;
     css(loadBtn, "width:100%;padding:6px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;text-align:left;");
 
     menu.appendChild(newBtn);

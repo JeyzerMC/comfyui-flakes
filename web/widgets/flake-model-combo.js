@@ -1,8 +1,9 @@
 import {
     css, svgIcon, makeGridItemOverlay, makeHoverButton, makeBypassStrike,
-    _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, attachHoldToSingleOut,
+    _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, attachHoldToSingleOut, makeAddBlock,
 } from "../utils.js";
 import { openPresetPicker } from "../pickers.js";
+import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
 import { fetchPreset } from "../api.js";
 
 export function makeModelComboBlock({ preset, display_name, idx, isActive, isBypassed, isGenerating, onActivate, onToggleBypass, onSingleOut, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
@@ -257,26 +258,39 @@ export function setupFlakeModelComboWidget(node) {
             });
         }
 
-        const addBtn = document.createElement("div");
-        css(addBtn, "position:relative;height:80px;background:#2a2a2a;border:1px dashed #555;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;color:#999;user-select:none;box-sizing:border-box;");
-        addBtn.draggable = false;
-        const icon = document.createElement("div");
-        css(icon, "font-size:20px;font-weight:300;color:#666;line-height:1;");
-        icon.textContent = "+";
-        addBtn.appendChild(icon);
-        const label = document.createElement("div");
-        css(label, "font-size:9px;text-align:center;");
-        label.textContent = "Add preset";
-        addBtn.appendChild(label);
-        addBtn.addEventListener("click", async () => {
-            const result = await openPresetPicker({ family: getFamily() });
-            if (!result || !result.name) return;
+        // Add block with a New/Existing dropdown (mirrors Flake Combo's add
+        // block): create a brand-new model preset, or add an existing one (#278).
+        async function pushPreset(name) {
             const arr = readPresets();
-            arr.push(result.name);
-            const name = await fetchDisplayName(result.name);
-            node.properties._combo_display_names[result.name] = name;
+            arr.push(name);
+            node.properties._combo_display_names[name] = await fetchDisplayName(name);
             writePresets(arr);
             render();
+        }
+        const addBtn = makeAddBlock({
+            addLabel: "Add preset",
+            newLabel: "+ New preset",
+            loadLabel: "↑ Add existing",
+            onNew: async () => {
+                const result = await openPresetEditModal({
+                    mode: "create",
+                    family: getFamily(),
+                    data: {
+                        checkpoint: "", checkpoint_url: "", clip_skip: -2, vae: "",
+                        steps: 31, cfg: 4.7, sampler: "dpmpp_2m", scheduler: "karras",
+                        width: 853, height: 1440,
+                        prompt: { positive: "", negative: "" }, embeddings: [],
+                    },
+                });
+                if (!result || !result.name) return;
+                await refreshPresetOptions(getFamily());
+                await pushPreset(result.name);
+            },
+            onLoad: async () => {
+                const result = await openPresetPicker({ family: getFamily() });
+                if (!result || !result.name) return;
+                await pushPreset(result.name);
+            },
         });
 
         addBtn.addEventListener("dragover", (e) => {
