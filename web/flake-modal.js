@@ -1536,6 +1536,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
                                         // Fill column height (the column matches the image height via align-items:stretch on bodyRow).
                                         css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;height:100%;flex:1;min-height:0;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                                        attachAutoGrow(cPos);
                                         cPos.addEventListener("change", () => {
                                             fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
                                             fieldState.variants[groupName][choiceName].positive = cPos.value;
@@ -1563,6 +1564,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     if (choice.negative != null) {
                                         const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
                                         css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;height:100%;flex:1;min-height:0;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                                        attachAutoGrow(cNeg);
                                         cNeg.addEventListener("change", () => {
                                             fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
                                             fieldState.variants[groupName][choiceName].negative = cNeg.value;
