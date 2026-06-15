@@ -14,25 +14,79 @@ from . import flake_io
 from .flake_io import _resolve_model_name
 
 
+def _split_stem_for_filename(stem: str) -> tuple[str, str, str, str]:
+    """Parse one filename-prefix stem into placement buckets, honoring the
+    ``**`` suffix marker (#290).
+
+    The last path segment is the filename contribution; preceding segments are
+    folders. A ``**`` before the folder portion makes that folder a *suffix*
+    (placed after other flakes' folders); a ``**`` before the file portion
+    makes that name a *suffix* (placed after other flakes' names).
+
+    Returns ``(folder_prefix, folder_suffix, file_prefix, file_suffix)`` with
+    each element possibly empty. Folder values keep their trailing ``/``.
+    """
+    folder_prefix = folder_suffix = ""
+    file_prefix = file_suffix = ""
+
+    slash = stem.rfind("/")
+    if slash >= 0:
+        folder_region = stem[:slash + 1]
+        file_region = stem[slash + 1:]
+    else:
+        folder_region = ""
+        file_region = stem
+
+    if folder_region:
+        if folder_region.startswith("**"):
+            folder_suffix = folder_region[2:].replace("**", "")
+        else:
+            folder_prefix = folder_region.replace("**", "")
+
+    if file_region:
+        before, sep, after = file_region.partition("**")
+        file_prefix = before.replace("**", "")
+        if sep:
+            file_suffix = after.replace("**", "")
+
+    return folder_prefix, folder_suffix, file_prefix, file_suffix
+
+
 def _build_filename_prefix(preset_name: str, stems: list[str]) -> str:
-    """Build a filename prefix from preset name and flake stems."""
-    folder_parts = []
-    file_parts = []
+    """Build a filename prefix from preset name and flake stems.
+
+    Folders accumulate as ``<folder_prefixes><folder_suffixes>`` and the
+    filename as ``<time>_<file_prefixes>_<file_suffixes>``, where prefixes come
+    from each stem in stack order and suffixes (marked with ``**``) follow all
+    prefixes — see :func:`_split_stem_for_filename` (#290).
+    """
+    folder_prefixes: list[str] = []
+    folder_suffixes: list[str] = []
+    file_prefixes: list[str] = []
+    file_suffixes: list[str] = []
+
     for stem in stems:
         if not stem:
             continue
-        if "/" in stem:
-            folder_parts.append(stem)
-        else:
-            file_parts.append(stem)
+        fpre, fsuf, npre, nsuf = _split_stem_for_filename(stem)
+        if fpre:
+            folder_prefixes.append(fpre)
+        if fsuf:
+            folder_suffixes.append(fsuf)
+        if npre:
+            file_prefixes.append(npre)
+        if nsuf:
+            file_suffixes.append(nsuf)
+
     path = (preset_name + "/") if preset_name else ""
-    if folder_parts:
-        path += "".join(folder_parts)
+    path += "".join(folder_prefixes) + "".join(folder_suffixes)
     now = datetime.now()
     path += now.strftime("%y%m%d") + "/"
+
     filename = now.strftime("%H%M%S")
-    if file_parts:
-        filename += "_" + "_".join(file_parts)
+    name_parts = file_prefixes + file_suffixes
+    if name_parts:
+        filename += "_" + "_".join(name_parts)
     return path + filename
 
 
