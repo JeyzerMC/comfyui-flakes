@@ -117,3 +117,30 @@ def upscale_images(images, upscale_model_name: str = "", factor: float = 1.5):
 
     logging.info("[flakes] upscale pass complete (model=%s factor=%.2f)", name or "none", float(factor))
     return out
+
+
+def apply_ipadapter_faceid(model, image, weight: float = 0.8, preset: str = "FACEID PLUS V2"):
+    """Apply IPAdapter FaceID to a model for consistent-face generation (#289).
+
+    Soft-depends on ComfyUI_IPAdapter_plus, resolved from NODE_CLASS_MAPPINGS.
+    Returns the patched model. SDXL-first; requires FaceID models + insightface.
+    """
+    cls = _node_classes(
+        "IPAdapterUnifiedLoaderFaceID", "IPAdapterUnifiedLoader",
+        "IPAdapterFaceID", "IPAdapterAdvanced", "IPAdapter",
+    )
+    loader = cls["IPAdapterUnifiedLoaderFaceID"] or cls["IPAdapterUnifiedLoader"]
+    applier = cls["IPAdapterFaceID"] or cls["IPAdapterAdvanced"] or cls["IPAdapter"]
+    if loader is None or applier is None:
+        raise RuntimeError(
+            "Flake IPAdapter requires ComfyUI_IPAdapter_plus (and FaceID models + "
+            "insightface). Install it and restart ComfyUI."
+        )
+
+    loaded = loader().load_models(model, preset)
+    patched_model, ipadapter = loaded[0], loaded[1]
+
+    applied = applier().apply_ipadapter(patched_model, ipadapter, image=image, weight=weight)
+    new_model = applied[0] if isinstance(applied, (tuple, list)) else applied
+    logging.info("[flakes] IPAdapter FaceID applied (preset=%s weight=%.2f)", preset, float(weight))
+    return new_model
