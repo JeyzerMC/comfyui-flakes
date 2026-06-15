@@ -1,11 +1,11 @@
 import {
     css, svgIcon, makeGridItemOverlay, makeHoverButton, makeBypassStrike,
-    _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators,
+    _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, attachHoldToSingleOut,
 } from "../utils.js";
 import { openPresetPicker } from "../pickers.js";
 import { fetchPreset } from "../api.js";
 
-export function makeModelComboBlock({ preset, display_name, idx, isActive, isBypassed, isGenerating, onActivate, onToggleBypass, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
+export function makeModelComboBlock({ preset, display_name, idx, isActive, isBypassed, isGenerating, onActivate, onToggleBypass, onSingleOut, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const block = document.createElement("div");
     block.dataset.idx = String(idx);
 
@@ -49,6 +49,7 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
     toggle.addEventListener("mousedown", (e) => e.stopPropagation());
     toggle.addEventListener("dblclick", (e) => e.stopPropagation());
     toggle.addEventListener("change", (e) => { e.stopPropagation(); onToggleBypass(idx); });
+    if (onSingleOut) attachHoldToSingleOut(toggle, () => onSingleOut(idx));
     block.appendChild(toggle);
 
     block.draggable = true;
@@ -164,6 +165,15 @@ export function setupFlakeModelComboWidget(node) {
                     const arr = node.properties._combo_bypassed || (node.properties._combo_bypassed = []);
                     const at = arr.indexOf(p);
                     if (at >= 0) arr.splice(at, 1); else arr.push(p);
+                    render();
+                },
+                // Hold the checkbox to single out: enable only this preset,
+                // disable every other one in the combo (#281).
+                onSingleOut: (idx) => {
+                    const presets = readPresets();
+                    const keep = presets[idx];
+                    if (keep == null) return;
+                    node.properties._combo_bypassed = [...new Set(presets.filter(p => p !== keep))];
                     render();
                 },
                 onRemove: (idx) => {

@@ -929,6 +929,35 @@ export function makeBypassStrike() {
     return strike;
 }
 
+// Long-press ("hold") a combo activation checkbox to "single out": activate
+// only this item and deactivate every other one. A normal click still toggles
+// just this item. Used by Flake Combo and Flake Model Combo (#281).
+export function attachHoldToSingleOut(checkbox, onSingleOut, holdMs = 450) {
+    let timer = null;
+    let didHold = false;
+    const start = (e) => {
+        if (e.button != null && e.button !== 0) return;
+        didHold = false;
+        timer = setTimeout(() => {
+            timer = null;
+            didHold = true;
+            onSingleOut();
+        }, holdMs);
+    };
+    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    checkbox.addEventListener("mousedown", start);
+    checkbox.addEventListener("mouseup", cancel);
+    checkbox.addEventListener("mouseleave", cancel);
+    // After a hold has fired, swallow the click/change that the release would
+    // otherwise produce so the normal single-item toggle does not also run.
+    checkbox.addEventListener("click", (e) => {
+        if (didHold) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    checkbox.addEventListener("change", (e) => {
+        if (didHold) { e.stopPropagation(); didHold = false; }
+    }, true);
+}
+
 // ---------- Drag indicator helpers ----------
 
 export function _showDropIndicator(block) {

@@ -2,13 +2,13 @@ import {
     css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider, variantSuffix,
-    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden,
+    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 
-function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, onReplace, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, onReplace, onToggleBypass, onSingleOut, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const hasCover = !!entry.name;
     const isBypassed = !!entry.bypassed;
     const block = document.createElement("div");
@@ -79,6 +79,7 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
     toggle.addEventListener("mousedown", (e) => e.stopPropagation());
     toggle.addEventListener("dblclick", (e) => e.stopPropagation());
     toggle.addEventListener("change", (e) => { e.stopPropagation(); onToggleBypass(idx); });
+    if (onSingleOut) attachHoldToSingleOut(toggle, () => onSingleOut(idx));
     block.appendChild(toggle);
 
     // Name — show full display name with word wrapping, plus selected variant
@@ -508,6 +509,7 @@ export function setupFlakeComboWidget(node) {
                 onRemove: handleRemove,
                 onReplace: handleReplace,
                 onToggleBypass: handleToggleBypass,
+                onSingleOut: handleSingleOut,
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
                     e.dataTransfer.effectAllowed = "move";
@@ -616,6 +618,15 @@ export function setupFlakeComboWidget(node) {
     function handleToggleBypass(idx) {
         const arr = readAllFlakes();
         arr[idx].bypassed = !arr[idx].bypassed;
+        writeAllFlakes(arr);
+        render();
+    }
+
+    // Hold the activation checkbox to single out: enable only this flake,
+    // disable every other one in the combo (#281).
+    function handleSingleOut(idx) {
+        const arr = readAllFlakes();
+        arr.forEach((e, i) => { e.bypassed = i !== idx; });
         writeAllFlakes(arr);
         render();
     }
