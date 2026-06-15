@@ -365,6 +365,12 @@ class FlakeGenerate:
                 "flake_data": ("FLAKE_DATA",),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True}),
             },
+            "optional": {
+                # ADetailer / Face Detailer post-process (#287, SDXL-first).
+                "adetailer": ("BOOLEAN", {"default": False, "label_on": "Face Detailer", "label_off": "ADetailer off"}),
+                "adetailer_denoise": ("FLOAT", {"default": 0.4, "min": 0.0, "max": 1.0, "step": 0.05}),
+                "adetailer_bbox": ("STRING", {"default": "bbox/face_yolov8m.pt"}),
+            },
         }
 
     RETURN_TYPES = ()
@@ -373,7 +379,8 @@ class FlakeGenerate:
     DESCRIPTION = "Generate an image from FLAKE_DATA using KSampler, VAE Decode, and Save Image. Displays the result inline."
     OUTPUT_NODE = True
 
-    def execute(self, flake_data, seed):
+    def execute(self, flake_data, seed, adetailer=False, adetailer_denoise=0.4,
+                adetailer_bbox="bbox/face_yolov8m.pt"):
         parts = _split_flake_data(flake_data)
         model = parts["model"]
         clip = parts["clip"]
@@ -396,6 +403,15 @@ class FlakeGenerate:
 
         vae_dec = VAEDecode()
         images = vae_dec.decode(vae, sampled_latent)[0]
+
+        # Optional ADetailer (Face Detailer) post-process (#287).
+        if adetailer:
+            from .flake_postprocess import run_face_detailer
+            images = run_face_detailer(
+                images, model, clip, vae, positive, negative,
+                seed, steps, cfg, sampler_name, scheduler,
+                denoise=adetailer_denoise, bbox_model=adetailer_bbox,
+            )
 
         saver = SaveImage()
         save_result = saver.save_images(images, filename_prefix=filename_prefix)
