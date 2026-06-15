@@ -52,6 +52,20 @@ async def _list_series(request: web.Request) -> web.Response:
     return web.json_response({"series": series})
 
 
+@routes.get("/flakes/samplers")
+async def _list_samplers(request: web.Request) -> web.Response:
+    """Expose the installed ComfyUI's KSampler sampler/scheduler lists so the
+    preset editor stays in sync with core (Advanced KSampler parity)."""
+    try:
+        from comfy.samplers import KSampler
+        samplers = list(KSampler.SAMPLERS)
+        schedulers = list(KSampler.SCHEDULERS)
+    except Exception as exc:
+        logging.exception("[flakes] failed to list samplers/schedulers")
+        return _server_error(str(exc))
+    return web.json_response({"samplers": samplers, "schedulers": schedulers})
+
+
 @routes.get("/flakes/meta")
 async def _flake_meta(request: web.Request) -> web.Response:
     name = request.query.get("name", "").strip()

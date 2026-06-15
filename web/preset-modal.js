@@ -387,6 +387,29 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         schedColWrap.appendChild(schedDD.container);
         teSchedRow.appendChild(schedColWrap);
         ckptCol.appendChild(teSchedRow);
+        // Replace the hardcoded sampler/scheduler lists with the installed
+        // ComfyUI's KSampler options so the editor matches core's Advanced
+        // KSampler. Falls back to the hardcoded lists above on fetch failure.
+        (async () => {
+            try {
+                const r = await fetch("/flakes/samplers");
+                const d = await r.json();
+                const fill = (dd, values, current) => {
+                    if (!Array.isArray(values) || !values.length) return;
+                    const want = current || dd.element.value;
+                    dd.element.replaceChildren();
+                    for (const v of values) {
+                        const o = document.createElement("option");
+                        o.value = v; o.textContent = v;
+                        if (v === want) o.selected = true;
+                        dd.element.appendChild(o);
+                    }
+                    if (values.includes(want)) dd.element.value = want;
+                };
+                fill(samplerDD, d.samplers, data.sampler);
+                fill(schedDD, d.schedulers, data.scheduler);
+            } catch { /* keep hardcoded fallback */ }
+        })();
         (async () => {
             try {
                 const vaes = await fetchVaes();
