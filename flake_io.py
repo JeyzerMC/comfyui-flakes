@@ -671,65 +671,54 @@ def delete_flake(name: str) -> None:
     _delete_cover(name)
 
 
-def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
-    prompt = raw.get("prompt") or {}
-    resolution = raw.get("resolution")
-    if resolution is not None:
-        resolution = (int(resolution[0]), int(resolution[1]))
+def _parse_lora_list(raw_loras: Any) -> list["LoraEntry"]:
+    """Parse a `loras:` list into LoraEntry objects. Shared by the flake body and
+    by variant-choice contributions (#299)."""
+    out: list[LoraEntry] = []
+    if isinstance(raw_loras, list):
+        for lr in raw_loras:
+            if not isinstance(lr, dict):
+                continue
+            out.append(LoraEntry(
+                name=str(lr.get("name", "")),
+                url=str(lr.get("url", "")),
+                path=str(lr.get("path", "")),
+                strength=float(lr.get("strength", 1.0)),
+            ))
+    return out
 
-    cns: list[ControlNetEntry] = []
-    for cn in raw.get("controlnets") or []:
+
+def _parse_cn_list(raw_cns: Any, name: str) -> list["ControlNetEntry"]:
+    """Parse a `controlnets:` list into ControlNetEntry objects, inferring the
+    model from the type when omitted. Shared by the flake body and variant
+    choices (#299)."""
+    out: list[ControlNetEntry] = []
+    for cn in raw_cns or []:
+        if not isinstance(cn, dict):
+            continue
         model_name = str(cn.get("model", ""))
         cn_type = str(cn.get("type", ""))
-        if model_name.strip():
-            pass
-        elif cn_type:
-            raw_name = name
-            family_folder = _family_folder_from_name(raw_name)
-            model_name = infer_cn_model(cn_type, family_folder)
-            if model_name:
-                pass
+        if not model_name.strip() and cn_type:
+            model_name = infer_cn_model(cn_type, _family_folder_from_name(name)) or ""
         if not model_name.strip():
             print(f"[flakes] skipping controlnet entry with empty model_name (type={cn_type})")
             continue
-        cns.append(
-            ControlNetEntry(
-                type=cn_type,
-                model_name=model_name,
-                image_name=str(cn.get("image", "")),
-                strength=float(cn.get("strength", 1.0)),
-                start_percent=float(cn.get("start_percent", 0.0)),
-                end_percent=float(cn.get("end_percent", 1.0)),
-                resolution_from_image=bool(cn.get("resolution_from_image", False)),
-            )
-        )
+        out.append(ControlNetEntry(
+            type=cn_type,
+            model_name=model_name,
+            image_name=str(cn.get("image", "")),
+            strength=float(cn.get("strength", 1.0)),
+            start_percent=float(cn.get("start_percent", 0.0)),
+            end_percent=float(cn.get("end_percent", 1.0)),
+            resolution_from_image=bool(cn.get("resolution_from_image", False)),
+        ))
+    return out
 
-    # Parse LoRAs: new multi-LoRA format takes precedence
-    loras: list[LoraEntry] = []
-    if raw.get("loras"):
-        for lr in raw["loras"]:
-            loras.append(
-                LoraEntry(
-                    name=str(lr.get("name", "")),
-                    url=str(lr.get("url", "")),
-                    path=str(lr.get("path", "")),
-                    strength=float(lr.get("strength", 1.0)),
-                )
-            )
-    elif raw.get("path"):
-        # Legacy single LoRA
-        loras.append(
-            LoraEntry(
-                name="",
-                url="",
-                path=str(raw["path"]),
-                strength=float(raw.get("strength", 1.0)),
-            )
-        )
 
-    # Parse flake links (#232/#234) — defaults stored on the host yaml. Optional.
-    # New format: `flake_links:` is a list. Legacy: a single `flake_link:` dict.
-    def _parse_link(d: dict[str, Any]) -> FlakeLink:
+def _parse_link_list(raw: dict[str, Any]) -> list["FlakeLink"]:
+    """Parse `flake_links:` (list) or legacy `flake_link:` (dict) from any mapping
+    — the flake body or a variant choice (#234/#299)."""
+    def _one(d: dict[str, Any]) -> FlakeLink:
         return FlakeLink(
             target=str(d["target"]),
             variant={str(g): str(c) for g, c in (d.get("variant") or {}).items() if c},
@@ -739,16 +728,37 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
             ],
         )
 
-    links: list[FlakeLink] = []
+    out: list[FlakeLink] = []
     raw_links = raw.get("flake_links")
     if isinstance(raw_links, list):
         for lr in raw_links:
             if isinstance(lr, dict) and lr.get("target"):
-                links.append(_parse_link(lr))
+                out.append(_one(lr))
     else:
         link_raw = raw.get("flake_link")
         if isinstance(link_raw, dict) and link_raw.get("target"):
-            links.append(_parse_link(link_raw))
+            out.append(_one(link_raw))
+    return out
+
+
+def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
+    prompt = raw.get("prompt") or {}
+    resolution = raw.get("resolution")
+    if resolution is not None:
+        resolution = (int(resolution[0]), int(resolution[1]))
+
+    cns = _parse_cn_list(raw.get("controlnets"), name)
+
+    # Parse LoRAs: new multi-LoRA format takes precedence; fall back to a legacy
+    # single LoRA stored as `path`/`strength`.
+    loras = _parse_lora_list(raw.get("loras"))
+    if not loras and raw.get("path"):
+        loras.append(LoraEntry(
+            name="", url="", path=str(raw["path"]), strength=float(raw.get("strength", 1.0)),
+        ))
+
+    # Parse flake links (#232/#234) — defaults stored on the host yaml. Optional.
+    links = _parse_link_list(raw)
 
     return Flake(
         name=name,
@@ -809,6 +819,14 @@ def resolve(entry: dict[str, Any]) -> Flake:
                 flake.output_stem = f"{flake.output_stem.rstrip('/')}/{variant_stem.lstrip('/')}"
             else:
                 flake.output_stem = variant_stem
+
+        # A variant choice can also contribute LoRAs, ControlNets, and flake links
+        # (#299) — merged on top of the flake's base. Choice links are appended to
+        # flake_links so the shared _apply_flake_link below resolves them (with its
+        # cycle guard) alongside any host links.
+        flake.loras.extend(_parse_lora_list(variant.get("loras")))
+        flake.controlnets.extend(_parse_cn_list(variant.get("controlnets"), flake.name))
+        flake.flake_links.extend(_parse_link_list(variant))
 
     # Runtime output_stem override from the option panel (not persisted to disk)
     if "_output_stem_override" in entry:
