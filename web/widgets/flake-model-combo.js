@@ -77,13 +77,33 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
     // Per-instance override dropdown (#279): Filename Prefix / Steps / CFG /
     // Sampler / Scheduler — A/B test a preset without editing its file.
     if (triangleBtn && overrides) {
+        // position:fixed so the panel escapes the block's overflow:hidden (which
+        // previously clipped a top:100% panel, so the arrow appeared to do
+        // nothing — #293). Kept as a DOM child of block so it's torn down on
+        // re-render. Coordinates are computed from the triangle on open.
         const panel = document.createElement("div");
-        css(panel, "position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#1e1e1e;border:1px solid #444;border-radius:4px;display:none;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-top:1px;");
+        css(panel, "position:fixed;background:#1e1e1e;border:1px solid #444;border-radius:4px;display:none;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,0.5);");
         panel.addEventListener("click", (e) => e.stopPropagation());
         panel.addEventListener("dblclick", (e) => e.stopPropagation());
         panel.addEventListener("mousedown", (e) => e.stopPropagation());
-        panel.appendChild(makeModelOverridePanel(overrides, () => { if (onOverrideChange) onOverrideChange(); }));
+
+        // Rebuild the panel once the preset's current values are known so each
+        // override field shows its real default (#292/#293).
+        let _defaults = {};
+        const rebuild = () => panel.replaceChildren(makeModelOverridePanel(overrides, () => { if (onOverrideChange) onOverrideChange(); }, _defaults));
+        rebuild();
+        fetchPreset(preset).then(d => {
+            _defaults = { filename_prefix: d.filename_prefix, steps: d.steps, cfg: d.cfg, sampler: d.sampler, scheduler: d.scheduler };
+            rebuild();
+        }).catch(() => {});
         block.appendChild(panel);
+
+        function positionPanel() {
+            const r = triangleBtn.getBoundingClientRect();
+            panel.style.left = `${r.left + r.width / 2}px`;
+            panel.style.transform = "translateX(-50%)";
+            panel.style.top = `${r.bottom + 2}px`;
+        }
 
         let outside = null;
         const closePanel = () => {
@@ -94,6 +114,7 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
         triangleBtn.addEventListener("click", () => {
             if (panel.style.display === "block") { closePanel(); return; }
             panel.style.display = "block";
+            positionPanel();
             triangleBtn.textContent = "▴";
             outside = (e) => { if (!block.contains(e.target)) closePanel(); };
             document.addEventListener("mousedown", outside);
