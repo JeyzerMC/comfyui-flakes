@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
-    makePanelDropdown, makeSmallValueSlider, variantSuffix, renderFlakeLabel, splitNameAndTags,
+    makePanelDropdown, makeSmallValueSlider, variantInitials, renderFlakeLabel, splitNameAndTags,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, invalidateList } from "../api.js";
@@ -76,7 +76,7 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
         }
         const { name, tags } = splitNameAndTags(fullName, entry.tags);
         const base = name.includes("/") ? name.split("/").pop() : name;
-        renderFlakeLabel(nameEl, { name: base, tags, variantText: variantSuffix(entry) });
+        renderFlakeLabel(nameEl, { name: base, tags, variantText: variantInitials(entry) });
     }
     refreshName();
     block.appendChild(nameEl);

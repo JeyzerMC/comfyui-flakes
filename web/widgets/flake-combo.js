@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
-    makePanelDropdown, makeSmallValueSlider, variantSuffix, renderFlakeLabel, splitNameAndTags, loraTagNames,
+    makePanelDropdown, makeSmallValueSlider, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta } from "../api.js";
@@ -89,7 +89,7 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
     function refreshName() {
         const { name, tags } = splitNameAndTags(baseName, entry.tags);
         const base = name.includes("/") ? name.split("/").pop() : name;
-        renderFlakeLabel(nameEl, { name: base, tags, variantText: variantSuffix(entry) });
+        renderFlakeLabel(nameEl, { name: base, tags, variantText: variantInitials(entry) });
     }
     refreshName();
     block.appendChild(nameEl);
