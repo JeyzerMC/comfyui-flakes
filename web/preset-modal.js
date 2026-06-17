@@ -137,7 +137,9 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         function syncOutputPath() {
             const stem = snake(nameInput.value);
             if (!pathManuallyEdited) pathInput.value = stem;
-            if (!filenamePrefixManuallyEdited) filenamePrefixInput.value = stem;
+            // Autofill the filename prefix as a folder (trailing "/") so outputs
+            // for this preset land in their own subfolder by default (#296).
+            if (!filenamePrefixManuallyEdited) filenamePrefixInput.value = stem ? `${stem}/` : "";
             updateResolvedPath();
         }
         nameInput.addEventListener("input", syncOutputPath);
