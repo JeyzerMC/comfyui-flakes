@@ -1728,6 +1728,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 directories: list.directories || [],
                                 family: currentFamily || "",
                                 displayNames: list.display_names || {},
+                                tagNames: list.tag_names || {},
                             });
                             return res && res.name ? res.name : null;
                         } catch { return null; }

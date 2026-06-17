@@ -1007,6 +1007,70 @@ export function variantSuffix(entry) {
     return choices.length ? ` (${choices.join(", ")})` : "";
 }
 
+// Tag names contributed by a flake's tag-name LoRAs (#274/#297): the LoRA names
+// the user opted to surface on the flake item. Returns [] when none.
+export function loraTagNames(loras) {
+    if (!Array.isArray(loras)) return [];
+    return loras.filter(l => l && l.tag_name && (l.name || "").trim()).map(l => l.name.trim());
+}
+
+// Split a (possibly legacy) display name into its base name and tag names. New
+// entries store tags on `entry.tags`; older graphs baked them into the display
+// name as "Base — tag1, tag2", so fall back to splitting on " — " (#297).
+export function splitNameAndTags(displayName, tags) {
+    if (Array.isArray(tags)) return { name: displayName || "", tags };
+    const dn = displayName || "";
+    const at = dn.indexOf(" — ");
+    if (at < 0) return { name: dn, tags: [] };
+    return {
+        name: dn.slice(0, at),
+        tags: dn.slice(at + 3).split(",").map(s => s.trim()).filter(Boolean),
+    };
+}
+
+// Render a flake grid/picker label as stacked lines into `nameEl`:
+//   line 1: flake name
+//   line 2: tag names, dimmer (#297)
+//   line 3: variant initials "[P, C]" when `variantText` is given (#298)
+// `variantText` is appended to the name line when it is a "(...)" suffix and
+// rendered as its own line when it is a "[...]" initials string.
+export function renderFlakeLabel(nameEl, { name, tags = [], variantText = "" } = {}) {
+    nameEl.replaceChildren();
+    nameEl.style.flexDirection = "column";
+    const isInitials = variantText.startsWith("[");
+    nameEl.title = [name + (isInitials ? "" : variantText), tags.join(", "), isInitials ? variantText : ""].filter(Boolean).join("  ");
+
+    const nameLine = document.createElement("div");
+    nameLine.textContent = name + (isInitials ? "" : variantText);
+    nameEl.appendChild(nameLine);
+
+    if (tags.length) {
+        const tagLine = document.createElement("div");
+        tagLine.textContent = tags.join(", ");
+        css(tagLine, "color:rgba(255,255,255,0.55);font-size:9px;font-weight:400;margin-top:1px;");
+        nameEl.appendChild(tagLine);
+    }
+    if (isInitials && variantText) {
+        const vLine = document.createElement("div");
+        vLine.textContent = variantText;
+        css(vLine, "color:rgba(255,255,255,0.78);font-size:9px;font-weight:600;margin-top:1px;");
+        nameEl.appendChild(vLine);
+    }
+}
+
+// Initials of a flake's selected variant choices, formatted "[P, C]" (#298).
+// Returns "" when nothing is selected.
+export function variantInitials(entry) {
+    const variant = entry?.variant;
+    if (!variant || typeof variant !== "object") return "";
+    const initials = Object.values(variant)
+        .filter(v => v != null && v !== "")
+        .map(v => String(v).trim()[0])
+        .filter(Boolean)
+        .map(c => c.toUpperCase());
+    return initials.length ? `[${initials.join(", ")}]` : "";
+}
+
 export function makeBypassStrike() {
     const strike = document.createElement("div");
     css(strike, "position:absolute;top:50%;left:10%;right:10%;height:2.5px;background:rgba(230,90,90,0.85);transform:translateY(-50%) rotate(-30deg);z-index:4;pointer-events:none;");

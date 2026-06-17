@@ -482,6 +482,32 @@ def list_flake_display_names(family: str | None = None) -> dict[str, str]:
     return display_names
 
 
+def list_flake_tag_names(family: str | None = None) -> dict[str, list[str]]:
+    """Map of flake name -> tag-name LoRA names to surface on the flake item.
+
+    Lets the Load picker show the same tag line as the grid (#297) without each
+    item fetching its full flake. Only flakes with at least one tag-name LoRA
+    appear in the result.
+    """
+    result: dict[str, list[str]] = {}
+    for name in list_flakes(family=family):
+        try:
+            raw = read_flake_raw(name)
+        except Exception:
+            continue
+        loras = raw.get("loras")
+        if not isinstance(loras, list):
+            continue
+        tags = [
+            str(lora.get("name")).strip()
+            for lora in loras
+            if isinstance(lora, dict) and lora.get("tag_name") and str(lora.get("name") or "").strip()
+        ]
+        if tags:
+            result[name] = tags
+    return result
+
+
 def list_series(family: str | None = None) -> list[str]:
     """Distinct, non-empty `serie` values across flakes (sorted)."""
     series: set[str] = set()

@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
-    makePanelDropdown, makeSmallValueSlider, variantSuffix,
+    makePanelDropdown, makeSmallValueSlider, variantSuffix, renderFlakeLabel, splitNameAndTags, loraTagNames,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta } from "../api.js";
@@ -82,14 +82,14 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
     if (onSingleOut) attachHoldToSingleOut(toggle, () => onSingleOut(idx));
     block.appendChild(toggle);
 
-    // Name — show full display name with word wrapping, plus selected variant
+    // Name — stacked label: name line, dimmer tag line (#297), variant suffix.
     const baseName = entry.display_name || entry.name || "(missing)";
     const nameEl = document.createElement("div");
     css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;border-radius:3px;");
     function refreshName() {
-        const displayed = baseName + variantSuffix(entry);
-        nameEl.title = displayed;
-        nameEl.textContent = displayed;
+        const { name, tags } = splitNameAndTags(baseName, entry.tags);
+        const base = name.includes("/") ? name.split("/").pop() : name;
+        renderFlakeLabel(nameEl, { name: base, tags, variantText: variantSuffix(entry) });
     }
     refreshName();
     block.appendChild(nameEl);
@@ -590,6 +590,7 @@ export function setupFlakeComboWidget(node) {
             arr[idx].flake_type = result.data?.flake_type || null;
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
             arr[idx].display_name = result.data?.name || null;
+            arr[idx].tags = loraTagNames(result.data?.loras);
             const newLoras = Array.isArray(result.data?.loras)
                 ? result.data.loras.map(l => l?.strength ?? 1.0)
                 : (result.data?.path ? [result.data.strength ?? 1.0] : []);
@@ -632,23 +633,25 @@ export function setupFlakeComboWidget(node) {
     }
 
     async function handleReplace(idx) {
-        const { flakes, directories, display_names } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names });
+        const { flakes, directories, display_names, tag_names } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names });
         if (!result || !result.name) return;
         const arr = readAllFlakes();
         let has_lora = false;
         let display_name = null;
         let flake_type = null;
         let loras = [];
+        let tags = [];
         try {
             const d = await fetchFlake(result.name);
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
             display_name = d.name || null;
             flake_type = d.flake_type || null;
+            tags = loraTagNames(d.loras);
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr[idx] = { ...arr[idx], name: result.name, loras, variant: {}, has_lora, display_name, flake_type };
+        arr[idx] = { ...arr[idx], name: result.name, loras, variant: {}, has_lora, display_name, flake_type, tags };
         writeAllFlakes(arr);
         render();
     }
@@ -687,29 +690,31 @@ export function setupFlakeComboWidget(node) {
                 flake_type = flake_type || d.flake_type || null;
             } catch {}
         }
-        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type });
+        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, tags: loraTagNames(result.data?.loras) });
         writeAllFlakes(arr);
         render();
     }
 
     async function handleLoad() {
-        const { flakes, directories, display_names } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names });
+        const { flakes, directories, display_names, tag_names } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names });
         if (!result || !result.name) return;
         const arr = readAllFlakes();
         let has_lora = false;
         let display_name = null;
         let flake_type = null;
         let loras = [];
+        let tags = [];
         try {
             const d = await fetchFlake(result.name);
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
             display_name = d.name || null;
             flake_type = d.flake_type || null;
+            tags = loraTagNames(d.loras);
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type });
+        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, tags });
         writeAllFlakes(arr);
         render();
     }

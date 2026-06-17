@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
-    makePanelDropdown, makeSmallValueSlider, variantSuffix,
+    makePanelDropdown, makeSmallValueSlider, variantSuffix, renderFlakeLabel, splitNameAndTags,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, invalidateList } from "../api.js";
@@ -65,15 +65,18 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
         block.appendChild(makeBypassStrike());
     }
 
-    // Name — show portion after / with word wrapping, plus selected variant
+    // Name — stacked label: name line, dimmer tag line (#297), variant suffix.
     const fullName = isDefault ? "Default" : (entry.display_name || entry.name || "(missing)");
-    const nameAfterSlash = fullName.includes("/") ? fullName.split("/").pop() : fullName;
     const nameEl = document.createElement("div");
     css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
     function refreshName() {
-        const suffix = isDefault ? "" : variantSuffix(entry);
-        nameEl.title = fullName + suffix;
-        nameEl.textContent = nameAfterSlash + suffix;
+        if (isDefault) {
+            renderFlakeLabel(nameEl, { name: "Default" });
+            return;
+        }
+        const { name, tags } = splitNameAndTags(fullName, entry.tags);
+        const base = name.includes("/") ? name.split("/").pop() : name;
+        renderFlakeLabel(nameEl, { name: base, tags, variantText: variantSuffix(entry) });
     }
     refreshName();
     block.appendChild(nameEl);
@@ -636,8 +639,8 @@ export function setupFlakeWidget(node) {
 
     async function handleReplace(idx) {
         if (idx === 0) return;
-        const { flakes, directories, display_names } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names });
+        const { flakes, directories, display_names, tag_names } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names });
         if (!result || !result.name) return;
         const arr = readEntries();
         let has_lora = false;
@@ -699,8 +702,8 @@ export function setupFlakeWidget(node) {
     }
 
     async function handleLoad() {
-        const { flakes, directories, display_names } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names });
+        const { flakes, directories, display_names, tag_names } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names });
         if (!result || !result.name) return;
         const arr = readEntries();
         let has_lora = false;

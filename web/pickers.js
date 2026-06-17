@@ -1,5 +1,5 @@
 import { openOverlay } from "./modal.js";
-import { css, makeButton, makeComfyInput, familyFolder } from "./utils.js";
+import { css, makeButton, makeComfyInput, familyFolder, renderFlakeLabel } from "./utils.js";
 import { getCoverUrl, fetchBrowse, fetchLoras, fetchCheckpoints } from "./api.js";
 
 const BROWSE_TYPE_LABELS = {
@@ -9,7 +9,7 @@ const BROWSE_TYPE_LABELS = {
     inputs: "input",
 };
 
-export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {} }) {
+export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {}, tagNames = {} }) {
     // Exclude model_presets from everything
     const allFlakes = flakes.filter(n => {
         const norm = n.replace(/\\/g, "/");
@@ -186,7 +186,8 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
             const nameEl = document.createElement("div");
             nameEl.title = name;
             css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
-            nameEl.textContent = label;
+            // Stacked label with a dimmer tag line, matching the grid (#297).
+            renderFlakeLabel(nameEl, { name: label, tags: tagNames[name] || [] });
             thumb.appendChild(nameEl);
 
             thumb.addEventListener("click", () => {
