@@ -565,6 +565,62 @@ export function makeSearchableDropdown(items = [], value = "", placeholder = "")
     return { element: el, datalist, container: wrap };
 }
 
+// Multi-select chip list backed by a searchable dropdown (#294). Picking an
+// option (or pressing Enter on free text) appends a chip and clears the input,
+// so several values can be added in a row — unlike a single searchable input
+// whose value gets replaced on each pick. `datalist.appendChild` populates the
+// option list (same shape as makeSearchableDropdown); `getValues()` returns the
+// selected list in order.
+export function makeChipMultiSelect({ options = [], selected = [], placeholder = "" } = {}) {
+    const container = document.createElement("div");
+    css(container, "display:flex;flex-direction:column;gap:4px;");
+    const chosen = [...selected];
+
+    const chipRow = document.createElement("div");
+    css(chipRow, "display:flex;flex-wrap:wrap;gap:3px;");
+    container.appendChild(chipRow);
+
+    const dd = makeSearchableDropdown(options, "", placeholder);
+    container.appendChild(dd.container);
+
+    function renderChips() {
+        chipRow.replaceChildren();
+        chosen.forEach((val, i) => {
+            const chip = document.createElement("span");
+            css(chip, "display:inline-flex;align-items:center;gap:4px;background:#2a3a4a;border:1px solid #3a5a8a;border-radius:3px;padding:1px 6px;font-size:11px;color:#cde;");
+            chip.textContent = val;
+            const x = document.createElement("span");
+            x.textContent = "✕";
+            css(x, "cursor:pointer;color:#9ab;font-size:10px;");
+            x.addEventListener("click", () => { chosen.splice(i, 1); renderChips(); });
+            chip.appendChild(x);
+            chipRow.appendChild(chip);
+        });
+    }
+
+    function addValue(v) {
+        const val = (v || "").trim();
+        if (!val || chosen.includes(val)) return;
+        chosen.push(val);
+        renderChips();
+    }
+
+    dd.element.addEventListener("change", () => {
+        addValue(dd.element.value);
+        dd.element.value = "";
+    });
+    dd.element.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            addValue(dd.element.value);
+            dd.element.value = "";
+        }
+    });
+
+    renderChips();
+    return { container, datalist: dd.datalist, getValues: () => [...chosen] };
+}
+
 export function makeComfyNumberInput(value, placeholder, step = 1) {
     const el = document.createElement("input");
     el.type = "number";

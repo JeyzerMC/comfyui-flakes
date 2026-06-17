@@ -1,7 +1,7 @@
 import { openOverlay } from "./modal.js";
 import {
     css, makeButton, makeComfyLabel, makeComfyInput,
-    makeComfyDropdown, makeSearchableDropdown, makeComfySlider,
+    makeComfyDropdown, makeSearchableDropdown, makeChipMultiSelect, makeComfySlider,
     makeTextarea, makeHoverRemoveWrapper, attachAutoGrow,
 } from "./utils.js";
 import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchVaes, fetchEmbeddings } from "./api.js";
@@ -472,13 +472,15 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         const posEmbCol = document.createElement("div");
         css(posEmbCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
         posEmbCol.appendChild(makeComfyLabel("Positive embeddings"));
-        const posEmbWrap = makeSearchableDropdown([], (data.embeddings?.positive || []).join(", "), "embedding1, embedding2...");
+        // Chip list (#294): add several embeddings in a row without the dropdown
+        // collapsing after each pick.
+        const posEmbWrap = makeChipMultiSelect({ selected: data.embeddings?.positive || [], placeholder: "add embedding…" });
         posEmbCol.appendChild(posEmbWrap.container);
         embRow.appendChild(posEmbCol);
         const negEmbCol = document.createElement("div");
         css(negEmbCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
         negEmbCol.appendChild(makeComfyLabel("Negative embeddings"));
-        const negEmbWrap = makeSearchableDropdown([], (data.embeddings?.negative || []).join(", "), "embedding1, embedding2...");
+        const negEmbWrap = makeChipMultiSelect({ selected: data.embeddings?.negative || [], placeholder: "add embedding…" });
         negEmbCol.appendChild(negEmbWrap.container);
         embRow.appendChild(negEmbCol);
         content.appendChild(embRow);
@@ -604,8 +606,8 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                 height: hSlider.getValue(),
                 prompt: { positive: promptState.positive, negative: promptState.negative ?? "" },
                 embeddings: {
-                    positive: posEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),
-                    negative: negEmbWrap.element.value.split(",").map(s => s.trim()).filter(Boolean),
+                    positive: posEmbWrap.getValues(),
+                    negative: negEmbWrap.getValues(),
                 },
             };
             // Drop undefined keys so the YAML stays clean
