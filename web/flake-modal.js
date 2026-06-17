@@ -1653,54 +1653,152 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 }
                                 renderChoicePrompts();
 
-                                // Per-choice LoRAs (#299): a variant choice can carry
-                                // its own LoRAs, merged on top of the flake at generation
-                                // time. Persisted inside the choice (variants[g][c].loras)
-                                // automatically via ordered.variants. (Per-choice
-                                // ControlNets/flake-links are also honored by the backend
-                                // when present in the yaml.)
+                                // Per-choice LoRAs / ControlNets / Flake Links (#299):
+                                // a variant choice carries its own, merged on top of the
+                                // flake at generation. Persisted under variants[g][c].* and
+                                // saved automatically via ordered.variants (empties pruned).
                                 const extrasHost = document.createElement("div");
                                 css(extrasHost, "display:flex;flex-direction:column;gap:3px;margin-top:6px;");
                                 choiceCard.appendChild(extrasHost);
-                                function renderChoiceLoras() {
+
+                                async function pickChoiceTarget() {
+                                    try {
+                                        const list = await (await fetch(`/flakes/list?family=${encodeURIComponent(currentFamily || "")}`)).json();
+                                        const flakes = (list.flakes || []).filter((n) => n !== name);
+                                        const res = await openFileLoadPicker({ flakes, directories: list.directories || [], family: currentFamily || "", displayNames: list.display_names || {}, tagNames: list.tag_names || {} });
+                                        return res && res.name ? res.name : null;
+                                    } catch { return null; }
+                                }
+
+                                function renderChoiceExtras() {
                                     extrasHost.replaceChildren();
                                     const co = fieldState.variants[groupName][choiceName] || (fieldState.variants[groupName][choiceName] = {});
+                                    const sectionLabel = (text) => {
+                                        const l = document.createElement("div");
+                                        l.textContent = text;
+                                        css(l, "font-size:11px;color:#aaa;font-weight:500;margin-top:6px;");
+                                        extrasHost.appendChild(l);
+                                    };
+                                    const addButton = (text, onClick) => {
+                                        const b = makeSmallButton(text);
+                                        b.addEventListener("click", onClick);
+                                        extrasHost.appendChild(b);
+                                    };
+
+                                    // ---- LoRAs ----
+                                    sectionLabel("Variant LoRAs");
                                     const loras = Array.isArray(co.loras) ? co.loras : [];
-
-                                    const lbl = document.createElement("div");
-                                    lbl.textContent = "Variant LoRAs";
-                                    css(lbl, "font-size:11px;color:#aaa;font-weight:500;");
-                                    extrasHost.appendChild(lbl);
-
                                     loras.forEach((lr, i) => {
                                         const row = document.createElement("div");
                                         css(row, "display:flex;gap:6px;align-items:center;");
                                         const dd = makeSearchableDropdown([], lr.path || lr.name || "", "lora…");
                                         css(dd.container, "flex:1;min-width:0;");
-                                        fetchLoras().then(list => { for (const l of (list || [])) dd.datalist.appendChild(Object.assign(document.createElement("option"), { value: l })); }).catch(() => {});
+                                        fetchLoras().then((list) => { for (const l of (list || [])) dd.datalist.appendChild(Object.assign(document.createElement("option"), { value: l })); }).catch(() => {});
                                         dd.element.addEventListener("change", () => { lr.path = dd.element.value; });
                                         row.appendChild(dd.container);
-                                        // makeSmallValueSlider returns a bare element; the old
-                                        // `.container` access threw, so "+ LoRA" rendered nothing
-                                        // and corrupted the variant section (#308).
                                         const slider = makeSmallValueSlider(lr.strength ?? 1.0, 0, 2, 0.05, (v) => { lr.strength = v; });
                                         slider.style.flex = "0 0 110px";
                                         row.appendChild(slider);
                                         const rm = makeSmallButton("✕");
-                                        rm.addEventListener("click", () => { loras.splice(i, 1); if (!loras.length) delete co.loras; renderChoiceLoras(); });
+                                        rm.addEventListener("click", () => { loras.splice(i, 1); if (!loras.length) delete co.loras; renderChoiceExtras(); });
                                         row.appendChild(rm);
                                         extrasHost.appendChild(row);
                                     });
-
-                                    const addBtn = makeSmallButton("+ LoRA");
-                                    addBtn.addEventListener("click", () => {
+                                    addButton("+ LoRA", () => {
                                         if (!Array.isArray(co.loras)) co.loras = [];
                                         co.loras.push({ name: "", path: "", strength: 1.0 });
-                                        renderChoiceLoras();
+                                        renderChoiceExtras();
                                     });
-                                    extrasHost.appendChild(addBtn);
+
+                                    // ---- ControlNets ----
+                                    sectionLabel("Variant ControlNets");
+                                    const cnets = Array.isArray(co.controlnets) ? co.controlnets : [];
+                                    cnets.forEach((cn, i) => {
+                                        const row = document.createElement("div");
+                                        css(row, "display:flex;gap:6px;align-items:center;flex-wrap:wrap;");
+                                        const imgDD = makeSearchableDropdown([], cn.image || "", "input image…");
+                                        css(imgDD.container, "flex:1 1 140px;min-width:0;");
+                                        fetchInputs().then((list) => { for (const f of (list || [])) imgDD.datalist.appendChild(Object.assign(document.createElement("option"), { value: f })); }).catch(() => {});
+                                        const typeDD = makeComfyDropdown([{ value: "", label: "— type —" }], cn.type || "");
+                                        fetchCnTypes().then((types) => { for (const t of types) { const o = document.createElement("option"); o.value = t; o.textContent = t; if (t === cn.type) o.selected = true; typeDD.element.appendChild(o); } }).catch(() => {});
+                                        css(typeDD.container, "flex:0 0 110px;");
+                                        typeDD.element.addEventListener("change", () => { cn.type = typeDD.element.value; });
+                                        imgDD.element.addEventListener("change", async () => {
+                                            cn.image = imgDD.element.value;
+                                            if (!cn.type && cn.image) {
+                                                try { const types = await fetchCnTypes(); const r = inferCnFromImage(cn.image, types); if (r.inferredType) { cn.type = r.inferredType; renderChoiceExtras(); } } catch { /* ignore */ }
+                                            }
+                                        });
+                                        row.appendChild(imgDD.container);
+                                        row.appendChild(typeDD.container);
+                                        const slider = makeSmallValueSlider(cn.strength ?? 1.0, 0, 2, 0.05, (v) => { cn.strength = v; });
+                                        slider.style.flex = "0 0 90px";
+                                        row.appendChild(slider);
+                                        const rm = makeSmallButton("✕");
+                                        rm.addEventListener("click", () => { cnets.splice(i, 1); if (!cnets.length) delete co.controlnets; renderChoiceExtras(); });
+                                        row.appendChild(rm);
+                                        extrasHost.appendChild(row);
+                                    });
+                                    addButton("+ ControlNet", () => {
+                                        if (!Array.isArray(co.controlnets)) co.controlnets = [];
+                                        co.controlnets.push({ type: "", image: "", strength: 1.0 });
+                                        renderChoiceExtras();
+                                    });
+
+                                    // ---- Flake Links ----
+                                    sectionLabel("Variant Flake Links");
+                                    const links = Array.isArray(co.flake_links) ? co.flake_links : [];
+                                    links.forEach((link, li) => {
+                                        const card = document.createElement("div");
+                                        css(card, "background:#252525;padding:6px;border-radius:6px;border:1px solid #333;display:flex;flex-direction:column;gap:6px;");
+                                        const header = document.createElement("div");
+                                        css(header, "display:flex;gap:8px;align-items:center;");
+                                        const title = document.createElement("span");
+                                        title.textContent = link.target ? link.target.split("/").pop() : "(no target)";
+                                        title.title = link.target || "";
+                                        css(title, "flex:1;font-size:12px;color:#cdd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
+                                        header.appendChild(title);
+                                        const chg = makeSmallButton("Change");
+                                        chg.addEventListener("click", async () => { const t = await pickChoiceTarget(); if (t) { link.target = t; link.lora_strengths = []; renderChoiceExtras(); } });
+                                        header.appendChild(chg);
+                                        const rm = makeSmallButton("✕");
+                                        rm.addEventListener("click", () => { links.splice(li, 1); if (!links.length) delete co.flake_links; renderChoiceExtras(); });
+                                        header.appendChild(rm);
+                                        card.appendChild(header);
+                                        const ovr = document.createElement("div");
+                                        css(ovr, "display:flex;flex-direction:column;gap:4px;");
+                                        card.appendChild(ovr);
+                                        if (link.target) {
+                                            fetchFlake(link.target).then((ld) => {
+                                                const lps = (Array.isArray(ld.loras) && ld.loras.length) ? ld.loras : (ld.path ? [{ name: "", path: ld.path, strength: ld.strength ?? 1.0 }] : []);
+                                                if (!Array.isArray(link.lora_strengths)) link.lora_strengths = [];
+                                                lps.forEach((lr, i) => {
+                                                    const r = document.createElement("div");
+                                                    css(r, "display:flex;gap:6px;align-items:center;");
+                                                    const nm = document.createElement("span");
+                                                    nm.textContent = lr.name || lr.path || `LoRA ${i + 1}`;
+                                                    css(nm, "flex:0 0 120px;font-size:11px;color:#bbb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
+                                                    r.appendChild(nm);
+                                                    const cur = link.lora_strengths[i];
+                                                    const init = (cur === null || cur === undefined) ? (lr.strength ?? 1.0) : cur;
+                                                    const sl = makeSmallValueSlider(init, -10, 10, 0.05, (v) => { while (link.lora_strengths.length <= i) link.lora_strengths.push(null); link.lora_strengths[i] = v; });
+                                                    sl.style.flex = "1";
+                                                    r.appendChild(sl);
+                                                    ovr.appendChild(r);
+                                                });
+                                            }).catch(() => {});
+                                        }
+                                        extrasHost.appendChild(card);
+                                    });
+                                    addButton("+ Flake Link", async () => {
+                                        const t = await pickChoiceTarget();
+                                        if (!t) return;
+                                        if (!Array.isArray(co.flake_links)) co.flake_links = [];
+                                        co.flake_links.push({ target: t, variant: {}, lora_strengths: [] });
+                                        renderChoiceExtras();
+                                    });
                                 }
-                                renderChoiceLoras();
+                                renderChoiceExtras();
 
                                 groupCard.appendChild(choiceCard);
                             }
@@ -2120,13 +2218,32 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     }
                 }
                 if (ft === "variants" && Object.keys(fieldState.variants).length > 0) {
-                    // Prune incomplete per-choice LoRAs (#299): drop rows with no
-                    // path and remove now-empty `loras` arrays so the yaml stays clean.
+                    // Prune incomplete per-choice LoRAs / ControlNets / Flake Links
+                    // (#299): drop rows missing their key field and remove now-empty
+                    // arrays so the yaml stays clean.
                     for (const group of Object.values(fieldState.variants)) {
                         for (const choice of Object.values(group || {})) {
-                            if (choice && Array.isArray(choice.loras)) {
+                            if (!choice) continue;
+                            if (Array.isArray(choice.loras)) {
                                 choice.loras = choice.loras.filter(l => l && (l.path || l.name));
                                 if (choice.loras.length === 0) delete choice.loras;
+                            }
+                            if (Array.isArray(choice.controlnets)) {
+                                choice.controlnets = choice.controlnets.filter(cn => cn && (cn.image || cn.type));
+                                if (choice.controlnets.length === 0) delete choice.controlnets;
+                            }
+                            if (Array.isArray(choice.flake_links)) {
+                                choice.flake_links = choice.flake_links
+                                    .filter(l => l && l.target)
+                                    .map(l => {
+                                        const out = { target: l.target };
+                                        const strengths = (l.lora_strengths || []).slice();
+                                        while (strengths.length && (strengths[strengths.length - 1] == null)) strengths.pop();
+                                        if (strengths.length) out.lora_strengths = strengths;
+                                        if (l.variant && Object.keys(l.variant).length) out.variant = l.variant;
+                                        return out;
+                                    });
+                                if (choice.flake_links.length === 0) delete choice.flake_links;
                             }
                         }
                     }
