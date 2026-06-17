@@ -11,9 +11,12 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
     const block = document.createElement("div");
     block.dataset.idx = String(idx);
 
+    // No overflow:hidden — it would clip the top:100% override panel (the cause of
+    // the "arrow does nothing" bug). The rounded background still clips to the
+    // border-radius. Mirrors the Flake Stack grid block (#303).
     css(block, `position:relative;height:80px;background:#2a2a2a;border:${
         isGenerating ? "2px solid #4a9eff" : "1px solid #444"
-    };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(preset)});background-size:cover;background-position:center;${
+    };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(preset)});background-size:cover;background-position:center;${
         isGenerating ? "box-shadow:inset 0 0 0 2px rgba(74,158,255,0.7);" : ""
     }${isBypassed ? "opacity:0.45;" : ""}`);
 
@@ -77,18 +80,18 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
     // Per-instance override dropdown (#279): Filename Prefix / Steps / CFG /
     // Sampler / Scheduler — A/B test a preset without editing its file.
     if (triangleBtn && overrides) {
-        // position:fixed so the panel escapes the block's overflow:hidden (which
-        // previously clipped a top:100% panel, so the arrow appeared to do
-        // nothing — #293). Kept as a DOM child of block so it's torn down on
-        // re-render. Coordinates are computed from the triangle on open.
+        // Floating panel anchored under the block, exactly like the Flake Stack
+        // grid override dropdown (#303). With the block's overflow:hidden removed,
+        // a position:absolute;top:100% panel shows correctly (position:fixed
+        // mispositioned inside ComfyUI's transformed canvas).
         const panel = document.createElement("div");
-        css(panel, "position:fixed;background:#1e1e1e;border:1px solid #444;border-radius:4px;display:none;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,0.5);");
+        css(panel, "position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#1e1e1e;border:1px solid #444;border-radius:4px;display:none;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.5);margin-top:1px;");
         panel.addEventListener("click", (e) => e.stopPropagation());
         panel.addEventListener("dblclick", (e) => e.stopPropagation());
         panel.addEventListener("mousedown", (e) => e.stopPropagation());
 
-        // Rebuild the panel once the preset's current values are known so each
-        // override field shows its real default (#292/#293).
+        // Rebuild once the preset's current values are known so each field shows
+        // its current value (#302/#303).
         let _defaults = {};
         const rebuild = () => panel.replaceChildren(makeModelOverridePanel(overrides, () => { if (onOverrideChange) onOverrideChange(); }, _defaults));
         rebuild();
@@ -97,13 +100,6 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
             rebuild();
         }).catch(() => {});
         block.appendChild(panel);
-
-        function positionPanel() {
-            const r = triangleBtn.getBoundingClientRect();
-            panel.style.left = `${r.left + r.width / 2}px`;
-            panel.style.transform = "translateX(-50%)";
-            panel.style.top = `${r.bottom + 2}px`;
-        }
 
         let outside = null;
         const closePanel = () => {
@@ -114,7 +110,6 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
         triangleBtn.addEventListener("click", () => {
             if (panel.style.display === "block") { closePanel(); return; }
             panel.style.display = "block";
-            positionPanel();
             triangleBtn.textContent = "▴";
             outside = (e) => { if (!block.contains(e.target)) closePanel(); };
             document.addEventListener("mousedown", outside);

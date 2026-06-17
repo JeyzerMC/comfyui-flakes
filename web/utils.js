@@ -1140,13 +1140,15 @@ export function serializeModelOverrides(ovr) {
 // object in place and calls `onChange` on every edit. Empty fields mean
 // "use the preset's value".
 export function makeModelOverridePanel(overrides, onChange, defaults = {}) {
-    // `defaults` carries the preset's resolved values so each empty field shows
-    // the current default (as placeholder / option label) instead of a generic
-    // "default" (#292). Pass {} when defaults are unknown.
+    // Matches the Flake Stack grid override dropdown (#302): each field shows the
+    // current effective value (the override if set, else the preset default), and
+    // Steps/CFG use the same makeSmallValueSlider as the LoRA strength sliders.
+    // `overrides` is mutated in place; a field only becomes an override once the
+    // user actually changes it (the slider fires onChange only on interaction).
     const col = document.createElement("div");
-    css(col, "width:180px;padding:6px;display:flex;flex-direction:column;gap:3px;box-sizing:border-box;");
-    const inputCss = "width:100%;box-sizing:border-box;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:2px 4px;border-radius:3px;font-size:10px;outline:none;";
-    const has = (v) => v != null && v !== "";
+    css(col, "width:170px;padding:6px;display:flex;flex-direction:column;gap:4px;box-sizing:border-box;");
+    const inputCss = "width:100%;box-sizing:border-box;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:3px 4px;border-radius:3px;font-size:10px;outline:none;";
+    const num = (v) => (v != null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : null);
     const label = (text) => {
         const l = document.createElement("div");
         l.textContent = text;
@@ -1157,35 +1159,33 @@ export function makeModelOverridePanel(overrides, onChange, defaults = {}) {
     label("Filename Prefix");
     const fp = document.createElement("input");
     fp.type = "text";
-    fp.value = overrides.filename_prefix || "";
-    fp.placeholder = has(defaults.filename_prefix) ? String(defaults.filename_prefix) : "(preset default)";
+    fp.value = (overrides.filename_prefix != null && overrides.filename_prefix !== "")
+        ? overrides.filename_prefix : (defaults.filename_prefix || "");
+    fp.placeholder = "filename prefix";
     css(fp, inputCss);
     fp.addEventListener("input", () => { overrides.filename_prefix = fp.value || ""; onChange(); });
     col.appendChild(fp);
 
-    const numField = (text, key, step) => {
-        label(text);
-        const inp = document.createElement("input");
-        inp.type = "number";
-        inp.step = step;
-        inp.value = overrides[key] ?? "";
-        inp.placeholder = has(defaults[key]) ? String(defaults[key]) : "default";
-        css(inp, inputCss);
-        inp.addEventListener("input", () => { overrides[key] = inp.value === "" ? null : inp.value; onChange(); });
-        col.appendChild(inp);
-    };
-    numField("Steps", "steps", "1");
-    numField("CFG", "cfg", "0.1");
+    label("Steps");
+    const stepsInit = num(overrides.steps) ?? num(defaults.steps) ?? 31;
+    const stepsSlider = makeSmallValueSlider(stepsInit, 1, 150, 1, (v) => { overrides.steps = v; onChange(); });
+    col.appendChild(stepsSlider);
 
-    const defLabel = (key) => has(defaults[key]) ? `(default: ${defaults[key]})` : "(default)";
+    label("CFG");
+    const cfgInit = num(overrides.cfg) ?? num(defaults.cfg) ?? 7.0;
+    const cfgSlider = makeSmallValueSlider(cfgInit, 0, 30, 0.1, (v) => { overrides.cfg = v; onChange(); });
+    col.appendChild(cfgSlider);
+
+    const curSampler = overrides.sampler || defaults.sampler || "";
+    const curScheduler = overrides.scheduler || defaults.scheduler || "";
 
     label("Sampler");
-    const sampDD = makePanelDropdown([{ value: "", label: defLabel("sampler") }], overrides.sampler || "");
+    const sampDD = makePanelDropdown([], curSampler);
     sampDD.element.addEventListener("change", () => { overrides.sampler = sampDD.element.value || ""; onChange(); });
     col.appendChild(sampDD.container);
 
     label("Scheduler");
-    const schedDD = makePanelDropdown([{ value: "", label: defLabel("scheduler") }], overrides.scheduler || "");
+    const schedDD = makePanelDropdown([], curScheduler);
     schedDD.element.addEventListener("change", () => { overrides.scheduler = schedDD.element.value || ""; onChange(); });
     col.appendChild(schedDD.container);
 
@@ -1193,15 +1193,15 @@ export function makeModelOverridePanel(overrides, onChange, defaults = {}) {
         for (const s of samplers) {
             const o = document.createElement("option");
             o.value = s; o.textContent = s;
-            if (s === overrides.sampler) o.selected = true;
             sampDD.element.appendChild(o);
         }
+        if (curSampler) sampDD.element.value = curSampler;
         for (const s of schedulers) {
             const o = document.createElement("option");
             o.value = s; o.textContent = s;
-            if (s === overrides.scheduler) o.selected = true;
             schedDD.element.appendChild(o);
         }
+        if (curScheduler) schedDD.element.value = curScheduler;
     });
 
     return col;
