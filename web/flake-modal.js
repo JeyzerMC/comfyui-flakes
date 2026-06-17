@@ -604,7 +604,9 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                 header.appendChild(dragIcon);
 
                 const fieldTitle = document.createElement("span");
-                fieldTitle.textContent = fieldType.charAt(0).toUpperCase() + fieldType.slice(1);
+                // Title-case and replace underscores so e.g. "flake_link" reads
+                // "Flake Link" instead of "Flake_link" (#307).
+                fieldTitle.textContent = fieldType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
                 css(fieldTitle, "flex:1;font-size:12px;font-weight:500;color:#aaa;");
                 header.appendChild(fieldTitle);
 
@@ -1829,7 +1831,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 : (linkedData.path ? [{ name: "", path: linkedData.path, strength: linkedData.strength ?? 1.0 }] : []);
                             if (loras.length > 0) {
                                 const lLabel = document.createElement("div");
-                                lLabel.textContent = "LoRA strength override (↺ = linked default, saved on this flake)";
+                                lLabel.textContent = "LoRA strength overrides";
                                 css(lLabel, "font-size:11px;color:#aaa;font-weight:500;margin-top:4px;");
                                 box.appendChild(lLabel);
                                 link.lora_strengths = link.lora_strengths || [];
@@ -1844,11 +1846,15 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     const cur = link.lora_strengths[i];
                                     const defaultStrength = lr.strength ?? 1.0;
                                     const initial = (cur === null || cur === undefined) ? defaultStrength : cur;
-                                    const slider = makeSmallValueSlider(initial, 0, 2, 0.05, (v) => {
+                                    // makeSmallValueSlider returns a bare element (not {container}).
+                                    // The old `.container` access made css() throw, so the
+                                    // sliders never rendered — only the label did (#307).
+                                    // Range matches the grid override dropdown (-10..10).
+                                    const slider = makeSmallValueSlider(initial, -10, 10, 0.05, (v) => {
                                         link.lora_strengths[i] = v;
                                     });
-                                    css(slider.container, "flex:1;");
-                                    row.appendChild(slider.container);
+                                    slider.style.flex = "1";
+                                    row.appendChild(slider);
                                     const resetBtn = makeSmallButton("↺");
                                     resetBtn.title = "Use linked flake's default strength";
                                     resetBtn.addEventListener("click", () => {
