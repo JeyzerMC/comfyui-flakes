@@ -1622,9 +1622,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         fetchLoras().then(list => { for (const l of (list || [])) dd.datalist.appendChild(Object.assign(document.createElement("option"), { value: l })); }).catch(() => {});
                                         dd.element.addEventListener("change", () => { lr.path = dd.element.value; });
                                         row.appendChild(dd.container);
+                                        // makeSmallValueSlider returns a bare element; the old
+                                        // `.container` access threw, so "+ LoRA" rendered nothing
+                                        // and corrupted the variant section (#308).
                                         const slider = makeSmallValueSlider(lr.strength ?? 1.0, 0, 2, 0.05, (v) => { lr.strength = v; });
-                                        css(slider.container, "flex:0 0 110px;");
-                                        row.appendChild(slider.container);
+                                        slider.style.flex = "0 0 110px";
+                                        row.appendChild(slider);
                                         const rm = makeSmallButton("✕");
                                         rm.addEventListener("click", () => { loras.splice(i, 1); if (!loras.length) delete co.loras; renderChoiceLoras(); });
                                         row.appendChild(rm);
