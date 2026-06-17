@@ -295,7 +295,9 @@ function orderedComboNodes() {
     for (const node of app.graph.nodes) {
         if (isCombo(node) && !seen.has(node.id)) { seen.add(node.id); ordered.push(node); }
     }
-    return ordered;
+    // Exclude node-level bypassed (mode 4) / muted (mode 2) combo nodes entirely,
+    // so they never contribute presets or raise "no active presets" errors (#304).
+    return ordered.filter((n) => n.mode !== 4 && n.mode !== 2);
 }
 
 app.queuePrompt = async function(number, batchCount = 1) {
