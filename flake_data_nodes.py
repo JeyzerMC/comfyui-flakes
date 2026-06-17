@@ -369,6 +369,8 @@ class FlakeGenerate:
                 # ADetailer / Face Detailer post-process (#287, SDXL-first).
                 "adetailer": ("BOOLEAN", {"default": False, "label_on": "Face Detailer", "label_off": "ADetailer off"}),
                 "adetailer_denoise": ("FLOAT", {"default": 0.4, "min": 0.0, "max": 1.0, "step": 0.05}),
+                # ADetailer sampling steps (#301). 0 = reuse the first-pass steps.
+                "adetailer_steps": ("INT", {"default": 0, "min": 0, "max": 150, "step": 1, "tooltip": "ADetailer (Face Detailer) sampling steps. 0 = use the same steps as the first pass."}),
                 "adetailer_bbox": ("STRING", {"default": "bbox/face_yolov8m.pt"}),
                 # Upscale post-process (#288). upscale_model is a filename under
                 # models/upscale_models/ (blank = plain rescale to factor).
@@ -385,7 +387,7 @@ class FlakeGenerate:
     OUTPUT_NODE = True
 
     def execute(self, flake_data, seed, adetailer=False, adetailer_denoise=0.4,
-                adetailer_bbox="bbox/face_yolov8m.pt",
+                adetailer_steps=0, adetailer_bbox="bbox/face_yolov8m.pt",
                 upscale=False, upscale_model="", upscale_factor=1.5):
         parts = _split_flake_data(flake_data)
         model = parts["model"]
@@ -413,9 +415,11 @@ class FlakeGenerate:
         # Optional ADetailer (Face Detailer) post-process (#287).
         if adetailer:
             from .flake_postprocess import run_face_detailer
+            # 0 means "match the first pass"; otherwise use the explicit count (#301).
+            ad_steps = adetailer_steps if adetailer_steps and adetailer_steps > 0 else steps
             images = run_face_detailer(
                 images, model, clip, vae, positive, negative,
-                seed, steps, cfg, sampler_name, scheduler,
+                seed, ad_steps, cfg, sampler_name, scheduler,
                 denoise=adetailer_denoise, bbox_model=adetailer_bbox,
             )
 
