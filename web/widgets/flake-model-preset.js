@@ -251,18 +251,32 @@ export function setupFlakeModelPresetWidget(node) {
     }
     syncOverridesWidget();
 
-    const ovrToggle = document.createElement("button");
-    ovrToggle.type = "button";
-    ovrToggle.textContent = "⚙ Overrides";
-    css(ovrToggle, "align-self:center;cursor:pointer;border-radius:4px;font-size:11px;background:#2a2a2a;color:#999;border:1px solid #444;padding:3px 8px;user-select:none;");
+    // Per-instance overrides (#279/#292): a hover triangle on the cover image
+    // opens the override dropdown (like Flake Stack/Combo), replacing the old
+    // "⚙ Overrides" button. The panel lives in selectedWrap (not the
+    // overflow:hidden image wrapper) so it isn't clipped, and is rebuilt with the
+    // selected preset's current values so each field shows its real default.
+    const ovrArrow = document.createElement("button");
+    ovrArrow.type = "button";
+    ovrArrow.textContent = "▾";
+    css(ovrArrow, "position:absolute;bottom:4px;left:50%;transform:translateX(-50%);background:transparent;color:#fff;border:none;padding:0;font-size:22px;line-height:1;cursor:pointer;z-index:3;opacity:0;text-shadow:0 1px 3px rgba(0,0,0,0.8);");
+    imgWrap.appendChild(ovrArrow);
+    imgWrap.addEventListener("mouseenter", () => { ovrArrow.style.opacity = "1"; });
+    imgWrap.addEventListener("mouseleave", () => { ovrArrow.style.opacity = "0"; });
+
     const ovrPanelWrap = document.createElement("div");
     css(ovrPanelWrap, "display:none;justify-content:center;");
-    ovrPanelWrap.appendChild(makeModelOverridePanel(node.properties._overrides, syncOverridesWidget));
-    ovrToggle.addEventListener("click", (e) => {
+    let _ovrDefaults = {};
+    function rebuildOverridePanel() {
+        ovrPanelWrap.replaceChildren(makeModelOverridePanel(node.properties._overrides, syncOverridesWidget, _ovrDefaults));
+    }
+    rebuildOverridePanel();
+    ovrArrow.addEventListener("click", (e) => {
         e.stopPropagation();
-        ovrPanelWrap.style.display = ovrPanelWrap.style.display === "none" ? "flex" : "none";
+        const showing = ovrPanelWrap.style.display !== "none";
+        ovrPanelWrap.style.display = showing ? "none" : "flex";
+        ovrArrow.textContent = showing ? "▾" : "▴";
     });
-    selectedWrap.appendChild(ovrToggle);
     selectedWrap.appendChild(ovrPanelWrap);
 
     container.appendChild(selectedWrap);
@@ -284,6 +298,16 @@ export function setupFlakeModelPresetWidget(node) {
                 if (data.display_name) {
                     nameLabel.textContent = data.display_name;
                 }
+                // Feed the preset's current values to the override panel so each
+                // field's placeholder shows the real default (#292).
+                _ovrDefaults = {
+                    filename_prefix: data.filename_prefix,
+                    steps: data.steps,
+                    cfg: data.cfg,
+                    sampler: data.sampler,
+                    scheduler: data.scheduler,
+                };
+                rebuildOverridePanel();
             } catch { /* fall back to path segment */ }
         }
     }

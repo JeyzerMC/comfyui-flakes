@@ -1075,10 +1075,14 @@ export function serializeModelOverrides(ovr) {
 // Prefix, Steps, CFG, Sampler, Scheduler. Mutates the passed `overrides`
 // object in place and calls `onChange` on every edit. Empty fields mean
 // "use the preset's value".
-export function makeModelOverridePanel(overrides, onChange) {
+export function makeModelOverridePanel(overrides, onChange, defaults = {}) {
+    // `defaults` carries the preset's resolved values so each empty field shows
+    // the current default (as placeholder / option label) instead of a generic
+    // "default" (#292). Pass {} when defaults are unknown.
     const col = document.createElement("div");
     css(col, "width:180px;padding:6px;display:flex;flex-direction:column;gap:3px;box-sizing:border-box;");
     const inputCss = "width:100%;box-sizing:border-box;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:2px 4px;border-radius:3px;font-size:10px;outline:none;";
+    const has = (v) => v != null && v !== "";
     const label = (text) => {
         const l = document.createElement("div");
         l.textContent = text;
@@ -1090,7 +1094,7 @@ export function makeModelOverridePanel(overrides, onChange) {
     const fp = document.createElement("input");
     fp.type = "text";
     fp.value = overrides.filename_prefix || "";
-    fp.placeholder = "(preset default)";
+    fp.placeholder = has(defaults.filename_prefix) ? String(defaults.filename_prefix) : "(preset default)";
     css(fp, inputCss);
     fp.addEventListener("input", () => { overrides.filename_prefix = fp.value || ""; onChange(); });
     col.appendChild(fp);
@@ -1101,7 +1105,7 @@ export function makeModelOverridePanel(overrides, onChange) {
         inp.type = "number";
         inp.step = step;
         inp.value = overrides[key] ?? "";
-        inp.placeholder = "default";
+        inp.placeholder = has(defaults[key]) ? String(defaults[key]) : "default";
         css(inp, inputCss);
         inp.addEventListener("input", () => { overrides[key] = inp.value === "" ? null : inp.value; onChange(); });
         col.appendChild(inp);
@@ -1109,13 +1113,15 @@ export function makeModelOverridePanel(overrides, onChange) {
     numField("Steps", "steps", "1");
     numField("CFG", "cfg", "0.1");
 
+    const defLabel = (key) => has(defaults[key]) ? `(default: ${defaults[key]})` : "(default)";
+
     label("Sampler");
-    const sampDD = makePanelDropdown([{ value: "", label: "(default)" }], overrides.sampler || "");
+    const sampDD = makePanelDropdown([{ value: "", label: defLabel("sampler") }], overrides.sampler || "");
     sampDD.element.addEventListener("change", () => { overrides.sampler = sampDD.element.value || ""; onChange(); });
     col.appendChild(sampDD.container);
 
     label("Scheduler");
-    const schedDD = makePanelDropdown([{ value: "", label: "(default)" }], overrides.scheduler || "");
+    const schedDD = makePanelDropdown([{ value: "", label: defLabel("scheduler") }], overrides.scheduler || "");
     schedDD.element.addEventListener("change", () => { overrides.scheduler = schedDD.element.value || ""; onChange(); });
     col.appendChild(schedDD.container);
 
