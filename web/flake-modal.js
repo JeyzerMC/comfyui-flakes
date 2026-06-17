@@ -1752,7 +1752,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             const variants = linkedData.variants || linkedData.options || {};
                             if (Object.keys(variants).length > 0) {
                                 const vLabel = document.createElement("div");
-                                vLabel.textContent = "Default variant choices";
+                                vLabel.textContent = "Variant choice override (saved on this flake)";
                                 css(vLabel, "font-size:11px;color:#aaa;font-weight:500;");
                                 box.appendChild(vLabel);
                                 for (const [group, choices] of Object.entries(variants)) {
@@ -1774,10 +1774,16 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     box.appendChild(row);
                                 }
                             }
-                            const loras = Array.isArray(linkedData.loras) ? linkedData.loras : [];
+                            // Linked flake's LoRAs — the modern `loras` list, or a
+                            // legacy single LoRA stored as `path`/`strength` (#300).
+                            // Without the legacy fallback, a single-LoRA target shows
+                            // no override sliders at all.
+                            const loras = (Array.isArray(linkedData.loras) && linkedData.loras.length)
+                                ? linkedData.loras
+                                : (linkedData.path ? [{ name: "", path: linkedData.path, strength: linkedData.strength ?? 1.0 }] : []);
                             if (loras.length > 0) {
                                 const lLabel = document.createElement("div");
-                                lLabel.textContent = "Default LoRA strengths";
+                                lLabel.textContent = "LoRA strength override (↺ = linked default, saved on this flake)";
                                 css(lLabel, "font-size:11px;color:#aaa;font-weight:500;margin-top:4px;");
                                 box.appendChild(lLabel);
                                 link.lora_strengths = link.lora_strengths || [];
