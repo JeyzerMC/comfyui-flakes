@@ -1593,6 +1593,52 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 }
                                 renderChoicePrompts();
 
+                                // Per-choice LoRAs (#299): a variant choice can carry
+                                // its own LoRAs, merged on top of the flake at generation
+                                // time. Persisted inside the choice (variants[g][c].loras)
+                                // automatically via ordered.variants. (Per-choice
+                                // ControlNets/flake-links are also honored by the backend
+                                // when present in the yaml.)
+                                const extrasHost = document.createElement("div");
+                                css(extrasHost, "display:flex;flex-direction:column;gap:3px;margin-top:6px;");
+                                choiceCard.appendChild(extrasHost);
+                                function renderChoiceLoras() {
+                                    extrasHost.replaceChildren();
+                                    const co = fieldState.variants[groupName][choiceName] || (fieldState.variants[groupName][choiceName] = {});
+                                    const loras = Array.isArray(co.loras) ? co.loras : [];
+
+                                    const lbl = document.createElement("div");
+                                    lbl.textContent = "Variant LoRAs";
+                                    css(lbl, "font-size:11px;color:#aaa;font-weight:500;");
+                                    extrasHost.appendChild(lbl);
+
+                                    loras.forEach((lr, i) => {
+                                        const row = document.createElement("div");
+                                        css(row, "display:flex;gap:6px;align-items:center;");
+                                        const dd = makeSearchableDropdown([], lr.path || lr.name || "", "lora…");
+                                        css(dd.container, "flex:1;min-width:0;");
+                                        fetchLoras().then(list => { for (const l of (list || [])) dd.datalist.appendChild(Object.assign(document.createElement("option"), { value: l })); }).catch(() => {});
+                                        dd.element.addEventListener("change", () => { lr.path = dd.element.value; });
+                                        row.appendChild(dd.container);
+                                        const slider = makeSmallValueSlider(lr.strength ?? 1.0, 0, 2, 0.05, (v) => { lr.strength = v; });
+                                        css(slider.container, "flex:0 0 110px;");
+                                        row.appendChild(slider.container);
+                                        const rm = makeSmallButton("✕");
+                                        rm.addEventListener("click", () => { loras.splice(i, 1); if (!loras.length) delete co.loras; renderChoiceLoras(); });
+                                        row.appendChild(rm);
+                                        extrasHost.appendChild(row);
+                                    });
+
+                                    const addBtn = makeSmallButton("+ LoRA");
+                                    addBtn.addEventListener("click", () => {
+                                        if (!Array.isArray(co.loras)) co.loras = [];
+                                        co.loras.push({ name: "", path: "", strength: 1.0 });
+                                        renderChoiceLoras();
+                                    });
+                                    extrasHost.appendChild(addBtn);
+                                }
+                                renderChoiceLoras();
+
                                 groupCard.appendChild(choiceCard);
                             }
 
@@ -2007,6 +2053,16 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     }
                 }
                 if (ft === "variants" && Object.keys(fieldState.variants).length > 0) {
+                    // Prune incomplete per-choice LoRAs (#299): drop rows with no
+                    // path and remove now-empty `loras` arrays so the yaml stays clean.
+                    for (const group of Object.values(fieldState.variants)) {
+                        for (const choice of Object.values(group || {})) {
+                            if (choice && Array.isArray(choice.loras)) {
+                                choice.loras = choice.loras.filter(l => l && (l.path || l.name));
+                                if (choice.loras.length === 0) delete choice.loras;
+                            }
+                        }
+                    }
                     ordered.variants = fieldState.variants;
                 }
                 if (ft === "flake_link" && Array.isArray(fieldState.flake_links) && fieldState.flake_links.length > 0) {
