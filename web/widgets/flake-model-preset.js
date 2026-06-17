@@ -251,11 +251,11 @@ export function setupFlakeModelPresetWidget(node) {
     }
     syncOverridesWidget();
 
-    // Per-instance overrides (#279/#292): a hover triangle on the cover image
-    // opens the override dropdown (like Flake Stack/Combo), replacing the old
-    // "⚙ Overrides" button. The panel lives in selectedWrap (not the
-    // overflow:hidden image wrapper) so it isn't clipped, and is rebuilt with the
-    // selected preset's current values so each field shows its real default.
+    // Per-instance overrides (#279/#292/#302): a hover triangle on the cover image
+    // opens a FLOATING override dropdown anchored below the arrow (like the Flake
+    // Stack grid override panel), instead of an inline panel that pushed the node
+    // taller. Rebuilt with the selected preset's current values so each field
+    // shows its current value.
     const ovrArrow = document.createElement("button");
     ovrArrow.type = "button";
     ovrArrow.textContent = "▾";
@@ -264,18 +264,38 @@ export function setupFlakeModelPresetWidget(node) {
     imgWrap.addEventListener("mouseenter", () => { ovrArrow.style.opacity = "1"; });
     imgWrap.addEventListener("mouseleave", () => { ovrArrow.style.opacity = "0"; });
 
+    // Floating panel: absolute within selectedWrap (position:relative), so it
+    // overlays rather than extends the node.
     const ovrPanelWrap = document.createElement("div");
-    css(ovrPanelWrap, "display:none;justify-content:center;");
+    css(ovrPanelWrap, "position:absolute;display:none;background:#1e1e1e;border:1px solid #444;border-radius:4px;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,0.5);");
+    ovrPanelWrap.addEventListener("click", (e) => e.stopPropagation());
+    ovrPanelWrap.addEventListener("mousedown", (e) => e.stopPropagation());
     let _ovrDefaults = {};
     function rebuildOverridePanel() {
         ovrPanelWrap.replaceChildren(makeModelOverridePanel(node.properties._overrides, syncOverridesWidget, _ovrDefaults));
     }
     rebuildOverridePanel();
+
+    let _ovrOutside = null;
+    function closeOvr() {
+        ovrPanelWrap.style.display = "none";
+        ovrArrow.textContent = "▾";
+        if (_ovrOutside) { document.removeEventListener("mousedown", _ovrOutside); _ovrOutside = null; }
+    }
+    function openOvr() {
+        const a = ovrArrow.getBoundingClientRect();
+        const w = selectedWrap.getBoundingClientRect();
+        ovrPanelWrap.style.left = `${a.left + a.width / 2 - w.left}px`;
+        ovrPanelWrap.style.top = `${a.bottom - w.top + 2}px`;
+        ovrPanelWrap.style.transform = "translateX(-50%)";
+        ovrPanelWrap.style.display = "block";
+        ovrArrow.textContent = "▴";
+        _ovrOutside = (e) => { if (!ovrPanelWrap.contains(e.target) && e.target !== ovrArrow) closeOvr(); };
+        document.addEventListener("mousedown", _ovrOutside);
+    }
     ovrArrow.addEventListener("click", (e) => {
         e.stopPropagation();
-        const showing = ovrPanelWrap.style.display !== "none";
-        ovrPanelWrap.style.display = showing ? "none" : "flex";
-        ovrArrow.textContent = showing ? "▾" : "▴";
+        if (ovrPanelWrap.style.display === "block") closeOvr(); else openOvr();
     });
     selectedWrap.appendChild(ovrPanelWrap);
 
