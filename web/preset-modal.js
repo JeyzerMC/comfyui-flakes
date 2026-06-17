@@ -283,7 +283,9 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         content.appendChild(ckptCoverRow);
 
         const ckptUrlInput = makeComfyInput(data.checkpoint_url || "", "https://civitai.com/models/...");
-        ckptUrlInput.style.display = "none";
+        // On a new preset, expand the checkpoint URL field by default so a
+        // download URL can be entered directly without finding the toggle (#295).
+        ckptUrlInput.style.display = mode === "create" ? "block" : "none";
 
         const ckptLabelRow = document.createElement("div");
         css(ckptLabelRow, "display:flex;gap:2px;align-items:center;");
@@ -311,6 +313,8 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
             ckptUrlToggle.innerHTML = showing ? "&#9662;" : "&#9652;";
         });
         ckptLabelRow.appendChild(ckptUrlToggle);
+        // New presets expand the URL field by default (#295) — point the toggle up.
+        if (mode === "create") ckptUrlToggle.textContent = "▲";
         ckptCol.appendChild(ckptLabelRow);
 
         ckptCol.appendChild(ckptUrlInput);
