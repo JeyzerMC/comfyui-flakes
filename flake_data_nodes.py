@@ -14,6 +14,38 @@ from nodes import KSampler, VAEDecode, SaveImage
 
 from .full_flake_node import _build_filename_prefix
 
+_ADETAILER_DEFAULT_BBOX = "bbox/face_yolov8m.pt"
+
+
+def _list_adetailer_bbox() -> list[str]:
+    """ADetailer bbox model choices (#306): Impact Pack's ultralytics_bbox plus a
+    direct scan of models/adetailer/. Always includes the default so the COMBO is
+    never empty."""
+    names: list[str] = []
+    try:
+        names += folder_paths.get_filename_list("ultralytics_bbox")
+    except Exception:
+        pass
+    base = os.path.join(folder_paths.base_path, "models", "adetailer")
+    if os.path.isdir(base):
+        for root, _dirs, files in os.walk(base):
+            for f in files:
+                if f.lower().endswith((".pt", ".pth", ".onnx", ".safetensors")):
+                    rel = os.path.relpath(os.path.join(root, f), base).replace(os.sep, "/")
+                    names.append(rel)
+    out = sorted(set(names))
+    if _ADETAILER_DEFAULT_BBOX not in out:
+        out.append(_ADETAILER_DEFAULT_BBOX)
+    return out
+
+
+def _list_upscale_models() -> list[str]:
+    """Upscale model choices (#306); "" = plain rescale to factor."""
+    try:
+        return [""] + folder_paths.get_filename_list("upscale_models")
+    except Exception:
+        return [""]
+
 _ALL_PINS = [
     ("model", "MODEL"),
     ("clip", "CLIP"),
@@ -371,11 +403,12 @@ class FlakeGenerate:
                 "adetailer_denoise": ("FLOAT", {"default": 0.4, "min": 0.0, "max": 1.0, "step": 0.05}),
                 # ADetailer sampling steps (#301). 0 = reuse the first-pass steps.
                 "adetailer_steps": ("INT", {"default": 0, "min": 0, "max": 150, "step": 1, "tooltip": "ADetailer (Face Detailer) sampling steps. 0 = use the same steps as the first pass."}),
-                "adetailer_bbox": ("STRING", {"default": "bbox/face_yolov8m.pt"}),
+                # bbox model dropdown from ultralytics_bbox / models/adetailer (#306).
+                "adetailer_bbox": (_list_adetailer_bbox(), {"default": _ADETAILER_DEFAULT_BBOX}),
                 # Upscale post-process (#288). upscale_model is a filename under
                 # models/upscale_models/ (blank = plain rescale to factor).
                 "upscale": ("BOOLEAN", {"default": False, "label_on": "Upscale", "label_off": "Upscale off"}),
-                "upscale_model": ("STRING", {"default": ""}),
+                "upscale_model": (_list_upscale_models(), {"default": ""}),
                 "upscale_factor": ("FLOAT", {"default": 1.5, "min": 1.0, "max": 8.0, "step": 0.1}),
             },
         }

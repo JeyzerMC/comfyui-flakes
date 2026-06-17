@@ -1,4 +1,4 @@
-import { css } from "../utils.js";
+import { css, setWidgetHidden } from "../utils.js";
 import { computeJobCount } from "../queue.js";
 import { buildModel, openGenerationDataOverlay } from "./generation-data.js";
 
@@ -6,6 +6,32 @@ const ACCENT = "#4a9eff";
 
 export function setupFlakeGenerateWidget(node) {
     if (!node.properties) node.properties = {};
+
+    // Conditional optional widgets (#306): the ADetailer/Upscale sub-widgets only
+    // show when their toggle is on.
+    const findWidget = (name) => node.widgets?.find((x) => x.name === name);
+    const ADETAILER_DEPS = ["adetailer_denoise", "adetailer_steps", "adetailer_bbox"];
+    const UPSCALE_DEPS = ["upscale_model", "upscale_factor"];
+    function syncOptionalWidgets() {
+        const adOn = !!findWidget("adetailer")?.value;
+        const upOn = !!findWidget("upscale")?.value;
+        for (const n of ADETAILER_DEPS) setWidgetHidden(findWidget(n), !adOn);
+        for (const n of UPSCALE_DEPS) setWidgetHidden(findWidget(n), !upOn);
+        node.setSize([node.size[0], node.computeSize()[1]]);
+        node.graph?.setDirtyCanvas(true, true);
+    }
+    for (const toggle of ["adetailer", "upscale"]) {
+        const tw = findWidget(toggle);
+        if (!tw) continue;
+        const cb = tw.callback;
+        tw.callback = function () {
+            const r = cb?.apply(this, arguments);
+            syncOptionalWidgets();
+            return r;
+        };
+    }
+    // Defer once so all native widgets exist before first sync.
+    setTimeout(syncOptionalWidgets, 0);
 
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:4px;padding:4px 6px;font-size:12px;color:#ddd;");
