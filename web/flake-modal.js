@@ -14,6 +14,48 @@ import {
 } from "./api.js";
 import { openFileBrowser, openFileLoadPicker } from "./pickers.js";
 
+// Infer a ControlNet type + sibling cover name from a CN image filename (#306).
+// e.g. "char_depthanythingv2_001.png" -> { inferredType: "depth",
+// sibling: "char_cover_001.png" }. `inferredType` is matched against the
+// available CN `types` so an unknown token is ignored.
+function inferCnFromImage(filename, types = []) {
+    const ext = filename.match(/\.[^.]+$/)?.[0] || "";
+    const base = filename.slice(0, filename.length - ext.length);
+    const lower = base.toLowerCase();
+    // [filename token substring, canonical type fragment]
+    const ALIASES = [
+        ["depthanything", "depth"], ["midas", "depth"], ["zoe", "depth"], ["leres", "depth"], ["depth", "depth"],
+        ["dwpose", "openpose"], ["densepose", "openpose"], ["openpose", "openpose"],
+        ["canny", "canny"],
+        ["lineartanime", "lineart"], ["lineart", "lineart"],
+        ["softedge", "softedge"], ["pidinet", "softedge"], ["hed", "softedge"],
+        ["scribble", "scribble"], ["mlsd", "mlsd"],
+        ["normalbae", "normal"], ["normal", "normal"],
+        ["segmentation", "seg"], ["ade20k", "seg"], ["seg", "seg"], ["tile", "tile"],
+    ];
+    let token = "", frag = "";
+    for (const [tk, fr] of ALIASES) {
+        if (lower.includes(tk)) { token = tk; frag = fr; break; }
+    }
+    const lowerTypes = types.map((t) => t.toLowerCase());
+    let inferredType = "";
+    if (frag) {
+        const idx = lowerTypes.findIndex((t) => t.includes(frag));
+        if (idx >= 0) inferredType = types[idx];
+    }
+    if (!inferredType) {
+        const idx = lowerTypes.findIndex((t) => lower.includes(t));
+        if (idx >= 0) inferredType = types[idx];
+    }
+    let sibling = "";
+    if (token) {
+        const segs = base.split("_");
+        const ti = segs.findIndex((s) => s.toLowerCase().includes(token));
+        if (ti >= 0) { segs[ti] = "cover"; sibling = segs.join("_") + ext; }
+    }
+    return { inferredType, sibling };
+}
+
 export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) {
     return new Promise((resolve) => {
         let { content, footer, close, handlers, panel } = openOverlay();
@@ -1115,7 +1157,23 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                                 const fileName = result.name || file.name;
                                                 arr[i].image = fileName;
                                                 updateCnImgPreview(`/view?filename=${encodeURIComponent(fileName)}&type=input`);
-                                                if (!coverFile && !coverSourcePath && setCoverFromCnImage) setCoverFromCnImage(fileName);
+                                                // Auto-set type + cover from the filename (#306).
+                                                let inferredType = "";
+                                                let siblingCover = "";
+                                                try {
+                                                    const types = await fetchCnTypes();
+                                                    const res = inferCnFromImage(fileName, types);
+                                                    inferredType = res.inferredType;
+                                                    siblingCover = res.sibling;
+                                                } catch { /* ignore */ }
+                                                if (inferredType && !arr[i].type) arr[i].type = inferredType;
+                                                // Prefer a sibling "_cover_" image as the cover; probe via /view.
+                                                if (siblingCover && !coverFile && !coverSourcePath && setCoverFromCnImage) {
+                                                    const probe = new Image();
+                                                    probe.onload = () => { if (!coverFile && !coverSourcePath) setCoverFromCnImage(siblingCover); };
+                                                    probe.src = `/view?filename=${encodeURIComponent(siblingCover)}&type=input`;
+                                                }
+                                                renderCNs();
                                             } catch { /* ignore */ }
                                         }
                                         document.body.removeChild(fileInput);
