@@ -461,7 +461,10 @@ class FlakeGenerate:
             from .flake_postprocess import upscale_images
             images = upscale_images(images, upscale_model, upscale_factor)
 
-        # Post-process stem markers, before the increment: _up_ for Upscale (#325).
+        # Post-process stem markers, before the increment: _ad_ for ADetailer (#326),
+        # _up_ for Upscale (#325). Both, in pipeline order, give "..._ad_up_<inc>".
+        if adetailer:
+            filename_prefix = filename_prefix + "_ad"
         if upscale:
             filename_prefix = filename_prefix + "_up"
 
