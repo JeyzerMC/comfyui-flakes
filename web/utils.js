@@ -1152,18 +1152,27 @@ export function makeModelOverridePanel(overrides, onChange, defaults = {}) {
     // Steps/CFG use the same makeSmallValueSlider as the LoRA strength sliders.
     // `overrides` is mutated in place; a field only becomes an override once the
     // user actually changes it (the slider fires onChange only on interaction).
-    const col = document.createElement("div");
-    css(col, "width:170px;padding:6px;display:flex;flex-direction:column;gap:4px;box-sizing:border-box;");
+    // Two columns (#309): left = Filename Prefix / Sampler / Scheduler, right
+    // (narrower) = Steps / CFG.
+    const wrap = document.createElement("div");
+    css(wrap, "display:flex;gap:8px;padding:6px;box-sizing:border-box;");
+    const leftCol = document.createElement("div");
+    css(leftCol, "display:flex;flex-direction:column;gap:4px;width:150px;");
+    const rightCol = document.createElement("div");
+    css(rightCol, "display:flex;flex-direction:column;gap:4px;width:80px;");
+    wrap.appendChild(leftCol);
+    wrap.appendChild(rightCol);
+
     const inputCss = "width:100%;box-sizing:border-box;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:3px 4px;border-radius:3px;font-size:10px;outline:none;";
     const num = (v) => (v != null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : null);
-    const label = (text) => {
+    const label = (parent, text) => {
         const l = document.createElement("div");
         l.textContent = text;
         css(l, "font-size:9px;opacity:0.7;text-align:center;");
-        col.appendChild(l);
+        parent.appendChild(l);
     };
 
-    label("Filename Prefix");
+    label(leftCol, "Filename Prefix");
     const fp = document.createElement("input");
     fp.type = "text";
     fp.value = (overrides.filename_prefix != null && overrides.filename_prefix !== "")
@@ -1171,30 +1180,30 @@ export function makeModelOverridePanel(overrides, onChange, defaults = {}) {
     fp.placeholder = "filename prefix";
     css(fp, inputCss);
     fp.addEventListener("input", () => { overrides.filename_prefix = fp.value || ""; onChange(); });
-    col.appendChild(fp);
+    leftCol.appendChild(fp);
 
-    label("Steps");
+    label(rightCol, "Steps");
     const stepsInit = num(overrides.steps) ?? num(defaults.steps) ?? 31;
     const stepsSlider = makeSmallValueSlider(stepsInit, 1, 150, 1, (v) => { overrides.steps = v; onChange(); });
-    col.appendChild(stepsSlider);
+    rightCol.appendChild(stepsSlider);
 
-    label("CFG");
+    label(rightCol, "CFG");
     const cfgInit = num(overrides.cfg) ?? num(defaults.cfg) ?? 7.0;
     const cfgSlider = makeSmallValueSlider(cfgInit, 0, 30, 0.1, (v) => { overrides.cfg = v; onChange(); });
-    col.appendChild(cfgSlider);
+    rightCol.appendChild(cfgSlider);
 
     const curSampler = overrides.sampler || defaults.sampler || "";
     const curScheduler = overrides.scheduler || defaults.scheduler || "";
 
-    label("Sampler");
+    label(leftCol, "Sampler");
     const sampDD = makePanelDropdown([], curSampler);
     sampDD.element.addEventListener("change", () => { overrides.sampler = sampDD.element.value || ""; onChange(); });
-    col.appendChild(sampDD.container);
+    leftCol.appendChild(sampDD.container);
 
-    label("Scheduler");
+    label(leftCol, "Scheduler");
     const schedDD = makePanelDropdown([], curScheduler);
     schedDD.element.addEventListener("change", () => { overrides.scheduler = schedDD.element.value || ""; onChange(); });
-    col.appendChild(schedDD.container);
+    leftCol.appendChild(schedDD.container);
 
     fetchSamplerLists().then(({ samplers, schedulers }) => {
         for (const s of samplers) {
@@ -1211,7 +1220,7 @@ export function makeModelOverridePanel(overrides, onChange, defaults = {}) {
         if (curScheduler) schedDD.element.value = curScheduler;
     });
 
-    return col;
+    return wrap;
 }
 
 // ---------- Drag indicator helpers ----------
