@@ -1691,11 +1691,17 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     loras.forEach((lr, i) => {
                                         const row = document.createElement("div");
                                         css(row, "display:flex;gap:6px;align-items:center;");
-                                        const dd = makeSearchableDropdown([], lr.path || lr.name || "", "lora…");
-                                        css(dd.container, "flex:1;min-width:0;");
-                                        fetchLoras().then((list) => { for (const l of (list || [])) dd.datalist.appendChild(Object.assign(document.createElement("option"), { value: l })); }).catch(() => {});
-                                        dd.element.addEventListener("change", () => { lr.path = dd.element.value; });
-                                        row.appendChild(dd.container);
+                                        // Clickable box that opens the same "Select LoRA" file
+                                        // popup as the regular flake LoRA section (#310).
+                                        const box = document.createElement("div");
+                                        css(box, "flex:1;min-width:0;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:5px 8px;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
+                                        const showName = () => { box.textContent = lr.path ? lr.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select LoRA…"; box.title = lr.path || ""; };
+                                        showName();
+                                        box.addEventListener("click", async () => {
+                                            const result = await openFileBrowser({ type: "loras", defaultPath: "" });
+                                            if (result && result.file) { lr.path = result.file; showName(); }
+                                        });
+                                        row.appendChild(box);
                                         const slider = makeSmallValueSlider(lr.strength ?? 1.0, 0, 2, 0.05, (v) => { lr.strength = v; });
                                         slider.style.flex = "0 0 110px";
                                         row.appendChild(slider);
