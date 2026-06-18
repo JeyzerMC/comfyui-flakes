@@ -1198,14 +1198,50 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             imageCol.appendChild(imgFileInput);
                             card.appendChild(imageCol);
 
-                            // Right: type, model, sliders
+                            // Right column (#311): Row 1 = model + Img res + delete;
+                            // Row 2 = type (narrow) + Str/Start/End.
                             const rightCol = document.createElement("div");
                             css(rightCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;");
 
-                            // Row 1: Type dropdown + remove button
+                            // Row 1: model label, Img res checkbox, delete button.
                             const typeRow = document.createElement("div");
-                            css(typeRow, "display:flex;gap:4px;align-items:center;");
+                            css(typeRow, "display:flex;gap:8px;align-items:center;");
+                            const modelLabel = document.createElement("span");
+                            const inferred = cn.model || cn.model_name
+                                || (cn.type ? CN_MODEL_MAP[familyFolder(currentFamily)]?.[cn.type] || "" : "");
+                            modelLabel.textContent = inferred ? `model: ${inferred}` : "model: \u2014";
+                            css(modelLabel, "font-size:11px;color:#888;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
+                            typeRow.appendChild(modelLabel);
+                            const resWrap = document.createElement("label");
+                            css(resWrap, "display:flex;align-items:center;gap:3px;font-size:10px;color:#888;white-space:nowrap;cursor:pointer;");
+                            const resChk = document.createElement("input");
+                            resChk.type = "checkbox";
+                            resChk.checked = !!cn.resolution_from_image;
+                            resChk.title = "Use this ControlNet image's dimensions as the generation resolution";
+                            css(resChk, "width:14px;height:14px;cursor:pointer;margin:0;");
+                            resChk.addEventListener("change", () => { arr[i].resolution_from_image = resChk.checked; });
+                            resWrap.appendChild(resChk);
+                            resWrap.appendChild(document.createTextNode("Img res"));
+                            typeRow.appendChild(resWrap);
+                            const removeBtn = makeSmallButton("\u2715");
+                            removeBtn.addEventListener("click", () => { arr.splice(i, 1); renderCNs(); });
+                            typeRow.appendChild(removeBtn);
+                            rightCol.appendChild(typeRow);
 
+                            // Row 2: type dropdown (narrow) + Str / Start / End.
+                            const controlsRow = document.createElement("div");
+                            css(controlsRow, "display:flex;gap:6px;align-items:flex-end;");
+                            const makeCtlCol = (labelText, el, basis) => {
+                                const col = document.createElement("div");
+                                css(col, `${basis};min-width:0;display:flex;flex-direction:column;gap:2px;`);
+                                const lbl = document.createElement("span");
+                                lbl.textContent = labelText;
+                                css(lbl, "font-size:10px;color:#888;");
+                                el.style.width = "100%";
+                                col.appendChild(lbl);
+                                col.appendChild(el);
+                                return col;
+                            };
                             const typeDropdown = makeComfyDropdown(
                                 [{ value: "", label: "\u2014 type \u2014" }],
                                 cn.type || "",
@@ -1223,73 +1259,16 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 } catch { /* ignore */ }
                             })();
                             typeDropdown.element.addEventListener("change", () => { arr[i].type = typeDropdown.element.value; renderCNs(); });
-                            typeDropdown.container.style.flex = "1";
-                            typeRow.appendChild(typeDropdown.container);
-
-                            const removeBtn = makeSmallButton("\u2715");
-                            removeBtn.addEventListener("click", () => { arr.splice(i, 1); renderCNs(); });
-                            typeRow.appendChild(removeBtn);
-                            rightCol.appendChild(typeRow);
-
-                            // Row 2: Inferred model (read-only)
-                            const modelRow = document.createElement("div");
-                            css(modelRow, "display:flex;gap:4px;align-items:center;");
-                            const modelLabel = document.createElement("span");
-                            const inferred = cn.model || cn.model_name
-                                || (cn.type ? CN_MODEL_MAP[familyFolder(currentFamily)]?.[cn.type] || "" : "");
-                            modelLabel.textContent = inferred ? `model: ${inferred}` : "model: \u2014";
-                            css(modelLabel, "font-size:11px;color:#888;flex:1;");
-                            modelRow.appendChild(modelLabel);
-                            rightCol.appendChild(modelRow);
-
-                            // Row 3: Strength / Start / End + "use image res"
-                            // checkbox. Labels on top, controls on the bottom —
-                            // two-row layout matching the other fields. The
-                            // checkbox uses the controlnet image's dimensions as
-                            // the generation resolution override (#260).
-                            const slidersRow = document.createElement("div");
-                            css(slidersRow, "display:flex;gap:6px;align-items:flex-end;");
-
-                            const makeSliderCol = (labelText, slider) => {
-                                const col = document.createElement("div");
-                                css(col, "flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;");
-                                const lbl = document.createElement("span");
-                                lbl.textContent = labelText;
-                                css(lbl, "font-size:10px;color:#888;");
-                                slider.style.width = "100%";
-                                col.appendChild(lbl);
-                                col.appendChild(slider);
-                                return col;
-                            };
+                            controlsRow.appendChild(makeCtlCol("Type", typeDropdown.container, "flex:0 0 96px"));
 
                             const strSlider = makeComfyValueSlider(cn.strength ?? 1.0, 0, 2, 0.05, (v) => { arr[i].strength = v; });
-                            slidersRow.appendChild(makeSliderCol("Str", strSlider));
+                            controlsRow.appendChild(makeCtlCol("Str", strSlider, "flex:1"));
                             const startSlider = makeComfyValueSlider(cn.start_percent ?? 0, 0, 1, 0.05, (v) => { arr[i].start_percent = v; });
-                            slidersRow.appendChild(makeSliderCol("Start", startSlider));
+                            controlsRow.appendChild(makeCtlCol("Start", startSlider, "flex:1"));
                             const endSlider = makeComfyValueSlider(cn.end_percent ?? 1, 0, 1, 0.05, (v) => { arr[i].end_percent = v; });
-                            slidersRow.appendChild(makeSliderCol("End", endSlider));
+                            controlsRow.appendChild(makeCtlCol("End", endSlider, "flex:1"));
 
-                            // Checkbox column: use this CN image's dimensions as
-                            // the generation resolution override.
-                            const resCol = document.createElement("div");
-                            css(resCol, "flex:0 0 auto;display:flex;flex-direction:column;gap:2px;align-items:center;");
-                            const resLbl = document.createElement("span");
-                            resLbl.textContent = "Img res";
-                            css(resLbl, "font-size:10px;color:#888;white-space:nowrap;");
-                            const resChkWrap = document.createElement("div");
-                            css(resChkWrap, "height:32px;display:flex;align-items:center;justify-content:center;");
-                            const resChk = document.createElement("input");
-                            resChk.type = "checkbox";
-                            resChk.checked = !!cn.resolution_from_image;
-                            resChk.title = "Use this ControlNet image's dimensions as the generation resolution";
-                            css(resChk, "width:16px;height:16px;cursor:pointer;margin:0;");
-                            resChk.addEventListener("change", () => { arr[i].resolution_from_image = resChk.checked; });
-                            resChkWrap.appendChild(resChk);
-                            resCol.appendChild(resLbl);
-                            resCol.appendChild(resChkWrap);
-                            slidersRow.appendChild(resCol);
-
-                            rightCol.appendChild(slidersRow);
+                            rightCol.appendChild(controlsRow);
                             card.appendChild(rightCol);
                             cnsBox.appendChild(card);
                         }
@@ -1720,30 +1699,81 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     sectionLabel("Variant ControlNets");
                                     const cnets = Array.isArray(co.controlnets) ? co.controlnets : [];
                                     cnets.forEach((cn, i) => {
-                                        const row = document.createElement("div");
-                                        css(row, "display:flex;gap:6px;align-items:center;flex-wrap:wrap;");
-                                        const imgDD = makeSearchableDropdown([], cn.image || "", "input image…");
-                                        css(imgDD.container, "flex:1 1 140px;min-width:0;");
-                                        fetchInputs().then((list) => { for (const f of (list || [])) imgDD.datalist.appendChild(Object.assign(document.createElement("option"), { value: f })); }).catch(() => {});
+                                        // Image-left + fields-right layout matching the
+                                        // regular CN section (#311).
+                                        const card = document.createElement("div");
+                                        css(card, "display:flex;gap:8px;align-items:flex-start;background:#252525;padding:6px;border-radius:6px;border:1px solid #333;");
+                                        const imgBox = document.createElement("div");
+                                        css(imgBox, "flex:0 0 72px;width:72px;height:72px;border:1px solid #333;border-radius:6px;background:#1a1a1a;cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;");
+                                        const imgPrev = document.createElement("img");
+                                        css(imgPrev, "width:100%;height:100%;object-fit:cover;display:none;");
+                                        const imgPlaceholder = document.createElement("span");
+                                        imgPlaceholder.textContent = "+ img";
+                                        css(imgPlaceholder, "font-size:10px;color:#888;");
+                                        imgBox.appendChild(imgPrev);
+                                        imgBox.appendChild(imgPlaceholder);
+                                        const showImg = () => {
+                                            if (cn.image) { imgPrev.src = `/view?filename=${encodeURIComponent(cn.image)}&type=input`; imgPrev.style.display = "block"; imgPlaceholder.style.display = "none"; }
+                                            else { imgPrev.style.display = "none"; imgPlaceholder.style.display = "block"; }
+                                        };
+                                        showImg();
+                                        imgBox.addEventListener("click", () => {
+                                            const fi = document.createElement("input");
+                                            fi.type = "file"; fi.accept = ".png,.jpg,.jpeg,.webp,.gif,.bmp"; fi.style.display = "none";
+                                            document.body.appendChild(fi); fi.click();
+                                            fi.addEventListener("change", async () => {
+                                                const file = fi.files?.[0];
+                                                if (file) {
+                                                    try {
+                                                        const form = new FormData(); form.append("image", file); form.append("type", "input"); form.append("overwrite", "true");
+                                                        const resp = await fetch("/upload/image", { method: "POST", body: form });
+                                                        const result = await resp.json();
+                                                        cn.image = result.name || file.name;
+                                                        if (!cn.type) { try { const types = await fetchCnTypes(); const r = inferCnFromImage(cn.image, types); if (r.inferredType) cn.type = r.inferredType; } catch { /* ignore */ } }
+                                                        renderChoiceExtras();
+                                                    } catch { /* ignore */ }
+                                                }
+                                                document.body.removeChild(fi);
+                                            });
+                                        });
+                                        card.appendChild(imgBox);
+
+                                        const right = document.createElement("div");
+                                        css(right, "flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;");
+                                        const r1 = document.createElement("div");
+                                        css(r1, "display:flex;gap:8px;align-items:center;");
+                                        const modelLbl = document.createElement("span");
+                                        const inferredModel = cn.model || cn.model_name || (cn.type ? CN_MODEL_MAP[familyFolder(currentFamily)]?.[cn.type] || "" : "");
+                                        modelLbl.textContent = inferredModel ? `model: ${inferredModel}` : "model: —";
+                                        css(modelLbl, "font-size:11px;color:#888;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
+                                        r1.appendChild(modelLbl);
+                                        const resW = document.createElement("label");
+                                        css(resW, "display:flex;align-items:center;gap:3px;font-size:10px;color:#888;white-space:nowrap;cursor:pointer;");
+                                        const resC = document.createElement("input"); resC.type = "checkbox"; resC.checked = !!cn.resolution_from_image; css(resC, "width:14px;height:14px;cursor:pointer;margin:0;");
+                                        resC.addEventListener("change", () => { cn.resolution_from_image = resC.checked; });
+                                        resW.appendChild(resC); resW.appendChild(document.createTextNode("Img res"));
+                                        r1.appendChild(resW);
+                                        const rmBtn = makeSmallButton("✕");
+                                        rmBtn.addEventListener("click", () => { cnets.splice(i, 1); if (!cnets.length) delete co.controlnets; renderChoiceExtras(); });
+                                        r1.appendChild(rmBtn);
+                                        right.appendChild(r1);
+
+                                        const r2 = document.createElement("div");
+                                        css(r2, "display:flex;gap:6px;align-items:flex-end;");
+                                        const ctlCol = (labelText, el, basis) => { const c = document.createElement("div"); css(c, `${basis};min-width:0;display:flex;flex-direction:column;gap:2px;`); const l = document.createElement("span"); l.textContent = labelText; css(l, "font-size:10px;color:#888;"); el.style.width = "100%"; c.appendChild(l); c.appendChild(el); return c; };
                                         const typeDD = makeComfyDropdown([{ value: "", label: "— type —" }], cn.type || "");
                                         fetchCnTypes().then((types) => { for (const t of types) { const o = document.createElement("option"); o.value = t; o.textContent = t; if (t === cn.type) o.selected = true; typeDD.element.appendChild(o); } }).catch(() => {});
-                                        css(typeDD.container, "flex:0 0 110px;");
-                                        typeDD.element.addEventListener("change", () => { cn.type = typeDD.element.value; });
-                                        imgDD.element.addEventListener("change", async () => {
-                                            cn.image = imgDD.element.value;
-                                            if (!cn.type && cn.image) {
-                                                try { const types = await fetchCnTypes(); const r = inferCnFromImage(cn.image, types); if (r.inferredType) { cn.type = r.inferredType; renderChoiceExtras(); } } catch { /* ignore */ }
-                                            }
-                                        });
-                                        row.appendChild(imgDD.container);
-                                        row.appendChild(typeDD.container);
-                                        const slider = makeSmallValueSlider(cn.strength ?? 1.0, 0, 2, 0.05, (v) => { cn.strength = v; });
-                                        slider.style.flex = "0 0 90px";
-                                        row.appendChild(slider);
-                                        const rm = makeSmallButton("✕");
-                                        rm.addEventListener("click", () => { cnets.splice(i, 1); if (!cnets.length) delete co.controlnets; renderChoiceExtras(); });
-                                        row.appendChild(rm);
-                                        extrasHost.appendChild(row);
+                                        typeDD.element.addEventListener("change", () => { cn.type = typeDD.element.value; renderChoiceExtras(); });
+                                        r2.appendChild(ctlCol("Type", typeDD.container, "flex:0 0 96px"));
+                                        const strS = makeComfyValueSlider(cn.strength ?? 1.0, 0, 2, 0.05, (v) => { cn.strength = v; });
+                                        r2.appendChild(ctlCol("Str", strS, "flex:1"));
+                                        const startS = makeComfyValueSlider(cn.start_percent ?? 0, 0, 1, 0.05, (v) => { cn.start_percent = v; });
+                                        r2.appendChild(ctlCol("Start", startS, "flex:1"));
+                                        const endS = makeComfyValueSlider(cn.end_percent ?? 1, 0, 1, 0.05, (v) => { cn.end_percent = v; });
+                                        r2.appendChild(ctlCol("End", endS, "flex:1"));
+                                        right.appendChild(r2);
+                                        card.appendChild(right);
+                                        extrasHost.appendChild(card);
                                     });
                                     addButton("+ ControlNet", () => {
                                         if (!Array.isArray(co.controlnets)) co.controlnets = [];
