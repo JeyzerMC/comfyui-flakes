@@ -168,6 +168,7 @@ export function setWidgetHidden(widget, hide) {
             stateType: state ? state.type : null,
             stateDisabled: state ? state.disabled : null,
             stateLabel: state ? state.label : null,
+            stateHidden: state ? state.hidden : null,
         };
         _widgetHideState.set(widget, saved);
         widget.computeSize = () => [0, -4];
@@ -191,6 +192,11 @@ export function setWidgetHidden(widget, hide) {
             try { state.type = "hidden"; } catch { /* proxy may be read-only */ }
             try { state.disabled = true; } catch { /* */ }
             try { state.label = ""; } catch { /* */ }
+            // The modern frontend's litegraph skips drawing a widget whose `.hidden`
+            // is set; the canvas renderer reads this from the _state proxy, so
+            // setting it here is what actually removes the widget from view (not
+            // just disables it). Mirroring type/disabled alone left it visible.
+            try { state.hidden = true; } catch { /* */ }
         }
     } else {
         if (!saved) return; // already visible
@@ -221,6 +227,7 @@ export function setWidgetHidden(widget, hide) {
             if (saved.stateType !== null) try { state.type = saved.stateType; } catch { /* */ }
             if (saved.stateDisabled !== null) try { state.disabled = saved.stateDisabled; } catch { /* */ }
             if (saved.stateLabel !== null) try { state.label = saved.stateLabel; } catch { /* */ }
+            try { state.hidden = saved.stateHidden == null ? false : saved.stateHidden; } catch { /* */ }
         }
         _widgetHideState.delete(widget);
     }
