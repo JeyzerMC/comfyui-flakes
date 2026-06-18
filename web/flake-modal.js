@@ -1781,7 +1781,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                                     r.appendChild(nm);
                                                     const cur = link.lora_strengths[i];
                                                     const init = (cur === null || cur === undefined) ? (lr.strength ?? 1.0) : cur;
-                                                    const sl = makeSmallValueSlider(init, -10, 10, 0.05, (v) => { while (link.lora_strengths.length <= i) link.lora_strengths.push(null); link.lora_strengths[i] = v; });
+                                                    const sl = makeComfyValueSlider(init, -10, 10, 0.05, (v) => { while (link.lora_strengths.length <= i) link.lora_strengths.push(null); link.lora_strengths[i] = v; });
                                                     sl.style.flex = "1";
                                                     r.appendChild(sl);
                                                     ovr.appendChild(r);
@@ -2009,7 +2009,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     // The old `.container` access made css() throw, so the
                                     // sliders never rendered — only the label did (#307).
                                     // Range matches the grid override dropdown (-10..10).
-                                    const slider = makeSmallValueSlider(initial, -10, 10, 0.05, (v) => {
+                                    // Uses the larger makeComfyValueSlider for readability (#312).
+                                    const slider = makeComfyValueSlider(initial, -10, 10, 0.05, (v) => {
                                         link.lora_strengths[i] = v;
                                     });
                                     slider.style.flex = "1";
