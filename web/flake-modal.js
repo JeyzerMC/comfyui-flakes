@@ -14,10 +14,12 @@ import {
 } from "./api.js";
 import { openFileBrowser, openFileLoadPicker } from "./pickers.js";
 
-// Infer a ControlNet type + sibling cover name from a CN image filename (#306).
-// e.g. "char_depthanythingv2_001.png" -> { inferredType: "depth",
-// sibling: "char_cover_001.png" }. `inferredType` is matched against the
-// available CN `types` so an unknown token is ignored.
+// Infer a ControlNet type + sibling cover name from a CN image filename (#306, #318).
+// Old naming: "char_depthanythingv2_001.png" -> sibling "char_cover_001.png".
+// JIP naming: "pose_classic_3_depthanythingv2_001.png" -> sibling
+//   "pose_classic_0_cover_001.png" (the "_3_<preproc>_" run becomes "_0_cover_").
+// `inferredType` is matched against the available CN `types` so an unknown token
+// is ignored.
 function inferCnFromImage(filename, types = []) {
     const ext = filename.match(/\.[^.]+$/)?.[0] || "";
     const base = filename.slice(0, filename.length - ext.length);
@@ -51,7 +53,16 @@ function inferCnFromImage(filename, types = []) {
     if (token) {
         const segs = base.split("_");
         const ti = segs.findIndex((s) => s.toLowerCase().includes(token));
-        if (ti >= 0) { segs[ti] = "cover"; sibling = segs.join("_") + ext; }
+        if (ti >= 0) {
+            // JIP naming: the preproc token is preceded by a numeric order marker
+            // (e.g. "3"); the cover uses order "0", so turn "_3_<preproc>_" into
+            // "_0_cover_". Otherwise just swap the token segment for "cover".
+            if (ti > 0 && /^\d+$/.test(segs[ti - 1])) {
+                segs[ti - 1] = "0";
+            }
+            segs[ti] = "cover";
+            sibling = segs.join("_") + ext;
+        }
     }
     return { inferredType, sibling };
 }
