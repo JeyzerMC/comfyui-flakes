@@ -1349,9 +1349,14 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 const cRow = document.createElement("div");
                                 css(cRow, "display:flex;gap:4px;align-items:center;");
 
+                                // Hamburger handle (#331): drag to reorder the choice AND
+                                // click to open the "Add field" menu (LoRA / ControlNet /
+                                // Flake Link) for this choice \u2014 replaces the per-section
+                                // "+ LoRA / + ControlNet / + Flake Link" buttons.
                                 const dragHandle = document.createElement("span");
                                 dragHandle.textContent = "\u2630";
                                 css(dragHandle, "cursor:grab;color:#666;font-size:12px;padding:0 4px;user-select:none;");
+                                dragHandle.title = "Drag to reorder \u2022 click to add a field";
                                 dragHandle.draggable = true;
                                 dragHandle.addEventListener("dragstart", (e) => {
                                     dragChoiceName = choiceName;
@@ -1362,6 +1367,10 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     dragChoiceName = null;
                                     choiceCard.style.opacity = "";
                                     for (const ind of optsBox.querySelectorAll(".choice-drop-indicator")) ind.remove();
+                                });
+                                dragHandle.addEventListener("click", (e) => {
+                                    e.stopPropagation();
+                                    openChoiceFieldMenu(dragHandle);
                                 });
                                 cRow.appendChild(dragHandle);
 
@@ -1664,6 +1673,59 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     } catch { return null; }
                                 }
 
+                                // Add a field to this variant choice (#331). Mirrors the
+                                // old per-section "+ X" button actions, now reached from the
+                                // hamburger handle's dropdown.
+                                async function addChoiceField(key) {
+                                    const co = fieldState.variants[groupName][choiceName] || (fieldState.variants[groupName][choiceName] = {});
+                                    if (key === "lora") {
+                                        if (!Array.isArray(co.loras)) co.loras = [];
+                                        co.loras.push({ name: "", path: "", strength: 1.0 });
+                                        renderChoiceExtras();
+                                    } else if (key === "controlnets") {
+                                        if (!Array.isArray(co.controlnets)) co.controlnets = [];
+                                        co.controlnets.push({ type: "", image: "", strength: 1.0 });
+                                        renderChoiceExtras();
+                                    } else if (key === "flake_link") {
+                                        const t = await pickChoiceTarget();
+                                        if (!t) return;
+                                        if (!Array.isArray(co.flake_links)) co.flake_links = [];
+                                        co.flake_links.push({ target: t, variant: {}, lora_strengths: [] });
+                                        renderChoiceExtras();
+                                    }
+                                }
+
+                                // Transient "Add field" popup anchored under the hamburger.
+                                function openChoiceFieldMenu(anchorEl) {
+                                    const menu = document.createElement("div");
+                                    css(menu, "display:flex;flex-direction:column;gap:2px;background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:4px;box-shadow:0 4px 12px rgba(0,0,0,0.5);position:fixed;z-index:10000;");
+                                    const opts = [
+                                        { key: "lora", label: "LoRA" },
+                                        { key: "controlnets", label: "ControlNet" },
+                                        { key: "flake_link", label: "Flake Link" },
+                                    ];
+                                    function cleanup() {
+                                        document.removeEventListener("click", onOutside, true);
+                                        if (menu.parentElement) menu.remove();
+                                    }
+                                    function onOutside(e) {
+                                        if (!menu.contains(e.target) && e.target !== anchorEl) cleanup();
+                                    }
+                                    for (const o of opts) {
+                                        const it = document.createElement("button");
+                                        it.textContent = o.label;
+                                        css(it, "text-align:left;padding:4px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
+                                        it.addEventListener("click", (e) => { e.stopPropagation(); cleanup(); addChoiceField(o.key); });
+                                        menu.appendChild(it);
+                                    }
+                                    document.body.appendChild(menu);
+                                    const rect = anchorEl.getBoundingClientRect();
+                                    menu.style.left = `${rect.left}px`;
+                                    menu.style.top = `${rect.bottom + 4}px`;
+                                    // Defer so the opening click doesn't immediately close it.
+                                    setTimeout(() => document.addEventListener("click", onOutside, true), 0);
+                                }
+
                                 function renderChoiceExtras() {
                                     extrasHost.replaceChildren();
                                     const co = fieldState.variants[groupName][choiceName] || (fieldState.variants[groupName][choiceName] = {});
@@ -1673,12 +1735,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         css(l, "font-size:11px;color:#aaa;font-weight:500;margin-top:6px;");
                                         extrasHost.appendChild(l);
                                     };
-                                    const addButton = (text, onClick) => {
-                                        const b = makeSmallButton(text);
-                                        b.addEventListener("click", onClick);
-                                        extrasHost.appendChild(b);
-                                    };
-
                                     // ---- LoRAs ----
                                     sectionLabel("Variant LoRAs");
                                     const loras = Array.isArray(co.loras) ? co.loras : [];
@@ -1704,12 +1760,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         row.appendChild(rm);
                                         extrasHost.appendChild(row);
                                     });
-                                    addButton("+ LoRA", () => {
-                                        if (!Array.isArray(co.loras)) co.loras = [];
-                                        co.loras.push({ name: "", path: "", strength: 1.0 });
-                                        renderChoiceExtras();
-                                    });
-
                                     // ---- ControlNets ----
                                     sectionLabel("Variant ControlNets");
                                     const cnets = Array.isArray(co.controlnets) ? co.controlnets : [];
@@ -1790,12 +1840,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         card.appendChild(right);
                                         extrasHost.appendChild(card);
                                     });
-                                    addButton("+ ControlNet", () => {
-                                        if (!Array.isArray(co.controlnets)) co.controlnets = [];
-                                        co.controlnets.push({ type: "", image: "", strength: 1.0 });
-                                        renderChoiceExtras();
-                                    });
-
                                     // ---- Flake Links ----
                                     sectionLabel("Variant Flake Links");
                                     const links = Array.isArray(co.flake_links) ? co.flake_links : [];
@@ -1840,13 +1884,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                             }).catch(() => {});
                                         }
                                         extrasHost.appendChild(card);
-                                    });
-                                    addButton("+ Flake Link", async () => {
-                                        const t = await pickChoiceTarget();
-                                        if (!t) return;
-                                        if (!Array.isArray(co.flake_links)) co.flake_links = [];
-                                        co.flake_links.push({ target: t, variant: {}, lora_strengths: [] });
-                                        renderChoiceExtras();
                                     });
                                 }
                                 renderChoiceExtras();
