@@ -1006,7 +1006,11 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         posCol.style.flex = hasNeg ? "1 1 0" : "1 1 auto";
                         negCol.style.flex = hasNeg ? "1 1 0" : "0 0 auto";
 
-                        if (fieldState.prompt?.positive != null) {
+                        // A positive prompt is always present by default (#332) — no
+                        // "+ Positive" button. Seed an empty string when missing.
+                        if (!fieldState.prompt) fieldState.prompt = {};
+                        if (fieldState.prompt.positive == null) fieldState.prompt.positive = "";
+                        {
                             const posTA = makeTextarea(fieldState.prompt.positive, "positive prompt", 3);
                             css(posTA, taCss);
                             posTA.addEventListener("change", () => { fieldState.prompt.positive = posTA.value; });
@@ -1023,18 +1027,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 }
                             }, "Remove positive prompt");
                             posCol.appendChild(posWrap);
-                        } else {
-                            const posBtn = document.createElement("button");
-                            posBtn.textContent = "+ Positive";
-                            css(posBtn, "flex:1;min-height:60px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;gap:3px;user-select:none;box-sizing:border-box;white-space:nowrap;padding:0 6px;");
-                            posBtn.addEventListener("mouseenter", () => { posBtn.style.background = "#333"; });
-                            posBtn.addEventListener("mouseleave", () => { posBtn.style.background = "#2a2a2a"; });
-                            posBtn.addEventListener("click", () => {
-                                if (!fieldState.prompt) fieldState.prompt = {};
-                                fieldState.prompt.positive = fieldState.prompt.positive ?? "";
-                                renderPrompts();
-                            });
-                            posCol.appendChild(posBtn);
                         }
 
                         if (hasNeg) {
@@ -1604,7 +1596,11 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     choicePosCol.style.flex = hasNeg ? "1 1 0" : "1 1 auto";
                                     choiceNegCol.style.flex = hasNeg ? "1 1 0" : "0 0 auto";
 
-                                    if (choice.positive != null) {
+                                    // Positive override is always present by default (#332)
+                                    // — no "+ Positive" button. Empty values are pruned on save.
+                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                    if (choice.positive == null) choice.positive = "";
+                                    {
                                         const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
                                         // Fill column height (the column matches the image height via align-items:stretch on bodyRow).
                                         css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;height:100%;flex:1;min-height:0;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
@@ -1619,18 +1615,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         }, "Remove positive prompt");
                                         css(posWrap, "min-height:0;");
                                         choicePosCol.appendChild(posWrap);
-                                    } else {
-                                        const posBtn = document.createElement("button");
-                                        posBtn.textContent = "+ Positive";
-                                        css(posBtn, "flex:1;min-height:50px;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;display:flex;align-items:center;justify-content:center;gap:3px;user-select:none;box-sizing:border-box;white-space:nowrap;padding:0 6px;");
-                                        posBtn.addEventListener("mouseenter", () => { posBtn.style.background = "#333"; });
-                                        posBtn.addEventListener("mouseleave", () => { posBtn.style.background = "#2a2a2a"; });
-                                        posBtn.addEventListener("click", () => {
-                                            fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
-                                            fieldState.variants[groupName][choiceName].positive = fieldState.variants[groupName][choiceName].positive ?? "";
-                                            renderChoicePrompts();
-                                        });
-                                        choicePosCol.appendChild(posBtn);
                                     }
 
                                     if (choice.negative != null) {
