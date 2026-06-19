@@ -221,6 +221,8 @@ function setupBatchTracking(combinations, comboKeys) {
         if (idx < 0) return;
         const comboKey = (comboKeys && comboKeys[idx]) ?? "";
         const images = output.flake_images;
+        const adImages = output.flake_images_ad;
+        const isAB = Array.isArray(output.adetailer_ab) && output.adetailer_ab.length > 0;
         if (!Array.isArray(images) || images.length === 0) return;
         const candidates = nodeId
             ? [app.graph.getNodeById(nodeId)].filter(n => n && n.type === "FlakeGenerate")
@@ -229,6 +231,11 @@ function setupBatchTracking(combinations, comboKeys) {
             fg.properties = fg.properties || {};
             fg.properties._images_by_combo = fg.properties._images_by_combo || {};
             fg.properties._images_by_combo[comboKey] = images[0];
+            if (isAB && Array.isArray(adImages) && adImages.length > 0) {
+                fg.properties._images_by_combo_ad = fg.properties._images_by_combo_ad || {};
+                fg.properties._images_by_combo_ad[comboKey] = adImages[0];
+                fg.properties._adetailer_ab = true;
+            }
         }
     }
 

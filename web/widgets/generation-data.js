@@ -355,11 +355,21 @@ export function combinationKeyFor(model, selIdx) {
 }
 
 // ── Overlay UI ─────────────────────────────────────────────────────────────
-export function openGenerationDataOverlay(model, lastImagesByCombo) {
+export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
+    const {
+        lastImagesByComboAd = {},
+        adetailerAB = false,
+        adetailer = "Off",
+        adetailerDenoise,
+        adetailerSteps,
+        adetailerBbox,
+        upscale = false,
+        upscaleModel,
+        upscaleFactor,
+    } = opts;
     let { content, footer, close } = openOverlay();
-    // Cap width at 70% of previous (#229 — reduce overlay width by 30%): the
-    // previous cap was min(1400px, 95vw); new cap is min(980px, 66vw).
-    css(content.parentElement, content.parentElement.style.cssText + "width:auto;max-width:min(980px,66vw);min-width:0;");
+    // Wider overlay (#324): give the right-hand image + data panel more room.
+    css(content.parentElement, content.parentElement.style.cssText + "width:auto;max-width:min(1200px,85vw);min-width:0;");
 
     const header = document.createElement("div");
     css(header, "display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #333;");
@@ -393,12 +403,12 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
         css(split, "display:flex;gap:8px;align-items:flex-start;");
         content.appendChild(split);
 
-        // Left half: combo axis grids + combo-specific fields below
+        // Left third: combo axis grids + combo-specific fields below
         const left = document.createElement("div");
-        css(left, "flex:1;display:flex;flex-direction:column;gap:12px;min-width:0;max-height:60vh;overflow:auto;");
-        // Right half: composite image + common data sections
+        css(left, "flex:0 0 33%;display:flex;flex-direction:column;gap:12px;min-width:0;max-height:65vh;overflow:auto;");
+        // Right two-thirds: composite image + common data sections
         const right = document.createElement("div");
-        css(right, "flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;max-height:60vh;overflow:auto;");
+        css(right, "flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;max-height:65vh;overflow:auto;");
         split.appendChild(left);
         split.appendChild(right);
 
@@ -420,7 +430,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             section.appendChild(lbl);
 
             const scroll = document.createElement("div");
-            css(scroll, "display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;");
+            css(scroll, "display:flex;flex-wrap:wrap;gap:6px;padding-bottom:4px;");
             const axisCards = [];
             axis.items.forEach((item, ii) => {
                 const card = document.createElement("div");
@@ -570,18 +580,21 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
         const compositeImg = document.createElement("img");
         // Aspect ratio is set per-combination in refreshRight (#231); start at
         // a 1:1 placeholder while data loads.
-        css(compositeImg, "width:256px;height:256px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
+        css(compositeImg, "width:384px;height:384px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
         const compositeDimensions = document.createElement("div");
         css(compositeDimensions, "font-size:10px;color:#666;text-align:center;");
+        const adToggleWrap = document.createElement("div");
+        css(adToggleWrap, "display:flex;align-items:center;gap:8px;font-size:12px;color:#ddd;");
         compositeWrap.appendChild(compositeImg);
         compositeWrap.appendChild(compositeLabel);
         compositeWrap.appendChild(compositeDimensions);
+        compositeWrap.appendChild(adToggleWrap);
         right.appendChild(compositeWrap);
         function applyAspectRatio(w, h) {
             if (!w || !h) return;
-            const MAX = 256;
+            const MAX = 384;
             const ratio = w / h;
             let cw, ch;
             if (ratio >= 1) { cw = MAX; ch = Math.round(MAX / ratio); }
@@ -632,7 +645,9 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             applyAspectRatio(data.width, data.height);
 
             // Composite (or generated output if we have one for this combination)
-            const generated = lastImagesByCombo && lastImagesByCombo[key];
+            const generated = showAd
+                ? (lastImagesByComboAd && lastImagesByComboAd[key])
+                : (lastImagesByCombo && lastImagesByCombo[key]);
             if (generated) {
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
                 const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
@@ -650,8 +665,9 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             const s1 = section("Model", data.modelRows);
             const s2 = section("LoRAs", data.commonLoraRows);
             const s3 = section("Prompts", data.commonPromptRows);
-            for (const s of [s1, s2, s3]) if (s) dataWrap.appendChild(s);
-            if (!s1 && !s2 && !s3) {
+            const s4 = section("Generation settings", extraInfoRows());
+            for (const s of [s1, s2, s3, s4]) if (s) dataWrap.appendChild(s);
+            if (!s1 && !s2 && !s3 && !s4) {
                 const empty = document.createElement("div");
                 css(empty, "font-size:12px;color:#555;text-align:center;padding:20px;");
                 empty.textContent = "No data for this combination";
@@ -667,6 +683,45 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             if (cs2) leftDataWrap.appendChild(cs2);
         }
 
+        // ADetailer A/B toggle (#328): only visible when this run produced both
+        // regular and ADetailer outputs. It switches the previewed image.
+        let showAd = false;
+        let adToggle = null;
+        if (adetailerAB) {
+            adToggle = document.createElement("label");
+            css(adToggle, "display:flex;align-items:center;gap:6px;cursor:pointer;");
+            const chk = document.createElement("input");
+            chk.type = "checkbox";
+            chk.checked = false;
+            css(chk, "cursor:pointer;margin:0;");
+            const span = document.createElement("span");
+            span.textContent = "Show ADetailer output";
+            adToggle.appendChild(chk);
+            adToggle.appendChild(span);
+            chk.addEventListener("change", () => {
+                showAd = chk.checked;
+                refreshRight();
+            });
+            adToggleWrap.appendChild(adToggle);
+        }
+
+        // Build extra info rows for ADetailer/Upscale settings (#324).
+        function extraInfoRows() {
+            const rows = [];
+            if (adetailer !== "Off") {
+                rows.push(["ADetailer", adetailer]);
+                if (adetailerDenoise != null) rows.push(["ADetailer denoise", String(adetailerDenoise)]);
+                if (adetailerSteps != null) rows.push(["ADetailer steps", String(adetailerSteps)]);
+                if (adetailerBbox) rows.push(["ADetailer bbox", adetailerBbox]);
+            }
+            if (upscale) {
+                rows.push(["Upscale", "On"]);
+                if (upscaleModel) rows.push(["Upscale model", upscaleModel]);
+                if (upscaleFactor != null) rows.push(["Upscale factor", String(upscaleFactor)]);
+            }
+            return rows;
+        }
+
         refreshRight();
     } else {
         // No combo nodes: single centered panel
@@ -677,18 +732,21 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
         const compositeWrap = document.createElement("div");
         css(compositeWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
         const compositeImg = document.createElement("img");
-        css(compositeImg, "width:256px;height:256px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
+        css(compositeImg, "width:384px;height:384px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
         const compositeDimensions = document.createElement("div");
         css(compositeDimensions, "font-size:10px;color:#666;text-align:center;");
+        const adToggleWrap = document.createElement("div");
+        css(adToggleWrap, "display:flex;align-items:center;gap:8px;font-size:12px;color:#ddd;");
         compositeWrap.appendChild(compositeImg);
         compositeWrap.appendChild(compositeLabel);
         compositeWrap.appendChild(compositeDimensions);
+        compositeWrap.appendChild(adToggleWrap);
         singleWrap.appendChild(compositeWrap);
         function applyAspectRatioSingle(w, h) {
             if (!w || !h) return;
-            const MAX = 256;
+            const MAX = 384;
             const ratio = w / h;
             let cw, ch;
             if (ratio >= 1) { cw = MAX; ch = Math.round(MAX / ratio); }
@@ -727,6 +785,43 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             return wrap;
         }
 
+        // ADetailer A/B toggle (#328) for the single-panel path.
+        let showAd = false;
+        if (adetailerAB) {
+            const adToggle = document.createElement("label");
+            css(adToggle, "display:flex;align-items:center;gap:6px;cursor:pointer;");
+            const chk = document.createElement("input");
+            chk.type = "checkbox";
+            chk.checked = false;
+            css(chk, "cursor:pointer;margin:0;");
+            const span = document.createElement("span");
+            span.textContent = "Show ADetailer output";
+            adToggle.appendChild(chk);
+            adToggle.appendChild(span);
+            chk.addEventListener("change", () => {
+                showAd = chk.checked;
+                refreshRight();
+            });
+            adToggleWrap.appendChild(adToggle);
+        }
+
+        // Extra info rows for ADetailer/Upscale settings (#324).
+        function extraInfoRows() {
+            const rows = [];
+            if (adetailer !== "Off") {
+                rows.push(["ADetailer", adetailer]);
+                if (adetailerDenoise != null) rows.push(["ADetailer denoise", String(adetailerDenoise)]);
+                if (adetailerSteps != null) rows.push(["ADetailer steps", String(adetailerSteps)]);
+                if (adetailerBbox) rows.push(["ADetailer bbox", adetailerBbox]);
+            }
+            if (upscale) {
+                rows.push(["Upscale", "On"]);
+                if (upscaleModel) rows.push(["Upscale model", upscaleModel]);
+                if (upscaleFactor != null) rows.push(["Upscale factor", String(upscaleFactor)]);
+            }
+            return rows;
+        }
+
         let refreshToken = 0;
         async function refreshRight() {
             const token = ++refreshToken;
@@ -744,7 +839,9 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
                 ? ""
                 : combinationKeyFor(model, model.axes.map(() => 0));
             applyAspectRatioSingle(data.width, data.height);
-            const generated = lastImagesByCombo && (lastImagesByCombo[key] ?? lastImagesByCombo[""]);
+            const generated = showAd
+                ? (lastImagesByComboAd && (lastImagesByComboAd[key] ?? lastImagesByComboAd[""]))
+                : (lastImagesByCombo && (lastImagesByCombo[key] ?? lastImagesByCombo[""]));
             if (generated) {
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
                 const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
@@ -761,8 +858,9 @@ export function openGenerationDataOverlay(model, lastImagesByCombo) {
             const s1 = section("Model", data.modelRows);
             const s2 = section("LoRAs", [...data.commonLoraRows, ...data.comboLoraRows]);
             const s3 = section("Prompts", [...data.commonPromptRows, ...data.comboPromptRows]);
-            for (const s of [s1, s2, s3]) if (s) dataWrap.appendChild(s);
-            if (!s1 && !s2 && !s3) {
+            const s4 = section("Generation settings", extraInfoRows());
+            for (const s of [s1, s2, s3, s4]) if (s) dataWrap.appendChild(s);
+            if (!s1 && !s2 && !s3 && !s4) {
                 const empty = document.createElement("div");
                 css(empty, "font-size:12px;color:#555;text-align:center;padding:20px;");
                 empty.textContent = "No data for this combination";

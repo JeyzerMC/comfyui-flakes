@@ -98,7 +98,18 @@ export function setupFlakeGenerateWidget(node) {
             if (link) startNode = graph.getNodeById(link.origin_id);
         }
         const model = startNode ? buildModel(startNode) : { axes: [], fixed: { presetName: null, stackFlakes: [] } };
-        openGenerationDataOverlay(model, node.properties._images_by_combo || {});
+        const adetailer = findWidget("adetailer")?.value || "Off";
+        openGenerationDataOverlay(model, node.properties._images_by_combo || {}, {
+            lastImagesByComboAd: node.properties._images_by_combo_ad || {},
+            adetailerAB: !!node.properties._adetailer_ab,
+            adetailer,
+            adetailerDenoise: findWidget("adetailer_denoise")?.value,
+            adetailerSteps: findWidget("adetailer_steps")?.value,
+            adetailerBbox: findWidget("adetailer_bbox")?.value,
+            upscale: !!findWidget("upscale")?.value,
+            upscaleModel: findWidget("upscale_model")?.value,
+            upscaleFactor: findWidget("upscale_factor")?.value,
+        });
     });
     topRow.appendChild(genDataBtn);
     container.appendChild(topRow);
@@ -198,6 +209,15 @@ export function setupFlakeGenerateWidget(node) {
             const img = output.flake_images[0];
             showImage(img);
             node.properties._last_image = img;
+            // Store ADetailer A/B outputs when present (#328).
+            const isAB = Array.isArray(output.adetailer_ab) && output.adetailer_ab.length > 0;
+            if (isAB && Array.isArray(output.flake_images_ad) && output.flake_images_ad.length > 0) {
+                node.properties._last_image_ad = output.flake_images_ad[0];
+                node.properties._adetailer_ab = true;
+            } else {
+                node.properties._last_image_ad = null;
+                node.properties._adetailer_ab = false;
+            }
             // Per-combo storage is populated from queue.js via the `executed`
             // websocket event (which carries the correct prompt_id), so we no
             // longer write _images_by_combo here — doing so raced when the
