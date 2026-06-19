@@ -990,7 +990,11 @@ export function makeHoverButton({ svg, title, onClick }) {
 }
 
 export function makeTypeRibbon(entry, isBypassed, onToggleBypass, idx) {
-    const typeTag = entry.flake_type || "Other";
+    const typeTag = entry.flake_type;
+    // Don't render the ribbon at all when the flake has no real type; this
+    // prevents showing a misleading "O" (first letter of "Other") for newly
+    // created flakes that haven't been assigned a type yet (#276).
+    if (!typeTag) return null;
     const color = TYPE_COLORS[typeTag] || TYPE_COLORS.Other;
     const ribbon = document.createElement("div");
     ribbon.textContent = typeTag[0];

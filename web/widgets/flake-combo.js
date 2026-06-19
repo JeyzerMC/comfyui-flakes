@@ -46,9 +46,11 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
     // Type ribbon — static type indicator. Activation/deactivation is handled
     // by the top-right checkbox (#277), mirroring Flake Model Combo.
     const ribbon = makeTypeRibbon(entry, isBypassed);
-    ribbon.style.cursor = "default";
-    ribbon.title = entry.flake_type || "Other";
-    block.appendChild(ribbon);
+    if (ribbon) {
+        ribbon.style.cursor = "default";
+        ribbon.title = entry.flake_type;
+        block.appendChild(ribbon);
+    }
 
     // Strikethrough for bypassed state
     if (isBypassed) {

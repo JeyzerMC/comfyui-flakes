@@ -58,9 +58,11 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
     // mirroring Flake Combo / Flake Model Combo.
     if (!isDefault) {
         const ribbon = makeTypeRibbon(entry, isBypassed);
-        ribbon.style.cursor = "default";
-        ribbon.title = entry.flake_type || "Other";
-        block.appendChild(ribbon);
+        if (ribbon) {
+            ribbon.style.cursor = "default";
+            ribbon.title = entry.flake_type;
+            block.appendChild(ribbon);
+        }
     }
 
     // Strikethrough for bypassed state
