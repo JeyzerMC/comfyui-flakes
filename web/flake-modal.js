@@ -398,6 +398,25 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             const folder = familyFolder(currentFamily);
             return folder ? `img/${folder}` : "";
         }
+
+        // Open the load picker (search bar + folders + flakes) and return the
+        // chosen flake name, or null. Hoisted so the add-field UI can auto-open
+        // it when a Flake Link field is added (#320).
+        async function pickFlakeTarget() {
+            try {
+                const list = await (await fetch(`/flakes/list?family=${encodeURIComponent(currentFamily || "")}`)).json();
+                const flakes = (list.flakes || []).filter(n => n !== name);
+                const res = await openFileLoadPicker({
+                    flakes,
+                    directories: list.directories || [],
+                    family: currentFamily || "",
+                    displayNames: list.display_names || {},
+                    tagNames: list.tag_names || {},
+                });
+                return res && res.name ? res.name : null;
+            } catch { return null; }
+        }
+
         if (mode === "edit" || mode === "create") {
             const coverWrap = document.createElement("div");
             css(coverWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
@@ -872,7 +891,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             })();
 
                             const pathBox = document.createElement("div");
-                            css(pathBox, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
+                            css(pathBox, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:32px;box-sizing:border-box;display:flex;align-items:center;");
                             pathBox.textContent = lora.path ? lora.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
                             pathBox.title = lora.path || "";
 
@@ -1102,6 +1121,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             css(imageCol, "display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto;");
 
                             const imgBox = document.createElement("div");
+                            imgBox.dataset.cnMainImg = "1";
                             css(imgBox, "width:80px;height:80px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
                             const imgPreview = document.createElement("img");
                             css(imgPreview, "width:100%;height:100%;object-fit:cover;display:none;");
@@ -1971,23 +1991,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
                     if (!Array.isArray(fieldState.flake_links)) fieldState.flake_links = [];
 
-                    // Open the load picker (search bar + folders + flakes) and
-                    // return the chosen flake name, or null.
-                    async function pickFlakeTarget() {
-                        try {
-                            const list = await (await fetch(`/flakes/list?family=${encodeURIComponent(currentFamily || "")}`)).json();
-                            const flakes = (list.flakes || []).filter(n => n !== name);
-                            const res = await openFileLoadPicker({
-                                flakes,
-                                directories: list.directories || [],
-                                family: currentFamily || "",
-                                displayNames: list.display_names || {},
-                                tagNames: list.tag_names || {},
-                            });
-                            return res && res.name ? res.name : null;
-                        } catch { return null; }
-                    }
-
                     // Render one link's variant + lora-strength overrides into box.
                     function renderOneLinkOverrides(link, box) {
                         box.replaceChildren();
@@ -2130,21 +2133,82 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
         }
         renderFields();
 
-        // Add field button
-        const addFieldRow = document.createElement("div");
-        css(addFieldRow, "display:flex;gap:8px;align-items:center;flex-wrap:wrap;");
+        // Add field UI: quick buttons for the most common fields, plus a menu
+        // for the rest. Labels sit above the buttons on their own row (#322).
+        const addFieldWrap = document.createElement("div");
+        css(addFieldWrap, "display:flex;flex-direction:column;gap:2px;");
 
-        const addFieldBtn = makeSmallButton("+ Add flake field");
-        addFieldRow.appendChild(addFieldBtn);
+        const labelRow = document.createElement("div");
+        css(labelRow, "display:flex;gap:8px;align-items:flex-end;");
+        const btnRow = document.createElement("div");
+        css(btnRow, "display:flex;gap:8px;align-items:center;flex-wrap:wrap;");
+
+        function makeAddFieldLabel(text) {
+            const el = document.createElement("div");
+            el.textContent = text;
+            css(el, "font-size:11px;color:#888;padding:0 2px;flex:1;min-width:0;text-align:center;");
+            return el;
+        }
+
+        function makeQuickAddButton(label, fieldKey, onAdded) {
+            const btn = makeSmallButton(label);
+            btn.addEventListener("mousedown", (e) => e.stopPropagation());
+            btn.addEventListener("dblclick", (e) => e.stopPropagation());
+            btn.addEventListener("click", async (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (activeFields.includes(fieldKey)) {
+                    scrollToFieldKey(fieldKey);
+                    return;
+                }
+                activeFields.push(fieldKey);
+                if (fieldKey === "lora") {
+                    fieldState.loras = [{ name: "", url: "", path: "", strength: 1.0, _editing: true }];
+                } else if (fieldKey === "controlnets") {
+                    fieldState.controlnets._ = [{ type: "", image: "", strength: 1.0 }];
+                } else if (fieldKey === "flake_link") {
+                    fieldState.flake_links = [];
+                }
+                renderFields();
+                scrollToFieldKey(fieldKey);
+                if (onAdded) await onAdded();
+            });
+            return btn;
+        }
+
+        labelRow.appendChild(makeAddFieldLabel("LoRA"));
+        labelRow.appendChild(makeAddFieldLabel("ControlNet"));
+        labelRow.appendChild(makeAddFieldLabel("Flake Link"));
+        labelRow.appendChild(makeAddFieldLabel(""));
+
+        btnRow.appendChild(makeQuickAddButton("+ LoRA", "lora"));
+        btnRow.appendChild(makeQuickAddButton("+ ControlNet", "controlnets", async () => {
+            // Auto-add the first CN section and immediately open the file picker (#319).
+            const imgBox = optionalBox.querySelector('[data-field-key="controlnets"] [data-cn-main-img]');
+            if (imgBox) imgBox.click();
+        }));
+        btnRow.appendChild(makeQuickAddButton("+ Flake Link", "flake_link", async () => {
+            // Auto-open the Load existing flake popup (#320).
+            const target = await pickFlakeTarget();
+            if (target) {
+                fieldState.flake_links.push({ target, variant: {}, lora_strengths: [] });
+                renderFields();
+                scrollToFieldKey("flake_link");
+            }
+        }));
+
+        // "+ Add field" dropdown for Prompts, Resolution, and Variants.
+        const addFieldBtn = makeSmallButton("+ Add field");
+        btnRow.appendChild(addFieldBtn);
 
         const fieldMenu = document.createElement("div");
         css(fieldMenu, "display:none;flex-direction:column;gap:2px;background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:4px;box-shadow:0 4px 12px rgba(0,0,0,0.5);position:fixed;z-index:10000;");
         const fieldTypes = [
-            { key: "lora", label: "LoRA" },
             { key: "prompt", label: "Prompts" },
             { key: "resolution", label: "Resolution override" },
-            { key: "controlnets", label: "ControlNets" },
             { key: "variants", label: "Variants" },
+            { key: "lora", label: "LoRA" },
+            { key: "controlnets", label: "ControlNets" },
             { key: "flake_link", label: "Flake link" },
         ];
         for (const ft of fieldTypes) {
@@ -2153,13 +2217,16 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
             css(item, "text-align:left;padding:4px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
             item.addEventListener("click", () => {
                 fieldMenu.style.display = "none";
-                if (activeFields.includes(ft.key)) return;
+                if (activeFields.includes(ft.key)) {
+                    scrollToFieldKey(ft.key);
+                    return;
+                }
                 activeFields.push(ft.key);
                 if (ft.key === "lora") fieldState.loras = [{ name: "", url: "", path: "", strength: 1.0, _editing: true }];
                 if (ft.key === "prompt") fieldState.prompt = {};
                 if (ft.key === "resolution") fieldState.resolution = [1024, 1024];
-                if (ft.key === "controlnets") fieldState.controlnets._ = [];
-                if (ft.key === "variants") fieldState.variants = {};
+                if (ft.key === "controlnets") fieldState.controlnets._ = [{ type: "", image: "", strength: 1.0 }];
+                if (ft.key === "variants") fieldState.variants = { Default: { Default: {} } };
                 if (ft.key === "flake_link") fieldState.flake_links = [];
                 renderFields();
                 scrollToFieldKey(ft.key);
@@ -2195,7 +2262,10 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
             if (fieldMenu.parentElement) fieldMenu.remove();
             prev?.(v);
         })(handlers.onClose);
-        content.appendChild(addFieldRow);
+
+        addFieldWrap.appendChild(labelRow);
+        addFieldWrap.appendChild(btnRow);
+        content.appendChild(addFieldWrap);
 
         // ---- Footer ----
         if (mode === "edit") {
