@@ -2117,71 +2117,16 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
         }
         renderFields();
 
-        // Add field UI: quick buttons for the most common fields, plus a menu
-        // for the rest. Labels sit above the buttons on their own row (#322).
+        // Add field UI: a single "+ Add field" button that opens a dropdown with
+        // every field type. The standalone +LoRA / +ControlNet / +Flake Link quick
+        // buttons were removed (#330); those types live in the dropdown instead.
         const addFieldWrap = document.createElement("div");
         css(addFieldWrap, "display:flex;flex-direction:column;gap:2px;");
 
-        const labelRow = document.createElement("div");
-        css(labelRow, "display:flex;gap:8px;align-items:flex-end;");
         const btnRow = document.createElement("div");
         css(btnRow, "display:flex;gap:8px;align-items:center;flex-wrap:wrap;");
 
-        function makeAddFieldLabel(text) {
-            const el = document.createElement("div");
-            el.textContent = text;
-            css(el, "font-size:11px;color:#888;padding:0 2px;flex:1;min-width:0;text-align:center;");
-            return el;
-        }
-
-        function makeQuickAddButton(label, fieldKey, onAdded) {
-            const btn = makeSmallButton(label);
-            btn.addEventListener("mousedown", (e) => e.stopPropagation());
-            btn.addEventListener("dblclick", (e) => e.stopPropagation());
-            btn.addEventListener("click", async (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                if (activeFields.includes(fieldKey)) {
-                    scrollToFieldKey(fieldKey);
-                    return;
-                }
-                activeFields.push(fieldKey);
-                if (fieldKey === "lora") {
-                    fieldState.loras = [{ name: "", url: "", path: "", strength: 1.0, _editing: true }];
-                } else if (fieldKey === "controlnets") {
-                    fieldState.controlnets._ = [{ type: "", image: "", strength: 1.0 }];
-                } else if (fieldKey === "flake_link") {
-                    fieldState.flake_links = [];
-                }
-                renderFields();
-                scrollToFieldKey(fieldKey);
-                if (onAdded) await onAdded();
-            });
-            return btn;
-        }
-
-        labelRow.appendChild(makeAddFieldLabel("LoRA"));
-        labelRow.appendChild(makeAddFieldLabel("ControlNet"));
-        labelRow.appendChild(makeAddFieldLabel("Flake Link"));
-        labelRow.appendChild(makeAddFieldLabel(""));
-
-        btnRow.appendChild(makeQuickAddButton("+ LoRA", "lora"));
-        btnRow.appendChild(makeQuickAddButton("+ ControlNet", "controlnets", async () => {
-            // Auto-add the first CN section and immediately open the file picker (#319).
-            const imgBox = optionalBox.querySelector('[data-field-key="controlnets"] [data-cn-main-img]');
-            if (imgBox) imgBox.click();
-        }));
-        btnRow.appendChild(makeQuickAddButton("+ Flake Link", "flake_link", async () => {
-            // Auto-open the Load existing flake popup (#320).
-            const target = await pickFlakeTarget();
-            if (target) {
-                fieldState.flake_links.push({ target, variant: {}, lora_strengths: [] });
-                renderFields();
-                scrollToFieldKey("flake_link");
-            }
-        }));
-
-        // "+ Add field" dropdown for Prompts, Resolution, and Variants.
+        // "+ Add field" dropdown for every field type.
         const addFieldBtn = makeSmallButton("+ Add field");
         btnRow.appendChild(addFieldBtn);
 
@@ -2199,7 +2144,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
             const item = document.createElement("button");
             item.textContent = ft.label;
             css(item, "text-align:left;padding:4px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
-            item.addEventListener("click", () => {
+            item.addEventListener("click", async () => {
                 fieldMenu.style.display = "none";
                 if (activeFields.includes(ft.key)) {
                     scrollToFieldKey(ft.key);
@@ -2214,6 +2159,20 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                 if (ft.key === "flake_link") fieldState.flake_links = [];
                 renderFields();
                 scrollToFieldKey(ft.key);
+                // Preserve the old quick-add conveniences now that the standalone
+                // buttons are gone (#330): auto-open the CN file picker (#319) and
+                // the Load-existing-flake popup (#320).
+                if (ft.key === "controlnets") {
+                    const imgBox = optionalBox.querySelector('[data-field-key="controlnets"] [data-cn-main-img]');
+                    if (imgBox) imgBox.click();
+                } else if (ft.key === "flake_link") {
+                    const target = await pickFlakeTarget();
+                    if (target) {
+                        fieldState.flake_links.push({ target, variant: {}, lora_strengths: [] });
+                        renderFields();
+                        scrollToFieldKey("flake_link");
+                    }
+                }
             });
             fieldMenu.appendChild(item);
         }
@@ -2247,7 +2206,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
             prev?.(v);
         })(handlers.onClose);
 
-        addFieldWrap.appendChild(labelRow);
         addFieldWrap.appendChild(btnRow);
         content.appendChild(addFieldWrap);
 
