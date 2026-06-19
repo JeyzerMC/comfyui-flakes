@@ -217,6 +217,22 @@ export function setupFlakeModelComboWidget(node) {
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
 
+    // Toggle-all button (#315): activate/deactivate every preset in the combo at once.
+    const toggleAll = document.createElement("button");
+    css(toggleAll, "margin:2px 0;padding:3px;border-radius:4px;border:1px solid #555;background:#2a2a2a;color:#cfe6ff;cursor:pointer;font-size:11px;");
+    function refreshToggleAll() {
+        const presets = readPresets();
+        const allActive = presets.length > 0 && presets.every(p => !isPresetBypassed(p));
+        toggleAll.textContent = allActive ? "Deactivate all" : "Activate all";
+    }
+    toggleAll.addEventListener("click", () => {
+        const presets = readPresets();
+        const allActive = presets.length > 0 && presets.every(p => !isPresetBypassed(p));
+        node.properties._combo_bypassed = allActive ? [...new Set(presets)] : [];
+        render();
+    });
+    container.appendChild(toggleAll);
+
     const grid = document.createElement("div");
     css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
     container.appendChild(grid);
@@ -422,6 +438,7 @@ export function setupFlakeModelComboWidget(node) {
         });
 
         grid.appendChild(addBtn);
+        refreshToggleAll();
     }
 
     // React to native family widget changes
@@ -441,7 +458,7 @@ export function setupFlakeModelComboWidget(node) {
         // node doesn't over-count rows and pad itself with empty space (#317).
         const cols = Math.max(1, Math.floor((node.size[0] - 16) / 76));
         const rows = Math.max(1, Math.ceil((readPresets().length + 1) / cols));
-        return [node.size[0], rows * 84 + 31];
+        return [node.size[0], rows * 84 + 55];  // +24 for the toggle-all button (#315)
     };
     updateActivePreset();
     render();

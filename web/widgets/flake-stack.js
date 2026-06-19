@@ -531,6 +531,28 @@ export function setupFlakeWidget(node) {
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
 
+    // Toggle-all button (#315): activate/deactivate every flake on the grid at once.
+    const toggleAll = document.createElement("button");
+    css(toggleAll, "margin:2px 0;padding:3px;border-radius:4px;border:1px solid #555;background:#2a2a2a;color:#cfe6ff;cursor:pointer;font-size:11px;");
+    function setAllActive(active) {
+        const arr = readEntries();
+        for (let i = 1; i < arr.length; i++) arr[i].bypassed = !active;  // skip inline Default
+        writeEntries(arr);
+        render();
+    }
+    function refreshToggleAll() {
+        const arr = readEntries().slice(1);
+        const allActive = arr.length > 0 && arr.every(e => !e.bypassed);
+        toggleAll.textContent = allActive ? "Deactivate all" : "Activate all";
+    }
+    toggleAll.addEventListener("click", () => {
+        const arr = readEntries().slice(1);
+        const allActive = arr.length > 0 && arr.every(e => !e.bypassed);
+        setAllActive(!allActive);
+        refreshToggleAll();
+    });
+    container.appendChild(toggleAll);
+
     // Flakes grid
     const grid = document.createElement("div");
     css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
@@ -587,6 +609,7 @@ export function setupFlakeWidget(node) {
             grid.appendChild(blk);
         }
         if (grid._addBlock) grid.appendChild(grid._addBlock);
+        refreshToggleAll();
     }
 
     async function handleEdit(idx) {
@@ -806,7 +829,7 @@ export function setupFlakeWidget(node) {
         // node doesn't over-count rows and pad itself with empty space (#317).
         const cols = Math.max(1, Math.floor((node.size[0] - 16) / 76));
         const rows = Math.max(1, Math.ceil((readEntries().length + 1) / cols));
-        return [node.size[0], rows * 84 + 31];
+        return [node.size[0], rows * 84 + 55];  // +24 for the toggle-all button (#315)
     };
     writeEntries(readEntries());
     render();

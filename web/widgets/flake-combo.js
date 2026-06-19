@@ -499,6 +499,23 @@ export function setupFlakeComboWidget(node) {
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
 
+    // Toggle-all button (#315): activate/deactivate every flake in the combo at once.
+    const toggleAll = document.createElement("button");
+    css(toggleAll, "margin:2px 0;padding:3px;border-radius:4px;border:1px solid #555;background:#2a2a2a;color:#cfe6ff;cursor:pointer;font-size:11px;");
+    function refreshToggleAll() {
+        const arr = readAllFlakes();
+        const allActive = arr.length > 0 && arr.every(e => !e.bypassed);
+        toggleAll.textContent = allActive ? "Deactivate all" : "Activate all";
+    }
+    toggleAll.addEventListener("click", () => {
+        const arr = readAllFlakes();
+        const allActive = arr.length > 0 && arr.every(e => !e.bypassed);
+        arr.forEach(e => { e.bypassed = allActive; });
+        writeAllFlakes(arr);
+        render();
+    });
+    container.appendChild(toggleAll);
+
     const grid = document.createElement("div");
     css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
     container.appendChild(grid);
@@ -563,6 +580,7 @@ export function setupFlakeComboWidget(node) {
         }
 
         if (grid._addBlock) grid.appendChild(grid._addBlock);
+        refreshToggleAll();
     }
 
     async function handleEdit(idx) {
@@ -779,7 +797,7 @@ export function setupFlakeComboWidget(node) {
         // node doesn't over-count rows and pad itself with empty space (#317).
         const cols = Math.max(1, Math.floor((node.size[0] - 16) / 76));
         const rows = Math.max(1, Math.ceil((readAllFlakes().length + 1) / cols));
-        return [node.size[0], rows * 84 + 31];
+        return [node.size[0], rows * 84 + 55];  // +24 for the toggle-all button (#315)
     };
     updateActiveFlake();
     render();
