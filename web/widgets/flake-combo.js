@@ -754,7 +754,10 @@ export function setupFlakeComboWidget(node) {
     node._combo_render = render;
     const comboWidget = node.addDOMWidget("combo_ui", "div", container, { serialize: false, margin: 4 });
     comboWidget.computeSize = () => {
-        const rows = Math.max(1, Math.ceil((readAllFlakes().length + 1) / 2));
+        // Match the actual auto-fill column count (minmax 72px + 4px gap) so a wide
+        // node doesn't over-count rows and pad itself with empty space (#317).
+        const cols = Math.max(1, Math.floor((node.size[0] - 16) / 76));
+        const rows = Math.max(1, Math.ceil((readAllFlakes().length + 1) / cols));
         return [node.size[0], rows * 84 + 31];
     };
     updateActiveFlake();

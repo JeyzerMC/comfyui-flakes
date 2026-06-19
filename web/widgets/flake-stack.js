@@ -761,7 +761,10 @@ export function setupFlakeWidget(node) {
     node._flakes_render = render;
     const flakeWidget = node.addDOMWidget("flakes_ui", "div", container, { serialize: false, margin: 4 });
     flakeWidget.computeSize = () => {
-        const rows = Math.max(1, Math.ceil((readEntries().length + 1) / 2));
+        // Match the actual auto-fill column count (minmax 72px + 4px gap) so a wide
+        // node doesn't over-count rows and pad itself with empty space (#317).
+        const cols = Math.max(1, Math.floor((node.size[0] - 16) / 76));
+        const rows = Math.max(1, Math.ceil((readEntries().length + 1) / cols));
         return [node.size[0], rows * 84 + 31];
     };
     writeEntries(readEntries());
