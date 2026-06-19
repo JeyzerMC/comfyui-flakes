@@ -54,15 +54,33 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
     }
     refreshCover();
 
-    // Type ribbon + bypass (clicking toggles bypass)
+    // Type ribbon — static; activation is via the top-right checkbox (#314),
+    // mirroring Flake Combo / Flake Model Combo.
     if (!isDefault) {
-        const ribbon = makeTypeRibbon(entry, isBypassed, onToggleBypass, idx);
+        const ribbon = makeTypeRibbon(entry, isBypassed);
+        ribbon.style.cursor = "default";
+        ribbon.title = entry.flake_type || "Other";
         block.appendChild(ribbon);
     }
 
     // Strikethrough for bypassed state
     if (isBypassed && !isDefault) {
         block.appendChild(makeBypassStrike());
+    }
+
+    // Enable/disable checkbox (top-right): checked = active, unchecked = bypassed.
+    // Replaces the old "click the type tag" toggle (#314).
+    if (!isDefault) {
+        const toggle = document.createElement("input");
+        toggle.type = "checkbox";
+        toggle.checked = !isBypassed;
+        toggle.title = isBypassed ? "Flake disabled (click to enable)" : "Flake enabled (click to disable)";
+        css(toggle, "position:absolute;top:3px;right:3px;z-index:6;cursor:pointer;margin:0;width:14px;height:14px;");
+        toggle.addEventListener("click", (e) => { e.stopPropagation(); });
+        toggle.addEventListener("mousedown", (e) => e.stopPropagation());
+        toggle.addEventListener("dblclick", (e) => e.stopPropagation());
+        toggle.addEventListener("change", (e) => { e.stopPropagation(); onToggleBypass(idx); });
+        block.appendChild(toggle);
     }
 
     // Name — stacked label: name line, dimmer tag line (#297), variant suffix.
