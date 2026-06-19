@@ -13,6 +13,9 @@ export async function fetchList(family = "") {
             flakes: Array.isArray(d.flakes) ? d.flakes : [],
             directories: Array.isArray(d.directories) ? d.directories : [],
             display_names: d.display_names || {},
+            // Surface tag_names so the Load-existing-flake picker can show the
+            // LoRA tag line, matching the grid items (#334).
+            tag_names: d.tag_names || {},
         }));
     }
     return LIST_PROMISE;
