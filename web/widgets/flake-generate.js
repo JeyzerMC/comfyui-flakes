@@ -13,7 +13,7 @@ export function setupFlakeGenerateWidget(node) {
     const ADETAILER_DEPS = ["adetailer_denoise", "adetailer_steps", "adetailer_bbox"];
     const UPSCALE_DEPS = ["upscale_model", "upscale_factor"];
     function syncOptionalWidgets() {
-        const adOn = !!findWidget("adetailer")?.value;
+        const adOn = (findWidget("adetailer")?.value || "Off") !== "Off";
         const upOn = !!findWidget("upscale")?.value;
         for (const n of ADETAILER_DEPS) setWidgetHidden(findWidget(n), !adOn);
         for (const n of UPSCALE_DEPS) setWidgetHidden(findWidget(n), !upOn);

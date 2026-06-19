@@ -398,8 +398,9 @@ class FlakeGenerate:
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True}),
             },
             "optional": {
-                # ADetailer / Face Detailer post-process (#287, SDXL-first).
-                "adetailer": ("BOOLEAN", {"default": False, "label_on": "Face Detailer", "label_off": "ADetailer off"}),
+                # ADetailer post-process (#287, SDXL-first). Off / Face / A/B; A/B
+                # generates each image twice — once without, once with ADetailer (#327).
+                "adetailer": (["Off", "Face", "A/B"], {"default": "Off"}),
                 "adetailer_denoise": ("FLOAT", {"default": 0.4, "min": 0.0, "max": 1.0, "step": 0.05}),
                 # ADetailer sampling steps (#301). 0 = reuse the first-pass steps.
                 "adetailer_steps": ("INT", {"default": 0, "min": 0, "max": 150, "step": 1, "tooltip": "ADetailer (Face Detailer) sampling steps. 0 = use the same steps as the first pass."}),
@@ -419,7 +420,7 @@ class FlakeGenerate:
     DESCRIPTION = "Generate an image from FLAKE_DATA using KSampler, VAE Decode, and Save Image. Displays the result inline."
     OUTPUT_NODE = True
 
-    def execute(self, flake_data, seed, adetailer=False, adetailer_denoise=0.4,
+    def execute(self, flake_data, seed, adetailer="Off", adetailer_denoise=0.4,
                 adetailer_steps=0, adetailer_bbox="bbox/face_yolov8m.pt",
                 upscale=False, upscale_model="", upscale_factor=1.5):
         parts = _split_flake_data(flake_data)
@@ -445,37 +446,46 @@ class FlakeGenerate:
         vae_dec = VAEDecode()
         images = vae_dec.decode(vae, sampled_latent)[0]
 
-        # Optional ADetailer (Face Detailer) post-process (#287).
-        if adetailer:
+        base_images = images
+
+        def _detail(imgs):
             from .flake_postprocess import run_face_detailer
             # 0 means "match the first pass"; otherwise use the explicit count (#301).
             ad_steps = adetailer_steps if adetailer_steps and adetailer_steps > 0 else steps
-            images = run_face_detailer(
-                images, model, clip, vae, positive, negative,
+            return run_face_detailer(
+                imgs, model, clip, vae, positive, negative,
                 seed, ad_steps, cfg, sampler_name, scheduler,
                 denoise=adetailer_denoise, bbox_model=adetailer_bbox,
             )
 
-        # Optional upscale post-process (#288), after detailing.
-        if upscale:
-            from .flake_postprocess import upscale_images
-            images = upscale_images(images, upscale_model, upscale_factor)
-
-        # Post-process stem markers, before the increment: _ad_ for ADetailer (#326),
-        # _up_ for Upscale (#325). Both, in pipeline order, give "..._ad_up_<inc>".
-        if adetailer:
-            filename_prefix = filename_prefix + "_ad"
-        if upscale:
-            filename_prefix = filename_prefix + "_up"
+        # Build the output variant(s): Off/Face produce one image set; A/B produces
+        # two — once without ADetailer, once with (#327). The ADetailer variant is
+        # tagged so its stem gets the _ad_ marker (#326).
+        if adetailer == "A/B":
+            variants = [(base_images, False), (_detail(base_images), True)]
+        elif adetailer == "Face":
+            variants = [(_detail(base_images), True)]
+        else:
+            variants = [(base_images, False)]
 
         saver = SaveImage()
-        save_result = saver.save_images(images, filename_prefix=filename_prefix)
-
-        # Remove the trailing underscore before the file extension that ComfyUI's
-        # SaveImage hardcodes (e.g. "..._00001_.png" -> "..._00001.png").
         output_dir = folder_paths.get_output_directory()
-        if "ui" in save_result and "images" in save_result["ui"]:
-            for img_info in save_result["ui"]["images"]:
+
+        def _save(imgs, is_ad):
+            # Stem markers before the increment: _ad_ for ADetailer (#326), _up_ for
+            # Upscale (#325). Upscale (#288) applies to every variant when on.
+            out_imgs, marker = imgs, ""
+            if is_ad:
+                marker += "_ad"
+            if upscale:
+                from .flake_postprocess import upscale_images
+                out_imgs = upscale_images(imgs, upscale_model, upscale_factor)
+                marker += "_up"
+            res = saver.save_images(out_imgs, filename_prefix=filename_prefix + marker)
+            ui_imgs = res.get("ui", {}).get("images", [])
+            # Strip the trailing underscore ComfyUI's SaveImage hardcodes
+            # (e.g. "..._00001_.png" -> "..._00001.png").
+            for img_info in ui_imgs:
                 old_name = img_info["filename"]
                 if old_name.endswith("_.png"):
                     new_name = old_name[:-5] + ".png"
@@ -487,6 +497,15 @@ class FlakeGenerate:
                             img_info["filename"] = new_name
                     except OSError:
                         pass
+            return ui_imgs
+
+        regular_ui, ad_ui = [], []
+        for imgs, is_ad in variants:
+            saved = _save(imgs, is_ad)
+            if is_ad:
+                ad_ui = saved
+            else:
+                regular_ui = saved
 
         model_bundle, generation_data, sampling_preset = flake_data
         meta = {}
@@ -553,11 +572,15 @@ class FlakeGenerate:
             "Inputs": inputs_info,
         }
 
-        ui_data = dict(save_result.get("ui", {}))
-        # Rename "images" to "flake_images" so ComfyUI's default image renderer
-        # doesn't display a duplicate; the custom JS widget reads "flake_images".
-        if "images" in ui_data:
-            ui_data["flake_images"] = ui_data.pop("images")
+        # Custom keys ("flake_images") so ComfyUI's default renderer doesn't show a
+        # duplicate; the JS widget reads them. For A/B, flake_images is the regular
+        # (non-ADetailer) output and flake_images_ad is the detailed one, with a flag
+        # so the Generation Data overlay shows the ADetailer toggle (#327, #328).
+        ui_data = {}
+        ui_data["flake_images"] = regular_ui if regular_ui else ad_ui
+        if adetailer == "A/B":
+            ui_data["flake_images_ad"] = ad_ui
+            ui_data["adetailer_ab"] = [True]
         ui_data["preview_data"] = [preview_data]
         ui_data["seed"] = [seed]
 
