@@ -780,3 +780,55 @@ async def _browse(_request: web.Request) -> web.Response:
         return _not_found(f"directory not found: {rel_path}")
 
     return web.json_response({"path": rel_path, "entries": entries})
+
+
+# ---------------------------------------------------------------------------
+# Reveal an output image in the OS file explorer (#329)
+# ---------------------------------------------------------------------------
+
+@routes.post("/flakes/reveal")
+async def _reveal_image(request: web.Request) -> web.Response:
+    """Open the OS file explorer at a generated image, selecting it when possible.
+
+    The client posts {filename, subfolder, type}; the absolute path is resolved
+    server-side via folder_paths so no absolute path is trusted from the browser.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return _bad_request("invalid JSON body")
+    if not isinstance(body, dict):
+        return _bad_request("body must be a JSON object")
+
+    filename = (body.get("filename") or "").strip()
+    if not filename:
+        return _bad_request("missing 'filename'")
+    subfolder = (body.get("subfolder") or "").strip()
+    folder_type = (body.get("type") or "output").strip()
+
+    try:
+        base = folder_paths.get_directory_by_type(folder_type) or folder_paths.get_output_directory()
+    except Exception:
+        base = folder_paths.get_output_directory()
+
+    target = os.path.normpath(os.path.join(base, subfolder, filename))
+    # Confine the target to the resolved base directory.
+    real_base, real_target = os.path.realpath(base), os.path.realpath(target)
+    if os.path.commonpath([real_base, real_target]) != real_base:
+        return _bad_request("path escapes the output directory")
+    if not os.path.exists(real_target):
+        return _not_found(f"image not found: {filename}")
+
+    import subprocess
+    import sys
+    try:
+        if sys.platform.startswith("win"):
+            subprocess.Popen(["explorer", "/select,", real_target])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", real_target])
+        else:
+            subprocess.Popen(["xdg-open", os.path.dirname(real_target)])
+    except Exception as exc:
+        logging.exception("[flakes] failed to reveal %s", real_target)
+        return _server_error(str(exc))
+    return web.json_response({"ok": True, "path": real_target})

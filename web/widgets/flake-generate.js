@@ -108,8 +108,24 @@ export function setupFlakeGenerateWidget(node) {
     css(imageContainer, "display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:4px;");
 
     const imageEl = document.createElement("img");
-    css(imageEl, "max-width:100%;border-radius:4px;display:none;");
+    css(imageEl, "max-width:100%;border-radius:4px;display:none;cursor:pointer;");
+    imageEl.title = "Double-click to reveal in file explorer";
     imageContainer.appendChild(imageEl);
+
+    // Double-click the output image to reveal it in the OS file explorer (#329).
+    let currentImage = null;
+    imageEl.addEventListener("dblclick", () => {
+        if (!currentImage) return;
+        fetch("/flakes/reveal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                filename: currentImage.filename,
+                subfolder: currentImage.subfolder || "",
+                type: currentImage.type || "output",
+            }),
+        }).catch((e) => console.error("[flakes] reveal failed", e));
+    });
 
     const noImageLabel = document.createElement("div");
     css(noImageLabel, "font-size:11px;opacity:0.4;text-align:center;padding:8px 0;");
@@ -132,6 +148,7 @@ export function setupFlakeGenerateWidget(node) {
     }
 
     function showImage(img) {
+        currentImage = img;
         imageEl.src = `/view?filename=${encodeURIComponent(img.filename)}&type=${img.type || "output"}&subfolder=${encodeURIComponent(img.subfolder || "")}`;
         imageEl.style.display = "block";
         noImageLabel.style.display = "none";
