@@ -7,7 +7,7 @@ import { openPresetPicker } from "../pickers.js";
 import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
 import { fetchPreset } from "../api.js";
 
-export function makeModelComboBlock({ preset, display_name, idx, isActive, isBypassed, isGenerating, overrides, onOverrideChange, onActivate, onToggleBypass, onSingleOut, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
+export function makeModelComboBlock({ preset, display_name, idx, isActive, isBypassed, isGenerating, overrides, onOverrideChange, onActivate, onToggleBypass, onSingleOut, onDuplicate, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const block = document.createElement("div");
     block.dataset.idx = String(idx);
 
@@ -56,6 +56,19 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
     toggle.addEventListener("change", (e) => { e.stopPropagation(); onToggleBypass(idx); });
     if (onSingleOut) attachHoldToSingleOut(toggle, () => onSingleOut(idx));
     block.appendChild(toggle);
+
+    // Duplicate (») button (bottom-right): adds a copy of this preset beside it,
+    // with its own overrides, for quick variations (#316).
+    if (onDuplicate) {
+        const dup = document.createElement("button");
+        dup.textContent = "»";
+        dup.title = "Duplicate this preset";
+        css(dup, "position:absolute;bottom:2px;right:2px;z-index:6;width:16px;height:16px;padding:0;line-height:14px;font-size:12px;font-weight:700;border-radius:3px;border:1px solid #555;background:rgba(40,40,40,0.85);color:#cfe6ff;cursor:pointer;");
+        dup.addEventListener("click", (e) => { e.stopPropagation(); onDuplicate(idx); });
+        dup.addEventListener("mousedown", (e) => e.stopPropagation());
+        dup.addEventListener("dblclick", (e) => e.stopPropagation());
+        block.appendChild(dup);
+    }
 
     block.draggable = true;
     block.style.cursor = "grab";
@@ -247,6 +260,14 @@ export function setupFlakeModelComboWidget(node) {
                     const keep = presets[idx];
                     if (keep == null) return;
                     node.properties._combo_bypassed = [...new Set(presets.filter(p => p !== keep))];
+                    render();
+                },
+                onDuplicate: (idx) => {
+                    const arr = readPresets();
+                    if (arr[idx] == null) return;
+                    arr.splice(idx + 1, 0, arr[idx]);
+                    overridesArr().splice(idx + 1, 0, JSON.parse(JSON.stringify(getOverridesAt(idx))));
+                    writePresets(arr);
                     render();
                 },
                 onRemove: (idx) => {

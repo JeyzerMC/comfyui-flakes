@@ -8,7 +8,7 @@ import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta 
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 
-function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, onReplace, onToggleBypass, onSingleOut, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, onReplace, onToggleBypass, onSingleOut, onDuplicate, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const hasCover = !!entry.name;
     const isBypassed = !!entry.bypassed;
     const block = document.createElement("div");
@@ -81,6 +81,18 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
     toggle.addEventListener("change", (e) => { e.stopPropagation(); onToggleBypass(idx); });
     if (onSingleOut) attachHoldToSingleOut(toggle, () => onSingleOut(idx));
     block.appendChild(toggle);
+
+    // Duplicate (») button (bottom-right): adds a copy of this flake beside it (#316).
+    if (onDuplicate) {
+        const dup = document.createElement("button");
+        dup.textContent = "»";
+        dup.title = "Duplicate this flake";
+        css(dup, "position:absolute;bottom:2px;right:2px;z-index:6;width:16px;height:16px;padding:0;line-height:14px;font-size:12px;font-weight:700;border-radius:3px;border:1px solid #555;background:rgba(40,40,40,0.85);color:#cfe6ff;cursor:pointer;");
+        dup.addEventListener("click", (e) => { e.stopPropagation(); onDuplicate(idx); });
+        dup.addEventListener("mousedown", (e) => e.stopPropagation());
+        dup.addEventListener("dblclick", (e) => e.stopPropagation());
+        block.appendChild(dup);
+    }
 
     // Name — stacked label: name line, dimmer tag line (#297), variant suffix.
     const baseName = entry.display_name || entry.name || "(missing)";
@@ -510,6 +522,7 @@ export function setupFlakeComboWidget(node) {
                 onReplace: handleReplace,
                 onToggleBypass: handleToggleBypass,
                 onSingleOut: handleSingleOut,
+                onDuplicate: handleDuplicate,
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
                     e.dataTransfer.effectAllowed = "move";
@@ -619,6 +632,14 @@ export function setupFlakeComboWidget(node) {
     function handleToggleBypass(idx) {
         const arr = readAllFlakes();
         arr[idx].bypassed = !arr[idx].bypassed;
+        writeAllFlakes(arr);
+        render();
+    }
+
+    function handleDuplicate(idx) {
+        const arr = readAllFlakes();
+        const copy = JSON.parse(JSON.stringify(arr[idx]));
+        arr.splice(idx + 1, 0, copy);
         writeAllFlakes(arr);
         render();
     }

@@ -18,7 +18,7 @@ function appendLoraTags(baseName, loras) {
     return tags.length ? `${baseName} — ${tags.join(", ")}` : baseName;
 }
 
-function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, onDuplicate, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const isDefault = !!entry.inline;
     const isBypassed = !!entry.bypassed;
     const hasCover = !isDefault && entry.name;
@@ -81,6 +81,19 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
         toggle.addEventListener("dblclick", (e) => e.stopPropagation());
         toggle.addEventListener("change", (e) => { e.stopPropagation(); onToggleBypass(idx); });
         block.appendChild(toggle);
+    }
+
+    // Duplicate (») button (bottom-right): adds a copy of this flake beside it so
+    // the user can quickly make variations with different overrides (#316).
+    if (!isDefault && onDuplicate) {
+        const dup = document.createElement("button");
+        dup.textContent = "»";
+        dup.title = "Duplicate this flake";
+        css(dup, "position:absolute;bottom:2px;right:2px;z-index:6;width:16px;height:16px;padding:0;line-height:14px;font-size:12px;font-weight:700;border-radius:3px;border:1px solid #555;background:rgba(40,40,40,0.85);color:#cfe6ff;cursor:pointer;");
+        dup.addEventListener("click", (e) => { e.stopPropagation(); onDuplicate(idx); });
+        dup.addEventListener("mousedown", (e) => e.stopPropagation());
+        dup.addEventListener("dblclick", (e) => e.stopPropagation());
+        block.appendChild(dup);
     }
 
     // Name — stacked label: name line, dimmer tag line (#297), variant suffix.
@@ -539,6 +552,7 @@ export function setupFlakeWidget(node) {
                 onRemove: handleRemove,
                 onReplace: handleReplace,
                 onToggleBypass: handleToggleBypass,
+                onDuplicate: handleDuplicate,
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
                     e.dataTransfer.effectAllowed = "move";
@@ -651,6 +665,15 @@ export function setupFlakeWidget(node) {
         if (idx === 0) return;
         const arr = readEntries();
         arr[idx].bypassed = !arr[idx].bypassed;
+        writeEntries(arr);
+        render();
+    }
+
+    function handleDuplicate(idx) {
+        if (idx === 0) return;  // never duplicate the inline Default entry
+        const arr = readEntries();
+        const copy = JSON.parse(JSON.stringify(arr[idx]));
+        arr.splice(idx + 1, 0, copy);
         writeEntries(arr);
         render();
     }
