@@ -534,8 +534,13 @@ export function setupFlakeWidget(node) {
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
 
     // Toggle-all button (#315): activate/deactivate every flake on the grid at once.
+    // Styled to match the native Generation Data button (#333): fit-content width,
+    // rounded edges, subtle accent border + hover.
+    const TOGGLE_ACCENT = "#4a9eff";
     const toggleAll = document.createElement("button");
-    css(toggleAll, "margin:2px 0;padding:3px;border-radius:4px;border:1px solid #555;background:#2a2a2a;color:#cfe6ff;cursor:pointer;font-size:11px;");
+    css(toggleAll, `align-self:flex-start;margin:2px 0;padding:5px 12px;border-radius:8px;border:1px solid ${TOGGLE_ACCENT}44;background:#222;color:#cfe6ff;cursor:pointer;font-size:11px;font-weight:600;transition:border-color 0.15s,background 0.15s;`);
+    toggleAll.addEventListener("mouseenter", () => { toggleAll.style.borderColor = TOGGLE_ACCENT; toggleAll.style.background = "#282828"; });
+    toggleAll.addEventListener("mouseleave", () => { toggleAll.style.borderColor = TOGGLE_ACCENT + "44"; toggleAll.style.background = "#222"; });
     function setAllActive(active) {
         const arr = readEntries();
         for (let i = 1; i < arr.length; i++) arr[i].bypassed = !active;  // skip inline Default
