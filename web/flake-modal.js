@@ -1736,8 +1736,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         extrasHost.appendChild(l);
                                     };
                                     // ---- LoRAs ----
-                                    sectionLabel("Variant LoRAs");
                                     const loras = Array.isArray(co.loras) ? co.loras : [];
+                                    if (loras.length) sectionLabel("Variant LoRAs");
                                     loras.forEach((lr, i) => {
                                         const row = document.createElement("div");
                                         css(row, "display:flex;gap:6px;align-items:center;");
@@ -1761,8 +1761,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         extrasHost.appendChild(row);
                                     });
                                     // ---- ControlNets ----
-                                    sectionLabel("Variant ControlNets");
                                     const cnets = Array.isArray(co.controlnets) ? co.controlnets : [];
+                                    if (cnets.length) sectionLabel("Variant ControlNets");
                                     cnets.forEach((cn, i) => {
                                         // Image-left + fields-right layout matching the
                                         // regular CN section (#311).
@@ -1841,8 +1841,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         extrasHost.appendChild(card);
                                     });
                                     // ---- Flake Links ----
-                                    sectionLabel("Variant Flake Links");
                                     const links = Array.isArray(co.flake_links) ? co.flake_links : [];
+                                    if (links.length) sectionLabel("Variant Flake Links");
                                     links.forEach((link, li) => {
                                         const card = document.createElement("div");
                                         css(card, "background:#252525;padding:6px;border-radius:6px;border:1px solid #333;display:flex;flex-direction:column;gap:6px;");
