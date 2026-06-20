@@ -89,7 +89,7 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
         const dup = document.createElement("button");
         dup.textContent = "»";
         dup.title = "Duplicate this flake";
-        css(dup, "position:absolute;bottom:2px;right:2px;z-index:6;width:16px;height:16px;padding:0;line-height:14px;font-size:12px;font-weight:700;border-radius:3px;border:1px solid #555;background:rgba(40,40,40,0.85);color:#cfe6ff;cursor:pointer;");
+        css(dup, "position:absolute;bottom:2px;right:2px;z-index:6;width:16px;height:16px;padding:0;line-height:14px;font-size:12px;font-weight:700;border:none;background:transparent;color:#cfe6ff;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,0.9);");
         dup.addEventListener("click", (e) => { e.stopPropagation(); onDuplicate(idx); });
         dup.addEventListener("mousedown", (e) => e.stopPropagation());
         dup.addEventListener("dblclick", (e) => e.stopPropagation());
