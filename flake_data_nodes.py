@@ -412,6 +412,12 @@ class FlakeGenerate:
                 "upscale_model": (_list_upscale_models(), {"default": ""}),
                 "upscale_factor": ("FLOAT", {"default": 1.5, "min": 1.0, "max": 8.0, "step": 0.1}),
             },
+            # Embed the workflow/prompt into saved PNGs so outputs can be
+            # drag-dropped back into ComfyUI to restore the graph (#344).
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
         }
 
     RETURN_TYPES = ()
@@ -422,7 +428,8 @@ class FlakeGenerate:
 
     def execute(self, flake_data, seed, adetailer="Off", adetailer_denoise=0.4,
                 adetailer_steps=0, adetailer_bbox="bbox/face_yolov8m.pt",
-                upscale=False, upscale_model="", upscale_factor=1.5):
+                upscale=False, upscale_model="", upscale_factor=1.5,
+                prompt=None, extra_pnginfo=None):
         parts = _split_flake_data(flake_data)
         model = parts["model"]
         clip = parts["clip"]
@@ -481,7 +488,8 @@ class FlakeGenerate:
                 from .flake_postprocess import upscale_images
                 out_imgs = upscale_images(imgs, upscale_model, upscale_factor)
                 marker += "_up"
-            res = saver.save_images(out_imgs, filename_prefix=filename_prefix + marker)
+            res = saver.save_images(out_imgs, filename_prefix=filename_prefix + marker,
+                                    prompt=prompt, extra_pnginfo=extra_pnginfo)
             ui_imgs = res.get("ui", {}).get("images", [])
             # Strip the trailing underscore ComfyUI's SaveImage hardcodes
             # (e.g. "..._00001_.png" -> "..._00001.png").
