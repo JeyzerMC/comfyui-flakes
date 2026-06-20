@@ -593,6 +593,16 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         compositeWrap.appendChild(adToggleWrap);
         right.appendChild(compositeWrap);
 
+        // Show the ACTUAL generated image dimensions (not the preset's configured
+        // size) when a real output is displayed (#342). The cover-composite
+        // placeholder keeps the preset dims.
+        let dimsFromImage = false;
+        compositeImg.addEventListener("load", () => {
+            if (dimsFromImage && compositeImg.naturalWidth) {
+                compositeDimensions.textContent = `${compositeImg.naturalWidth} × ${compositeImg.naturalHeight}`;
+            }
+        });
+
         // Double-click the overlay image to reveal it on disk, like the Flake
         // Generate node image (#340). Tracks the current combination's generated file.
         let currentGenerated = null;
@@ -665,15 +675,20 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
                 : (lastImagesByCombo && lastImagesByCombo[key]);
             currentGenerated = generated || null;
             if (generated) {
+                dimsFromImage = true;
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
                 const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
                 compositeLabel.textContent = sub ? `${sub}/${generated.filename}` : generated.filename;
+                compositeDimensions.textContent = (compositeImg.complete && compositeImg.naturalWidth)
+                    ? `${compositeImg.naturalWidth} × ${compositeImg.naturalHeight}`
+                    : (data.dimensions || "");
             } else {
+                dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
                 compositeImg.src = await buildComposite(urls);
+                compositeDimensions.textContent = data.dimensions || "";
             }
-            compositeDimensions.textContent = data.dimensions || "";
 
             // Right panel: common data only (Model Preset + Flake Stack).
             // Combo-axis data lives exclusively on the left (#228).
@@ -760,6 +775,14 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         compositeWrap.appendChild(compositeDimensions);
         compositeWrap.appendChild(adToggleWrap);
         singleWrap.appendChild(compositeWrap);
+
+        // Show the ACTUAL generated image dimensions when a real output is shown (#342).
+        let dimsFromImage = false;
+        compositeImg.addEventListener("load", () => {
+            if (dimsFromImage && compositeImg.naturalWidth) {
+                compositeDimensions.textContent = `${compositeImg.naturalWidth} × ${compositeImg.naturalHeight}`;
+            }
+        });
 
         // Double-click the overlay image to reveal it on disk, like the Flake
         // Generate node image (#340). Tracks the current combination's generated file.
@@ -875,15 +898,20 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
                 : (lastImagesByCombo && (lastImagesByCombo[key] ?? lastImagesByCombo[""]));
             currentGenerated = generated || null;
             if (generated) {
+                dimsFromImage = true;
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
                 const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
                 compositeLabel.textContent = sub ? `${sub}/${generated.filename}` : generated.filename;
+                compositeDimensions.textContent = (compositeImg.complete && compositeImg.naturalWidth)
+                    ? `${compositeImg.naturalWidth} × ${compositeImg.naturalHeight}`
+                    : (data.dimensions || "");
             } else {
+                dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
                 compositeImg.src = await buildComposite(urls);
+                compositeDimensions.textContent = data.dimensions || "";
             }
-            compositeDimensions.textContent = data.dimensions || "";
 
             // Single panel: no left/right split, so merge common+combo data.
             dataWrap.replaceChildren();
