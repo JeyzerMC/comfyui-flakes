@@ -1447,16 +1447,19 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 // on the right.
                                 if (cRow.parentNode === choiceCard) choiceCard.removeChild(cRow);
 
+                                // #336: the cover image floats right so the header, prompts,
+                                // and Variant LoRAs flow beside it; the LoRAs spill to full
+                                // width once they extend past the bottom of the image.
                                 const bodyRow = document.createElement("div");
-                                css(bodyRow, "display:flex;gap:10px;align-items:stretch;");
-
-                                const leftCol = document.createElement("div");
-                                css(leftCol, "flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;");
-                                leftCol.appendChild(cRow);
+                                css(bodyRow, "display:flow-root;");
 
                                 const promptsWrap = document.createElement("div");
-                                css(promptsWrap, "display:flex;gap:8px;align-items:stretch;flex:1;min-height:0;");
-                                leftCol.appendChild(promptsWrap);
+                                css(promptsWrap, "display:flex;gap:8px;align-items:flex-start;margin-top:6px;");
+
+                                // Host for the Variant LoRAs section, kept in flow beside the
+                                // floated image (populated by renderChoiceExtras). A plain block
+                                // (not a BFC) so its rows wrap to full width past the image.
+                                const loraHost = document.createElement("div");
 
                                 const choicePosCol = document.createElement("div");
                                 css(choicePosCol, "display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0;");
@@ -1467,7 +1470,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 promptsWrap.appendChild(choiceNegCol);
 
                                 const rightCol = document.createElement("div");
-                                css(rightCol, "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;");
+                                css(rightCol, "float:right;margin:0 0 8px 10px;display:flex;flex-direction:column;align-items:center;gap:4px;");
 
                                 // 832x1216 aspect (~0.684). At 160px wide -> 234px tall.
                                 const IMG_W = 160, IMG_H = 234;
@@ -1591,8 +1594,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 rightCol.appendChild(imgBox);
                                 refreshChoiceImage();
 
-                                bodyRow.appendChild(leftCol);
+                                // Float (image) first in source order so the header, prompts,
+                                // and LoRAs that follow wrap to its left (#336).
                                 bodyRow.appendChild(rightCol);
+                                bodyRow.appendChild(cRow);
+                                bodyRow.appendChild(promptsWrap);
+                                bodyRow.appendChild(loraHost);
                                 choiceCard.appendChild(bodyRow);
 
                                 function renderChoicePrompts() {
@@ -1611,8 +1618,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     if (choice.positive == null) choice.positive = "";
                                     {
                                         const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
-                                        // Fill column height (the column matches the image height via align-items:stretch on bodyRow).
-                                        css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;height:100%;flex:1;min-height:0;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                                        // Content-sized beside the floated image; autogrows (#336).
+                                        css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;min-height:64px;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                                         attachAutoGrow(cPos);
                                         cPos.addEventListener("change", () => {
                                             fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
@@ -1628,7 +1635,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
                                     if (choice.negative != null) {
                                         const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
-                                        css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;height:100%;flex:1;min-height:0;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
+                                        css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;min-height:64px;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
                                         attachAutoGrow(cNeg);
                                         cNeg.addEventListener("change", () => {
                                             fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
@@ -1728,19 +1735,21 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
                                 function renderChoiceExtras() {
                                     extrasHost.replaceChildren();
+                                    loraHost.replaceChildren();
                                     const co = fieldState.variants[groupName][choiceName] || (fieldState.variants[groupName][choiceName] = {});
-                                    const sectionLabel = (text) => {
+                                    const sectionLabel = (text, host = extrasHost) => {
                                         const l = document.createElement("div");
                                         l.textContent = text;
                                         css(l, "font-size:11px;color:#aaa;font-weight:500;margin-top:6px;");
-                                        extrasHost.appendChild(l);
+                                        host.appendChild(l);
                                     };
-                                    // ---- LoRAs ----
+                                    // ---- LoRAs ---- (rendered into loraHost, beside the floated
+                                    // cover image, wrapping to full width when tall — #336)
                                     const loras = Array.isArray(co.loras) ? co.loras : [];
-                                    if (loras.length) sectionLabel("Variant LoRAs");
+                                    if (loras.length) sectionLabel("Variant LoRAs", loraHost);
                                     loras.forEach((lr, i) => {
                                         const row = document.createElement("div");
-                                        css(row, "display:flex;gap:6px;align-items:center;");
+                                        css(row, "display:flex;gap:6px;align-items:center;margin-top:3px;");
                                         // Clickable box that opens the same "Select LoRA" file
                                         // popup as the regular flake LoRA section (#310).
                                         const box = document.createElement("div");
@@ -1758,7 +1767,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         const rm = makeSmallButton("✕");
                                         rm.addEventListener("click", () => { loras.splice(i, 1); if (!loras.length) delete co.loras; renderChoiceExtras(); });
                                         row.appendChild(rm);
-                                        extrasHost.appendChild(row);
+                                        loraHost.appendChild(row);
                                     });
                                     // ---- ControlNets ----
                                     const cnets = Array.isArray(co.controlnets) ? co.controlnets : [];
