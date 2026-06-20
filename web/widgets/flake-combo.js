@@ -1,5 +1,5 @@
 import {
-    css, ensureDefault, makeSmallButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
+    css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut,
@@ -501,13 +501,15 @@ export function setupFlakeComboWidget(node) {
     const container = document.createElement("div");
     css(container, "display:flex;flex-direction:column;gap:2px;padding:0 6px 3px 6px;font-size:12px;color:#ddd;");
 
-    // Toggle-all button (#315): activate/deactivate every flake in the combo at once.
-    const toggleAll = document.createElement("button");
-    css(toggleAll, "margin:2px 0;padding:3px;border-radius:4px;border:1px solid #555;background:#2a2a2a;color:#cfe6ff;cursor:pointer;font-size:11px;");
+    // Toggle-all button (#315): activate/deactivate every flake in the combo at
+    // once. Matches the Generation Data button via the shared helper, centered (#338).
+    const { btn: toggleAll, lbl: toggleAllLbl } = makeAccentButton("Activate all");
+    toggleAll.style.alignSelf = "center";
+    toggleAll.style.margin = "2px 0";
     function refreshToggleAll() {
         const arr = readAllFlakes();
         const allActive = arr.length > 0 && arr.every(e => !e.bypassed);
-        toggleAll.textContent = allActive ? "Deactivate all" : "Activate all";
+        toggleAllLbl.textContent = allActive ? "Deactivate all" : "Activate all";
     }
     toggleAll.addEventListener("click", () => {
         const arr = readAllFlakes();

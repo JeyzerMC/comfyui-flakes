@@ -308,6 +308,29 @@ export function makeSmallButton(label) {
     return b;
 }
 
+// Accent "chip" button matching the Generation Data button (#338): dark fill,
+// subtle blue border + hover, blue semibold label. Returns { btn, lbl } so the
+// caller can flip the label text (e.g. Activate all / Deactivate all). Pass an
+// optional `icon` (emoji/text) shown before the label.
+export function makeAccentButton(label, { icon = "" } = {}) {
+    const ACCENT = "#4a9eff";
+    const btn = document.createElement("div");
+    css(btn, `flex:0 0 auto;background:#222;border:1px solid ${ACCENT}44;border-radius:8px;padding:6px 10px;cursor:pointer;transition:border-color 0.15s,background 0.15s;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:30px;box-sizing:border-box;white-space:nowrap;`);
+    if (icon) {
+        const ic = document.createElement("span");
+        ic.textContent = icon;
+        ic.style.fontSize = "14px";
+        btn.appendChild(ic);
+    }
+    const lbl = document.createElement("span");
+    lbl.textContent = label;
+    css(lbl, `font-size:11px;font-weight:600;color:${ACCENT};`);
+    btn.appendChild(lbl);
+    btn.addEventListener("mouseenter", () => { btn.style.borderColor = ACCENT; btn.style.background = "#282828"; });
+    btn.addEventListener("mouseleave", () => { btn.style.borderColor = ACCENT + "44"; btn.style.background = "#222"; });
+    return { btn, lbl };
+}
+
 export function makeIconBtn(text, title, onClick) {
     const b = document.createElement("button");
     b.textContent = text;
