@@ -576,11 +576,11 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
 
         // Right: composite image + common data sections
         const compositeWrap = document.createElement("div");
-        css(compositeWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
+        css(compositeWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;box-sizing:border-box;padding:0 4px;");
         const compositeImg = document.createElement("img");
         // Aspect ratio is set per-combination in refreshRight (#231); start at
         // a 1:1 placeholder while data loads.
-        css(compositeImg, "width:384px;height:384px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
+        css(compositeImg, "width:100%;height:auto;aspect-ratio:1/1;object-fit:contain;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
         const compositeDimensions = document.createElement("div");
@@ -594,13 +594,9 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         right.appendChild(compositeWrap);
         function applyAspectRatio(w, h) {
             if (!w || !h) return;
-            const MAX = 384;
-            const ratio = w / h;
-            let cw, ch;
-            if (ratio >= 1) { cw = MAX; ch = Math.round(MAX / ratio); }
-            else { ch = MAX; cw = Math.round(MAX * ratio); }
-            compositeImg.style.width = `${cw}px`;
-            compositeImg.style.height = `${ch}px`;
+            // Full-width image (#339): the panel sets the width; height follows the
+            // output aspect ratio.
+            compositeImg.style.aspectRatio = `${w} / ${h}`;
         }
 
         const dataWrap = document.createElement("div");
@@ -730,9 +726,9 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         content.appendChild(singleWrap);
 
         const compositeWrap = document.createElement("div");
-        css(compositeWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;");
+        css(compositeWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;box-sizing:border-box;padding:0 4px;");
         const compositeImg = document.createElement("img");
-        css(compositeImg, "width:384px;height:384px;object-fit:cover;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
+        css(compositeImg, "width:100%;height:auto;aspect-ratio:1/1;object-fit:contain;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
         const compositeDimensions = document.createElement("div");
@@ -746,13 +742,9 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         singleWrap.appendChild(compositeWrap);
         function applyAspectRatioSingle(w, h) {
             if (!w || !h) return;
-            const MAX = 384;
-            const ratio = w / h;
-            let cw, ch;
-            if (ratio >= 1) { cw = MAX; ch = Math.round(MAX / ratio); }
-            else { ch = MAX; cw = Math.round(MAX * ratio); }
-            compositeImg.style.width = `${cw}px`;
-            compositeImg.style.height = `${ch}px`;
+            // Full-width image (#339): the panel sets the width; height follows the
+            // output aspect ratio.
+            compositeImg.style.aspectRatio = `${w} / ${h}`;
         }
 
         const dataWrap = document.createElement("div");
