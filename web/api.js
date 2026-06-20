@@ -205,6 +205,20 @@ export async function fetchFlakeMeta(name) {
     return META_CACHE[name];
 }
 
+// Synchronous best-effort count of a flake's full variant-combination set
+// (product of each group's choice count), using whatever is in META_CACHE.
+// Returns 1 when the meta isn't cached yet (#343) — the exact batch count is
+// still computed at queue time from the freshly-fetched meta.
+export function variantComboCount(name) {
+    const m = META_CACHE[name];
+    if (!m) return 1;
+    let n = 1;
+    for (const g of Object.keys(m)) {
+        if (Array.isArray(m[g]) && m[g].length) n *= m[g].length;
+    }
+    return n || 1;
+}
+
 let EMBEDDINGS_PROMISE = null;
 export function fetchEmbeddings() {
     if (!EMBEDDINGS_PROMISE) EMBEDDINGS_PROMISE = fetch("/flakes/embeddings").then(r => r.json()).then(d => d.embeddings || []);

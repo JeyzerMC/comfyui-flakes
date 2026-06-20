@@ -1,6 +1,29 @@
 import { app } from "../../scripts/app.js";
 import { collectChain } from "./widgets/generation-data.js";
 import { serializeModelOverrides } from "./utils.js";
+import { fetchFlakeMeta, variantComboCount } from "./api.js";
+
+// Full set of variant selections for a flake whose groups are `meta`
+// ({group: [choices]}) — the cartesian product, one {group: choice} per combo.
+// Empty meta yields a single empty selection (#343).
+function enumerateVariantCombos(meta) {
+    const groups = Object.keys(meta || {}).filter(g => Array.isArray(meta[g]) && meta[g].length);
+    if (groups.length === 0) return [{}];
+    const arrays = groups.map(g => meta[g].map(ch => [g, ch]));
+    return cartesianProduct(arrays).map(pairs => Object.fromEntries(pairs));
+}
+
+// Active (non-bypassed, non-inline) "All Variants" flakes in a FlakeStack's
+// flakes_json, as [{ index, flake }] (#343).
+function stackAllVariantsFlakes(node) {
+    const w = node.widgets?.find(w => w.name === "flakes_json");
+    let entries = [];
+    try { entries = JSON.parse(w?.value || "[]"); } catch { entries = []; }
+    if (!Array.isArray(entries)) return [];
+    return entries
+        .map((flake, index) => ({ flake, index }))
+        .filter(({ flake }) => flake && !flake.inline && !flake.bypassed && flake._all_variants && flake.name);
+}
 
 export function getComboFlakes(node) {
     return node.properties?._combo_flakes || [];
@@ -32,11 +55,21 @@ export function computeJobCount(graph) {
     let count = 1;
     for (const node of g.nodes) {
         if (node.type === "FlakeCombo") {
-            const n = activeComboFlakes(node).length;
-            if (n > 0) count *= n;
+            // Each active flake is one axis item; an "All Variants" flake expands
+            // into one item per variant combination (#343).
+            let axis = 0;
+            for (const f of activeComboFlakes(node)) {
+                axis += f._all_variants ? Math.max(1, variantComboCount(f.name)) : 1;
+            }
+            if (axis > 0) count *= axis;
         } else if (node.type === "FlakeModelCombo") {
             const n = activeComboPresets(node).length;
             if (n > 0) count *= n;
+        } else if (node.type === "FlakeStack") {
+            // Stack flakes flagged "All Variants" are extra axes (#343).
+            for (const { flake } of stackAllVariantsFlakes(node)) {
+                count *= Math.max(1, variantComboCount(flake.name));
+            }
         }
     }
     return count;
@@ -193,10 +226,11 @@ function setupBatchTracking(combinations, comboKeys) {
             if (item.type === "combo") {
                 item.node._combo_generating_index = item.index;
                 item.node._combo_render?.();
-            } else {
+            } else if (item.type === "model_combo") {
                 item.node._model_combo_generating_index = item.index;
                 item.node._model_combo_render?.();
             }
+            // stack_variant items have no node-level highlight (#343).
         }
     }
 
@@ -310,7 +344,22 @@ function orderedComboNodes() {
 app.queuePrompt = async function(number, batchCount = 1) {
     const orderedNodes = orderedComboNodes();
 
-    if (orderedNodes.length === 0) {
+    // Stack flakes flagged "All Variants" become extra combinatorial axes,
+    // independent of any combo nodes (#343).
+    const stackAxes = [];
+    for (const node of app.graph.nodes) {
+        if (node.type !== "FlakeStack" || node.mode === 2 || node.mode === 4) continue;
+        for (const { flake, index } of stackAllVariantsFlakes(node)) {
+            const meta = await fetchFlakeMeta(flake.name);
+            const combos = enumerateVariantCombos(meta);
+            if (combos.length <= 1) continue;
+            stackAxes.push(combos.map((variant, vi) => ({
+                node, type: "stack_variant", flakeIndex: index, value: variant, index, vkey: `s${index}.${vi}`,
+            })));
+        }
+    }
+
+    if (orderedNodes.length === 0 && stackAxes.length === 0) {
         return _originalQueuePrompt.call(this, number, batchCount);
     }
 
@@ -330,12 +379,21 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 window.alert("FlakeCombo node has no active (non-bypassed) flakes.");
                 return;
             }
-            optionsArrays.push(activeFlakes.map(({ flake, i }) => ({
-                node,
-                type: "combo",
-                value: flake,
-                index: i,
-            })));
+            // Expand "All Variants" flakes into one axis item per variant combo;
+            // ordinary flakes stay a single item. vkey keeps each combo's
+            // comboKey unique (#343).
+            const comboItems = [];
+            for (const { flake, i } of activeFlakes) {
+                if (flake._all_variants) {
+                    const meta = await fetchFlakeMeta(flake.name);
+                    enumerateVariantCombos(meta).forEach((variant, vi) => {
+                        comboItems.push({ node, type: "combo", value: { ...flake, variant }, index: i, vkey: `${i}.${vi}` });
+                    });
+                } else {
+                    comboItems.push({ node, type: "combo", value: flake, index: i, vkey: `${i}` });
+                }
+            }
+            optionsArrays.push(comboItems);
         } else {
             const presets = getComboPresets(node);
             if (presets.length === 0) {
@@ -356,9 +414,13 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 type: "model_combo",
                 value: preset,
                 index: i,
+                vkey: String(i),
             })));
         }
     }
+
+    // Append the stack "All Variants" axes (#343).
+    for (const axis of stackAxes) optionsArrays.push(axis);
 
     const combinations = cartesianProduct(optionsArrays);
     if (combinations.length === 0) {
@@ -369,7 +431,8 @@ app.queuePrompt = async function(number, batchCount = 1) {
     const nodeOriginals = new Map();
     for (const item of combinations[0]) {
         if (!nodeOriginals.has(item.node.id)) {
-            if (item.type === "combo") {
+            if (item.type === "combo" || item.type === "stack_variant") {
+                // Both mutate the node's flakes_json; save it once to restore later.
                 const w = item.node.widgets?.find(w => w.name === "flakes_json");
                 nodeOriginals.set(item.node.id, { node: item.node, widget: w, value: w?.value });
             } else {
@@ -411,6 +474,18 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 if (item.type === "combo") {
                     const w = item.node.widgets?.find(w => w.name === "flakes_json");
                     if (w) w.value = JSON.stringify([item.value]);
+                } else if (item.type === "stack_variant") {
+                    // Set just this stack flake's variant for the combination;
+                    // other stack flakes (and other all-variants indices) are left
+                    // to their own items. Restored from nodeOriginals after (#343).
+                    const w = item.node.widgets?.find(w => w.name === "flakes_json");
+                    if (w) {
+                        let arr; try { arr = JSON.parse(w.value || "[]"); } catch { arr = []; }
+                        if (arr[item.flakeIndex]) {
+                            arr[item.flakeIndex] = { ...arr[item.flakeIndex], variant: item.value };
+                            w.value = JSON.stringify(arr);
+                        }
+                    }
                 } else {
                     const w = item.node.widgets?.find(w => w.name === "preset");
                     if (w) w.value = item.value;
@@ -423,9 +498,9 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 }
             }
             const comboKey = combination
-                .map(it => [it.node.id, it.index])
+                .map(it => [it.node.id, it.vkey ?? String(it.index)])
                 .sort((a, b) => a[0] - b[0])
-                .map(([id, idx]) => `${id}:${idx}`)
+                .map(([id, vk]) => `${id}:${vk}`)
                 .join("|");
 
             // Tell our patched api.queuePrompt which comboKey to attach to the

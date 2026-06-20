@@ -217,6 +217,34 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             const sep = document.createElement("div");
             css(sep, "border-top:1px solid #333;margin:2px 0;");
             nativeColumn.appendChild(sep);
+
+            // "All Variants" — generate one output per variant combination (#343).
+            const avRow = document.createElement("label");
+            css(avRow, "display:flex;align-items:center;justify-content:center;gap:6px;font-size:10px;cursor:pointer;");
+            const avChk = document.createElement("input");
+            avChk.type = "checkbox";
+            avChk.checked = !!entry._all_variants;
+            css(avChk, "cursor:pointer;margin:0;");
+            const avLbl = document.createElement("span");
+            avLbl.textContent = "All Variants";
+            avRow.append(avChk, avLbl);
+            nativeColumn.appendChild(avRow);
+
+            // The per-group dropdowns are superseded while All Variants is on.
+            const groupsWrap = document.createElement("div");
+            css(groupsWrap, "display:flex;flex-direction:column;gap:3px;");
+            nativeColumn.appendChild(groupsWrap);
+            const applyAv = () => {
+                groupsWrap.style.opacity = entry._all_variants ? "0.4" : "1";
+                groupsWrap.style.pointerEvents = entry._all_variants ? "none" : "auto";
+            };
+            avChk.addEventListener("change", () => {
+                entry._all_variants = avChk.checked || undefined;
+                applyAv();
+                onChanged();
+                if (onVariantChange) onVariantChange();
+            });
+
             for (const group of Object.keys(hasOptions)) {
                 const row = document.createElement("div");
                 css(row, "display:flex;flex-direction:column;gap:2px;");
@@ -241,8 +269,9 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     if (onVariantChange) onVariantChange();
                 });
                 row.appendChild(dd.container);
-                nativeColumn.appendChild(row);
+                groupsWrap.appendChild(row);
             }
+            applyAv();
         }
 
         rebuildLinkedPanel();
