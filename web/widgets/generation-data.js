@@ -405,10 +405,10 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
 
         // Left third: combo axis grids + combo-specific fields below
         const left = document.createElement("div");
-        css(left, "flex:0 0 33%;display:flex;flex-direction:column;gap:12px;min-width:0;max-height:65vh;overflow:auto;");
+        css(left, "flex:0 0 33%;display:flex;flex-direction:column;gap:12px;min-width:0;max-height:78vh;overflow:auto;");
         // Right two-thirds: composite image + common data sections
         const right = document.createElement("div");
-        css(right, "flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;max-height:65vh;overflow:auto;");
+        css(right, "flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;max-height:78vh;overflow:auto;");
         split.appendChild(left);
         split.appendChild(right);
 
@@ -580,7 +580,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         const compositeImg = document.createElement("img");
         // Aspect ratio is set per-combination in refreshRight (#231); start at
         // a 1:1 placeholder while data loads.
-        css(compositeImg, "width:100%;height:auto;aspect-ratio:1/1;object-fit:contain;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
+        css(compositeImg, "width:80%;height:auto;aspect-ratio:1/1;object-fit:contain;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
         const compositeDimensions = document.createElement("div");
@@ -742,13 +742,13 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
     } else {
         // No combo nodes: single centered panel
         const singleWrap = document.createElement("div");
-        css(singleWrap, "display:flex;flex-direction:column;align-items:center;gap:10px;max-width:520px;margin:0 auto;max-height:60vh;overflow:auto;");
+        css(singleWrap, "display:flex;flex-direction:column;align-items:center;gap:10px;max-width:520px;margin:0 auto;max-height:72vh;overflow:auto;");
         content.appendChild(singleWrap);
 
         const compositeWrap = document.createElement("div");
         css(compositeWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;box-sizing:border-box;padding:0 4px;");
         const compositeImg = document.createElement("img");
-        css(compositeImg, "width:100%;height:auto;aspect-ratio:1/1;object-fit:contain;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
+        css(compositeImg, "width:80%;height:auto;aspect-ratio:1/1;object-fit:contain;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
         const compositeDimensions = document.createElement("div");
