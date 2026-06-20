@@ -592,6 +592,25 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         compositeWrap.appendChild(compositeDimensions);
         compositeWrap.appendChild(adToggleWrap);
         right.appendChild(compositeWrap);
+
+        // Double-click the overlay image to reveal it on disk, like the Flake
+        // Generate node image (#340). Tracks the current combination's generated file.
+        let currentGenerated = null;
+        compositeImg.style.cursor = "pointer";
+        compositeImg.title = "Double-click to reveal in file explorer";
+        compositeImg.addEventListener("dblclick", () => {
+            if (!currentGenerated) return;
+            fetch("/flakes/reveal", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    filename: currentGenerated.filename,
+                    subfolder: currentGenerated.subfolder || "",
+                    type: currentGenerated.type || "output",
+                }),
+            }).catch((e) => console.error("[flakes] reveal failed", e));
+        });
+
         function applyAspectRatio(w, h) {
             if (!w || !h) return;
             // Full-width image (#339): the panel sets the width; height follows the
@@ -644,6 +663,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
             const generated = showAd
                 ? (lastImagesByComboAd && lastImagesByComboAd[key])
                 : (lastImagesByCombo && lastImagesByCombo[key]);
+            currentGenerated = generated || null;
             if (generated) {
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
                 const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
@@ -740,6 +760,25 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         compositeWrap.appendChild(compositeDimensions);
         compositeWrap.appendChild(adToggleWrap);
         singleWrap.appendChild(compositeWrap);
+
+        // Double-click the overlay image to reveal it on disk, like the Flake
+        // Generate node image (#340). Tracks the current combination's generated file.
+        let currentGenerated = null;
+        compositeImg.style.cursor = "pointer";
+        compositeImg.title = "Double-click to reveal in file explorer";
+        compositeImg.addEventListener("dblclick", () => {
+            if (!currentGenerated) return;
+            fetch("/flakes/reveal", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    filename: currentGenerated.filename,
+                    subfolder: currentGenerated.subfolder || "",
+                    type: currentGenerated.type || "output",
+                }),
+            }).catch((e) => console.error("[flakes] reveal failed", e));
+        });
+
         function applyAspectRatioSingle(w, h) {
             if (!w || !h) return;
             // Full-width image (#339): the panel sets the width; height follows the
@@ -834,6 +873,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
             const generated = showAd
                 ? (lastImagesByComboAd && (lastImagesByComboAd[key] ?? lastImagesByComboAd[""]))
                 : (lastImagesByCombo && (lastImagesByCombo[key] ?? lastImagesByCombo[""]));
+            currentGenerated = generated || null;
             if (generated) {
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
                 const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
