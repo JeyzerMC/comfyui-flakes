@@ -776,6 +776,22 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
     )
 
 
+def _combine_variant_stem(base: str | None, variant_stem: str) -> str:
+    """Combine a flake's base ``output_stem`` with a variant choice's stem.
+
+    A base ending in ``/`` is an explicit folder, so the variant nests inside it;
+    otherwise the base is a filename prefix and the variant is appended as a
+    filename segment with ``_`` — NOT ``/``, which would wrongly fold the base
+    into a directory (``style_a`` + ``variant_b`` -> ``style_a_variant_b``,
+    not ``style_a/variant_b``) (#347).
+    """
+    if not base:
+        return variant_stem
+    if base.endswith("/"):
+        return f"{base}{variant_stem.lstrip('/')}"
+    return f"{base}_{variant_stem.lstrip('/')}"
+
+
 def load_flake(name: str) -> Flake:
     path = _resolve_file(name)
     with open(path, encoding="utf-8") as f:
@@ -815,10 +831,7 @@ def resolve(entry: dict[str, Any]) -> Flake:
             flake.negative = f"{flake.negative}, {extra_neg}" if flake.negative else extra_neg
         variant_stem = variant.get("output_stem")
         if variant_stem:
-            if flake.output_stem:
-                flake.output_stem = f"{flake.output_stem.rstrip('/')}/{variant_stem.lstrip('/')}"
-            else:
-                flake.output_stem = variant_stem
+            flake.output_stem = _combine_variant_stem(flake.output_stem, variant_stem)
 
         # A variant choice can also contribute LoRAs, ControlNets, and flake links
         # (#299) — merged on top of the flake's base. Choice links are appended to
