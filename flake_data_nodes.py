@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 
@@ -385,6 +386,56 @@ class PreviewFlakeData:
         }
 
 
+def _strip_unused_flakes(prompt, extra_pnginfo):
+    """Return deep copies of ``prompt`` and ``extra_pnginfo`` in which every
+    FlakeStack/FlakeCombo node's ``flakes_json`` is reduced to the *active*
+    flakes only — dropping ``bypassed`` and ``inline`` entries (#346).
+
+    Combo nodes already carry a single flake per generation (queue.js sets that
+    at queue time), so the filter is a no-op there; stacks keep only their active
+    flakes. The originals are never mutated; the stripped copies are what gets
+    embedded in the saved PNG so a drag-drop restore reflects what was used.
+    """
+    if not prompt:
+        return prompt, extra_pnginfo
+    prompt = copy.deepcopy(prompt)
+    extra_pnginfo = copy.deepcopy(extra_pnginfo) if extra_pnginfo else extra_pnginfo
+
+    wf_nodes = {}
+    workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+    if isinstance(workflow, dict):
+        for n in (workflow.get("nodes") or []):
+            if isinstance(n, dict):
+                wf_nodes[str(n.get("id"))] = n
+
+    items = prompt.items() if isinstance(prompt, dict) else []
+    for nid, node in items:
+        if not isinstance(node, dict) or node.get("class_type") not in ("FlakeStack", "FlakeCombo"):
+            continue
+        inputs = node.get("inputs")
+        raw = inputs.get("flakes_json") if isinstance(inputs, dict) else None
+        if not isinstance(raw, str):
+            continue
+        try:
+            arr = json.loads(raw)
+        except Exception:
+            continue
+        if not isinstance(arr, list):
+            continue
+        filtered = [f for f in arr if isinstance(f, dict) and not f.get("bypassed") and not f.get("inline")]
+        new_raw = json.dumps(filtered)
+        if new_raw == raw:
+            continue
+        inputs["flakes_json"] = new_raw
+        # Mirror into the workflow node's positional widgets_values by matching
+        # the original flakes_json string (robust to widget ordering).
+        wf = wf_nodes.get(str(nid))
+        if wf and isinstance(wf.get("widgets_values"), list):
+            wf["widgets_values"] = [new_raw if v == raw else v for v in wf["widgets_values"]]
+
+    return prompt, extra_pnginfo
+
+
 class FlakeGenerate:
     """Takes a FLAKE_DATA input and runs KSampler + VAE Decode + Save Image
     internally. Displays a seed widget, a 2x2 preview grid, and the generated
@@ -478,6 +529,9 @@ class FlakeGenerate:
         saver = SaveImage()
         output_dir = folder_paths.get_output_directory()
 
+        # Embed only the used flakes in the saved metadata (#346).
+        meta_prompt, meta_extra = _strip_unused_flakes(prompt, extra_pnginfo)
+
         def _save(imgs, is_ad):
             # Stem markers before the increment: _ad_ for ADetailer (#326), _up_ for
             # Upscale (#325). Upscale (#288) applies to every variant when on.
@@ -489,7 +543,7 @@ class FlakeGenerate:
                 out_imgs = upscale_images(imgs, upscale_model, upscale_factor)
                 marker += "_up"
             res = saver.save_images(out_imgs, filename_prefix=filename_prefix + marker,
-                                    prompt=prompt, extra_pnginfo=extra_pnginfo)
+                                    prompt=meta_prompt, extra_pnginfo=meta_extra)
             ui_imgs = res.get("ui", {}).get("images", [])
             # Strip the trailing underscore ComfyUI's SaveImage hardcodes
             # (e.g. "..._00001_.png" -> "..._00001.png").
