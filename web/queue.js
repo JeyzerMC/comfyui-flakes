@@ -128,6 +128,11 @@ function _resolveComfyApi() {
 // right comboKey. Cleared between combos.
 let _currentBatchComboKey = null;
 
+// The combination index for the prompt currently being queued (#348). With a UI
+// batch count > 1 each combination queues several prompts, so the prompt-id
+// index no longer equals the combination index — this maps it back.
+let _currentComboIndex = null;
+
 // Active batch promptId → comboKey map, plus a live "running" pointer.
 // Exported so the Generation Data overlay can show per-combo progress (#230).
 const _activeBatch = { promptIds: [], comboKeys: [], runningPromptId: null };
@@ -135,7 +140,7 @@ export function getActiveBatch() {
     return _activeBatch;
 }
 
-function setupBatchTracking(combinations, comboKeys) {
+function setupBatchTracking(combinations, comboKeys, totalJobs) {
     const comfyApi = _resolveComfyApi();
     if (!comfyApi || typeof comfyApi.addEventListener !== "function" || combinations.length === 0) {
         if (!comfyApi) {
@@ -144,8 +149,10 @@ function setupBatchTracking(combinations, comboKeys) {
         }
         return null;
     }
+    const jobs = totalJobs || combinations.length;
 
-    const promptIds = []; // insertion order = combo index
+    const promptIds = []; // queue order
+    const comboIndexByPrompt = []; // parallel to promptIds: the combination index (#348)
     let completedCount = 0;
 
     // Pending event buffer: websocket events for a prompt_id can arrive BEFORE
@@ -158,7 +165,7 @@ function setupBatchTracking(combinations, comboKeys) {
     function applyEventForKnownPid(type, e, pid) {
         if (type === "execution_start") {
             const idx = promptIds.indexOf(pid);
-            if (idx >= 0) { setComboHighlight(idx); _activeBatch.runningPromptId = pid; }
+            if (idx >= 0) { setComboHighlight(comboIndexByPrompt[idx]); _activeBatch.runningPromptId = pid; }
         } else if (type === "execution_success" || type === "execution_error" || type === "execution_interrupted") {
             const idx = promptIds.indexOf(pid);
             if (idx < 0) return;
@@ -166,7 +173,7 @@ function setupBatchTracking(combinations, comboKeys) {
             for (const n of app.graph.nodes) {
                 if (n.type === "FlakeGenerate") {
                     n._batch_completed_count = completedCount;
-                    n._batch_total_count = combinations.length;
+                    n._batch_total_count = jobs;
                     n._batch_progress_render?.();
                 }
             }
@@ -203,12 +210,14 @@ function setupBatchTracking(combinations, comboKeys) {
     const _origApiQueuePrompt = comfyApi.queuePrompt?.bind(comfyApi);
     if (_origApiQueuePrompt) {
         comfyApi.queuePrompt = async function(...args) {
-            // Snapshot the combo key now — _currentBatchComboKey may already be
-            // cleared by the time the await below resolves.
+            // Snapshot the combo key/index now — they may already be cleared by
+            // the time the await below resolves.
             const comboKeyForThisCall = _currentBatchComboKey;
+            const comboIndexForThisCall = _currentComboIndex;
             const result = await _origApiQueuePrompt(...args);
             if (result?.prompt_id && comboKeyForThisCall !== null) {
                 promptIds.push(result.prompt_id);
+                comboIndexByPrompt.push(comboIndexForThisCall ?? 0);
                 comboKeys.push(comboKeyForThisCall);
                 _activeBatch.promptIds.push(result.prompt_id);
                 _activeBatch.comboKeys.push(comboKeyForThisCall);
@@ -235,7 +244,7 @@ function setupBatchTracking(combinations, comboKeys) {
     }
 
     function maybeFinish() {
-        if (completedCount >= combinations.length) {
+        if (completedCount >= jobs) {
             if (_batchCleanup) {
                 _batchCleanup();
                 _batchCleanup = null;
@@ -454,8 +463,14 @@ app.queuePrompt = async function(number, batchCount = 1) {
         _batchCleanup = null;
     }
 
+    // The UI batch count multiplies the combinations: each combination is run
+    // `runsPerCombo` times in a row before moving to the next (#348). The seed
+    // advances between runs via control_after_generate (randomize/increment).
+    const runsPerCombo = Math.max(1, batchCount | 0);
+    const totalJobs = combinations.length * runsPerCombo;
+
     const comboKeys = []; // parallel to promptIds; comboKeys[idx] = key for promptIds[idx]
-    const tracker = setupBatchTracking(combinations, comboKeys);
+    const tracker = setupBatchTracking(combinations, comboKeys, totalJobs);
     if (tracker) {
         _batchCleanup = tracker.cleanup;
     }
@@ -463,7 +478,7 @@ app.queuePrompt = async function(number, batchCount = 1) {
     // label resets to "[0/N]" at batch start (#227).
     for (const n of flakeGenerateNodes) {
         n._batch_completed_count = 0;
-        n._batch_total_count = combinations.length;
+        n._batch_total_count = totalJobs;
         n._batch_progress_render?.();
     }
 
@@ -503,14 +518,17 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 .map(([id, vk]) => `${id}:${vk}`)
                 .join("|");
 
-            // Tell our patched api.queuePrompt which comboKey to attach to the
-            // upcoming prompt_id. app.queuePrompt in modern frontends returns
+            // Run this combination `runsPerCombo` times before the next (#348).
+            // Tell our patched api.queuePrompt which comboKey/index to attach to
+            // each captured prompt_id. app.queuePrompt in modern frontends returns
             // void; the prompt_id is captured inside the patch instead.
-            if (tracker) _currentBatchComboKey = comboKey;
-            try {
-                await _originalQueuePrompt.call(this, number, 1);
-            } finally {
-                if (tracker) _currentBatchComboKey = null;
+            for (let b = 0; b < runsPerCombo; b++) {
+                if (tracker) { _currentBatchComboKey = comboKey; _currentComboIndex = comboIdx; }
+                try {
+                    await _originalQueuePrompt.call(this, number, 1);
+                } finally {
+                    if (tracker) { _currentBatchComboKey = null; _currentComboIndex = null; }
+                }
             }
         }
     } finally {
