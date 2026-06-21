@@ -88,7 +88,7 @@ export function setupFlakeGenerateWidget(node) {
     genDataBtn.appendChild(gdLabel);
     genDataBtn.addEventListener("mouseenter", () => { genDataBtn.style.borderColor = ACCENT; genDataBtn.style.background = "#282828"; });
     genDataBtn.addEventListener("mouseleave", () => { genDataBtn.style.borderColor = ACCENT + "44"; genDataBtn.style.background = "#222"; });
-    genDataBtn.addEventListener("click", (e) => {
+    genDataBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const flakeInput = node.inputs?.find(i => i.name === "flake_data");
         const graph = node.graph;
@@ -97,7 +97,8 @@ export function setupFlakeGenerateWidget(node) {
             const link = graph.links[flakeInput.link];
             if (link) startNode = graph.getNodeById(link.origin_id);
         }
-        const model = startNode ? buildModel(startNode) : { axes: [], fixed: { presetName: null, stackFlakes: [] } };
+        // buildModel is async (fetches variant meta for All Variants cards, #345).
+        const model = startNode ? await buildModel(startNode) : { axes: [], fixed: { presetName: null, stackFlakes: [] } };
         const adetailer = findWidget("adetailer")?.value || "Off";
         openGenerationDataOverlay(model, node.properties._images_by_combo || {}, {
             lastImagesByComboAd: node.properties._images_by_combo_ad || {},

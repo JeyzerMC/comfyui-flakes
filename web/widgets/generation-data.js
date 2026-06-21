@@ -1,14 +1,48 @@
 import { css } from "../utils.js";
 import { openOverlay } from "../modal.js";
-import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl } from "../api.js";
+import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl, fetchFlakeMeta } from "../api.js";
 import { getActiveBatch } from "../queue.js";
 
-// Parse a comboKey like "12:0|7:2" into a list of [nodeId, itemIdx] pairs.
+// Cartesian product of a flake's variant groups ({group:[choices]}) -> one
+// {group: choice} per combination (#345). Order matches queue.js so keys align.
+function variantCombos(meta) {
+    const groups = Object.keys(meta || {}).filter(g => Array.isArray(meta[g]) && meta[g].length);
+    let acc = [{}];
+    for (const g of groups) {
+        const next = [];
+        for (const a of acc) for (const ch of meta[g]) next.push({ ...a, [g]: ch });
+        acc = next;
+    }
+    return acc;
+}
+
+// Build one combo-axis card descriptor for a flake entry (#345).
+function makeFlakeCard(e, i, variantSub) {
+    // #237: fall back to the flake's main cover image when no variant is selected
+    // (or when the variant image 404s — see card render's probe-load).
+    const variantSel = Object.entries(e.variant || {}).find(([, c]) => c);
+    const baseCover = getCoverUrl(e.name);
+    const variantCover = variantSel ? getVariantImageUrl(e.name, variantSel[0], variantSel[1]) : null;
+    const choices = Object.values(e.variant || {}).filter(Boolean);
+    const base = e.display_name || e.name.split("/").pop() || e.name;
+    return {
+        label: base + (choices.length ? ` (${choices.join(", ")})` : ""),
+        entry: e,
+        coverUrl: variantCover || baseCover,
+        baseCoverUrl: baseCover,
+        variantCoverUrl: variantCover,
+        originalIndex: i,
+        variantSub: variantSub,
+    };
+}
+
+// Parse a comboKey like "12:0|7:2.1" into [nodeId, itemIdxStr] pairs. The item
+// part is kept as a string so all-variants sub-keys ("0.1") compare exactly (#345).
 function parseComboKey(key) {
     if (!key) return [];
     return key.split("|").map(pair => {
-        const [n, i] = pair.split(":").map(Number);
-        return [n, i];
+        const ci = pair.indexOf(":");
+        return [Number(pair.slice(0, ci)), pair.slice(ci + 1)];
     });
 }
 
@@ -68,7 +102,7 @@ function activeEntries(node, type) {
 
 // Build the combo "axes" (one per Flake Model Combo / Flake Combo node) plus
 // the fixed (non-combinatorial) preset and common-stack flakes.
-export function buildModel(startNode) {
+export async function buildModel(startNode) {
     const chain = collectChain(startNode);
     const axes = []; // [{ node, kind:'model'|'flake', label, items:[{label,name,coverUrl,...}] }]
     const fixed = { presetName: null, stackFlakes: [] };
@@ -110,28 +144,21 @@ export function buildModel(startNode) {
                 ? allFlakes.map((e, i) => ({ e, i })).filter(({ e }) => !e.inline && !e.bypassed && e.name)
                 : [];
             if (flakes.length === 0) continue;
-            axes.push({
-                node, kind: "flake",
-                label: "Flake Combo",
-                items: flakes.map(({ e, i }) => {
-                    // #237: fall back to the flake's main cover image when no
-                    // variant is selected (or when the variant image 404s —
-                    // see card render where we probe-load below).
-                    const variantSel = Object.entries(e.variant || {}).find(([, c]) => c);
-                    const baseCover = getCoverUrl(e.name);
-                    const variantCover = variantSel ? getVariantImageUrl(e.name, variantSel[0], variantSel[1]) : null;
-                    const choices = Object.values(e.variant || {}).filter(Boolean);
-                    const base = e.display_name || e.name.split("/").pop() || e.name;
-                    return {
-                        label: base + (choices.length ? ` (${choices.join(", ")})` : ""),
-                        entry: e,
-                        coverUrl: variantCover || baseCover,
-                        baseCoverUrl: baseCover,
-                        variantCoverUrl: variantCover,
-                        originalIndex: i,
-                    };
-                }),
-            });
+            const items = [];
+            for (const { e, i } of flakes) {
+                if (e._all_variants) {
+                    // One card per variant combination (#345), mirroring the
+                    // queue.js expansion so keys (id:idx.variantSub) align.
+                    let combos = [];
+                    try { combos = variantCombos(await fetchFlakeMeta(e.name)); } catch { combos = []; }
+                    if (combos.length > 1) {
+                        combos.forEach((variant, vi) => items.push(makeFlakeCard({ ...e, variant }, i, vi)));
+                        continue;
+                    }
+                }
+                items.push(makeFlakeCard(e, i, null));
+            }
+            axes.push({ node, kind: "flake", label: "Flake Combo", items });
         }
     }
     return { axes, fixed };
@@ -348,9 +375,16 @@ async function combinationData(model, selection) {
 // queue.js stamps onto FlakeGenerate at queue time.
 export function combinationKeyFor(model, selIdx) {
     return model.axes
-        .map((axis, i) => [axis.node.id, axis.items[selIdx[i]]?.originalIndex ?? selIdx[i]])
+        .map((axis, i) => {
+            const item = axis.items[selIdx[i]];
+            const idx = item?.originalIndex ?? selIdx[i];
+            // All-variants cards carry a sub-index so the key matches the queued
+            // comboKey "<id>:<idx>.<variantSub>" (#345).
+            const vk = (item && item.variantSub != null) ? `${idx}.${item.variantSub}` : `${idx}`;
+            return [axis.node.id, vk];
+        })
         .sort((a, b) => a[0] - b[0])
-        .map(([id, idx]) => `${id}:${idx}`)
+        .map(([id, vk]) => `${id}:${vk}`)
         .join("|");
 }
 
@@ -435,9 +469,12 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
             axis.items.forEach((item, ii) => {
                 const card = document.createElement("div");
                 card.dataset.nodeId = String(axis.node.id);
-                // Use the original index so progress-bar matching against the
-                // queued comboKey (original indices) aligns (#268).
-                card.dataset.itemIdx = String(item.originalIndex ?? ii);
+                // Use the original index (plus the all-variants sub-index, #345)
+                // so progress-bar matching against the queued comboKey aligns (#268).
+                {
+                    const baseIdx = item.originalIndex ?? ii;
+                    card.dataset.itemIdx = item.variantSub != null ? `${baseIdx}.${item.variantSub}` : String(baseIdx);
+                }
                 css(card, `position:relative;flex:0 0 auto;width:72px;height:80px;border-radius:4px;cursor:pointer;background:#2a2a2a;background-size:cover;background-position:center;border:2px solid ${ii === selIdx[ai] ? ACCENT : "transparent"};box-sizing:border-box;`);
                 // #237: probe-load variant image and fall back to base cover if 404,
                 // matching the flake-combo node grid behavior. Without this the
@@ -505,7 +542,8 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
             for (const [nodeId, itemIdx] of pairs) {
                 for (const axisCards of cards) {
                     for (const c of axisCards) {
-                        if (Number(c.dataset.nodeId) === nodeId && Number(c.dataset.itemIdx) === itemIdx) {
+                        // itemIdx is a string ("0" or "0.1") to support variant sub-keys (#345).
+                        if (Number(c.dataset.nodeId) === nodeId && String(c.dataset.itemIdx) === String(itemIdx)) {
                             out.push(c);
                         }
                     }
