@@ -625,9 +625,10 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         css(compositeDimensions, "font-size:10px;color:#666;text-align:center;");
         const adToggleWrap = document.createElement("div");
         css(adToggleWrap, "display:flex;align-items:center;gap:8px;font-size:12px;color:#ddd;");
-        compositeWrap.appendChild(compositeImg);
+        // Name + dimensions above the preview image (#349).
         compositeWrap.appendChild(compositeLabel);
         compositeWrap.appendChild(compositeDimensions);
+        compositeWrap.appendChild(compositeImg);
         compositeWrap.appendChild(adToggleWrap);
         right.appendChild(compositeWrap);
 
@@ -808,9 +809,10 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         css(compositeDimensions, "font-size:10px;color:#666;text-align:center;");
         const adToggleWrap = document.createElement("div");
         css(adToggleWrap, "display:flex;align-items:center;gap:8px;font-size:12px;color:#ddd;");
-        compositeWrap.appendChild(compositeImg);
+        // Name + dimensions above the preview image (#349).
         compositeWrap.appendChild(compositeLabel);
         compositeWrap.appendChild(compositeDimensions);
+        compositeWrap.appendChild(compositeImg);
         compositeWrap.appendChild(adToggleWrap);
         singleWrap.appendChild(compositeWrap);
 
