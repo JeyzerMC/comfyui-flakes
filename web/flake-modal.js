@@ -1786,9 +1786,19 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         css(imgPlaceholder, "font-size:10px;color:#888;");
                                         imgBox.appendChild(imgPrev);
                                         imgBox.appendChild(imgPlaceholder);
+                                        // Caption with the ControlNet image's intrinsic dimensions,
+                                        // shown below the image like the top-level CN section (#256/#351).
+                                        const dimCap = document.createElement("span");
+                                        css(dimCap, "font-size:10px;color:#666;display:none;");
+                                        imgPrev.addEventListener("load", () => {
+                                            if (imgPrev.naturalWidth && imgPrev.naturalHeight) {
+                                                dimCap.textContent = `${imgPrev.naturalWidth} × ${imgPrev.naturalHeight}`;
+                                                dimCap.style.display = "block";
+                                            }
+                                        });
                                         const showImg = () => {
                                             if (cn.image) { imgPrev.src = `/view?filename=${encodeURIComponent(cn.image)}&type=input`; imgPrev.style.display = "block"; imgPlaceholder.style.display = "none"; }
-                                            else { imgPrev.style.display = "none"; imgPlaceholder.style.display = "block"; }
+                                            else { imgPrev.style.display = "none"; imgPlaceholder.style.display = "block"; dimCap.textContent = ""; dimCap.style.display = "none"; }
                                         };
                                         showImg();
                                         imgBox.addEventListener("click", () => {
@@ -1810,7 +1820,11 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                                 document.body.removeChild(fi);
                                             });
                                         });
-                                        card.appendChild(imgBox);
+                                        const imageCol = document.createElement("div");
+                                        css(imageCol, "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;");
+                                        imageCol.appendChild(imgBox);
+                                        imageCol.appendChild(dimCap);
+                                        card.appendChild(imageCol);
 
                                         const right = document.createElement("div");
                                         css(right, "flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;");
