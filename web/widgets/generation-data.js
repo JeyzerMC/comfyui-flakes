@@ -164,45 +164,43 @@ export async function buildModel(startNode) {
     return { axes, fixed };
 }
 
-// ── k-d-tree composite image ───────────────────────────────────────────────
-// Recursively partition a rectangle, alternating split axis, one leaf per
-// image. The first image gets the larger leading half on each split.
-function partition(x, y, w, h, urls, horizontal) {
-    if (urls.length === 1) return [{ x, y, w, h, url: urls[0] }];
-    const headCount = Math.ceil(urls.length / 2);
-    const head = urls.slice(0, headCount);
-    const tail = urls.slice(headCount);
-    if (horizontal) {
-        const hh = h * (headCount / urls.length);
-        return [
-            ...partition(x, y, w, hh, head, !horizontal),
-            ...partition(x, y + hh, w, h - hh, tail, !horizontal),
-        ];
-    }
-    const ww = w * (headCount / urls.length);
-    return [
-        ...partition(x, y, ww, h, head, !horizontal),
-        ...partition(x + ww, y, w - ww, h, tail, !horizontal),
-    ];
+// ── composite image ─────────────────────────────────────────────────────────
+// Vertical-first split with a column interleave (#350): even-indexed covers fill
+// the left column (top→bottom), odd-indexed covers fill the right column
+// (top→bottom). A single image fills the canvas; a column with one item spans
+// full height (so 3 items → right item full height, left split in two).
+function layoutRects(urls, W, H) {
+    if (urls.length === 1) return [{ x: 0, y: 0, w: W, h: H, url: urls[0] }];
+    const left = [], right = [];
+    urls.forEach((u, i) => (i % 2 === 0 ? left : right).push(u));
+    const colW = right.length ? W / 2 : W;
+    const rects = [];
+    const place = (col, x, w) => {
+        const n = col.length;
+        col.forEach((u, j) => rects.push({ x, y: (H * j) / n, w, h: H / n, url: u }));
+    };
+    place(left, 0, colW);
+    if (right.length) place(right, colW, W - colW);
+    return rects;
 }
 
-function buildComposite(urls, size = 256) {
+// Render the cover mosaic at the output aspect ratio with a ~768px long edge, so
+// it isn't upscaled/stretched (and thus blurred) when shown in the overlay (#350).
+function buildComposite(urls, width, height, longEdge = 768) {
     return new Promise((resolve) => {
+        let cw = longEdge, ch = longEdge;
+        if (width && height) {
+            if (width >= height) ch = Math.max(1, Math.round((longEdge * height) / width));
+            else cw = Math.max(1, Math.round((longEdge * width) / height));
+        }
         const canvas = document.createElement("canvas");
-        canvas.width = size;
-        canvas.height = size;
+        canvas.width = cw;
+        canvas.height = ch;
         const ctx = canvas.getContext("2d");
         ctx.fillStyle = "#1a1a1a";
-        ctx.fillRect(0, 0, size, size);
+        ctx.fillRect(0, 0, cw, ch);
         if (urls.length === 0) { resolve(canvas.toDataURL()); return; }
-        // For the 3-image case: top half = first, bottom split in two.
-        const rects = urls.length === 3
-            ? [
-                { x: 0, y: 0, w: size, h: size / 2, url: urls[0] },
-                { x: 0, y: size / 2, w: size / 2, h: size / 2, url: urls[1] },
-                { x: size / 2, y: size / 2, w: size / 2, h: size / 2, url: urls[2] },
-            ]
-            : partition(0, 0, size, size, urls, true);
+        const rects = layoutRects(urls, cw, ch);
         let pending = rects.length;
         if (pending === 0) { resolve(canvas.toDataURL()); return; }
         for (const r of rects) {
@@ -725,7 +723,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
                 dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
-                compositeImg.src = await buildComposite(urls);
+                compositeImg.src = await buildComposite(urls, data.width, data.height);
                 compositeDimensions.textContent = data.dimensions || "";
             }
 
@@ -949,7 +947,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
                 dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
-                compositeImg.src = await buildComposite(urls);
+                compositeImg.src = await buildComposite(urls, data.width, data.height);
                 compositeDimensions.textContent = data.dimensions || "";
             }
 
