@@ -50,21 +50,30 @@ function inferCnFromImage(filename, types = []) {
         if (idx >= 0) inferredType = types[idx];
     }
     let sibling = "";
+    const siblings = [];
     if (token) {
         const segs = base.split("_");
         const ti = segs.findIndex((s) => s.toLowerCase().includes(token));
         if (ti >= 0) {
-            // JIP naming: the preproc token is preceded by a numeric order marker
-            // (e.g. "3"); the cover uses order "0", so turn "_3_<preproc>_" into
-            // "_0_cover_". Otherwise just swap the token segment for "cover".
+            // Candidate 1 (#353): swap only the preproc token for "cover", keeping
+            // the numeric order marker — "001_Test_3_depthanythingv2" ->
+            // "001_Test_3_cover". This also covers the legacy non-numeric naming
+            // ("char_depthanythingv2_001" -> "char_cover_001").
+            const keepNum = [...segs];
+            keepNum[ti] = "cover";
+            siblings.push(keepNum.join("_") + ext);
+            // Candidate 2 (#318): JIP Save writes the cover as order "0", so when
+            // the token is preceded by a numeric marker also try "_0_cover".
             if (ti > 0 && /^\d+$/.test(segs[ti - 1])) {
-                segs[ti - 1] = "0";
+                const zero = [...segs];
+                zero[ti - 1] = "0";
+                zero[ti] = "cover";
+                siblings.push(zero.join("_") + ext);
             }
-            segs[ti] = "cover";
-            sibling = segs.join("_") + ext;
+            sibling = siblings[0];
         }
     }
-    return { inferredType, sibling };
+    return { inferredType, sibling, siblings };
 }
 
 export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) {
@@ -368,6 +377,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         let coverImg = null;
         let setCoverFromLora = null;
         let setCoverFromCnImage = null;
+        let trySiblingCover = null;
 
         let currentFamily = family;
 
@@ -524,6 +534,24 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 coverSourcePath = imagePath;
                 updateCoverPreview(`/view?filename=${encodeURIComponent(imagePath)}&type=input`);
                 return true;
+            };
+
+            // Probe candidate sibling cover filenames (input dir) in order and set
+            // the first that actually loads as the flake cover, when no cover is
+            // set yet (#353). Shared by the top-level and variant-choice CN images.
+            trySiblingCover = (candidates) => {
+                if (!Array.isArray(candidates) || !candidates.length) return;
+                if (coverFile || coverSourcePath || !setCoverFromCnImage) return;
+                let idx = 0;
+                const tryNext = () => {
+                    if (idx >= candidates.length || coverFile || coverSourcePath) return;
+                    const cand = candidates[idx++];
+                    const probe = new Image();
+                    probe.onload = () => { if (!coverFile && !coverSourcePath) setCoverFromCnImage(cand); };
+                    probe.onerror = tryNext;
+                    probe.src = `/view?filename=${encodeURIComponent(cand)}&type=input`;
+                };
+                tryNext();
             };
 
             coverWrap.appendChild(coverBox);
@@ -1174,22 +1202,18 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                                 const fileName = result.name || file.name;
                                                 arr[i].image = fileName;
                                                 updateCnImgPreview(`/view?filename=${encodeURIComponent(fileName)}&type=input`);
-                                                // Auto-set type + cover from the filename (#306).
+                                                // Auto-set type + cover from the filename (#306, #353).
                                                 let inferredType = "";
-                                                let siblingCover = "";
+                                                let siblingCandidates = [];
                                                 try {
                                                     const types = await fetchCnTypes();
                                                     const res = inferCnFromImage(fileName, types);
                                                     inferredType = res.inferredType;
-                                                    siblingCover = res.sibling;
+                                                    siblingCandidates = res.siblings || [];
                                                 } catch { /* ignore */ }
                                                 if (inferredType && !arr[i].type) arr[i].type = inferredType;
-                                                // Prefer a sibling "_cover_" image as the cover; probe via /view.
-                                                if (siblingCover && !coverFile && !coverSourcePath && setCoverFromCnImage) {
-                                                    const probe = new Image();
-                                                    probe.onload = () => { if (!coverFile && !coverSourcePath) setCoverFromCnImage(siblingCover); };
-                                                    probe.src = `/view?filename=${encodeURIComponent(siblingCover)}&type=input`;
-                                                }
+                                                // Prefer a sibling "_cover" image as the cover; probe candidates.
+                                                if (trySiblingCover) trySiblingCover(siblingCandidates);
                                                 renderCNs();
                                             } catch { /* ignore */ }
                                         }
@@ -1807,7 +1831,14 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                                         const resp = await fetch("/upload/image", { method: "POST", body: form });
                                                         const result = await resp.json();
                                                         cn.image = result.name || file.name;
-                                                        if (!cn.type) { try { const types = await fetchCnTypes(); const r = inferCnFromImage(cn.image, types); if (r.inferredType) cn.type = r.inferredType; } catch { /* ignore */ } }
+                                                        // Infer the type and seed the flake cover from the CN's
+                                                        // sibling cover when none is set yet (#353).
+                                                        try {
+                                                            const types = await fetchCnTypes();
+                                                            const r = inferCnFromImage(cn.image, types);
+                                                            if (r.inferredType && !cn.type) cn.type = r.inferredType;
+                                                            if (trySiblingCover) trySiblingCover(r.siblings || []);
+                                                        } catch { /* ignore */ }
                                                         renderChoiceExtras();
                                                     } catch { /* ignore */ }
                                                 }
