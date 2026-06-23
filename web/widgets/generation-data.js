@@ -184,9 +184,10 @@ function layoutRects(urls, W, H) {
     return rects;
 }
 
-// Render the cover mosaic at the output aspect ratio with a ~768px long edge, so
-// it isn't upscaled/stretched (and thus blurred) when shown in the overlay (#350).
-function buildComposite(urls, width, height, longEdge = 768) {
+// Render the cover mosaic at the output aspect ratio. The long edge is DPR-aware
+// (~1024 logical px × devicePixelRatio, capped at 2×) so it isn't upscaled and
+// blurred when shown large in the overlay (#350, #354).
+function buildComposite(urls, width, height, longEdge = Math.round(1024 * Math.min(window.devicePixelRatio || 1, 2))) {
     return new Promise((resolve) => {
         let cw = longEdge, ch = longEdge;
         if (width && height) {
@@ -616,7 +617,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         const compositeImg = document.createElement("img");
         // Aspect ratio is set per-combination in refreshRight (#231); start at
         // a 1:1 placeholder while data loads.
-        css(compositeImg, "width:80%;height:auto;aspect-ratio:1/1;object-fit:contain;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
+        css(compositeImg, "width:100%;height:auto;aspect-ratio:1/1;object-fit:contain;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
         const compositeDimensions = document.createElement("div");
@@ -723,6 +724,10 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
                 dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
+                // Match the element AR to the composite canvas so the cover tiles
+                // fill the field with no letterbox; buildComposite uses the same
+                // dims (square fallback when unknown) (#354).
+                compositeImg.style.aspectRatio = (data.width && data.height) ? `${data.width} / ${data.height}` : "1 / 1";
                 compositeImg.src = await buildComposite(urls, data.width, data.height);
                 compositeDimensions.textContent = data.dimensions || "";
             }
@@ -800,7 +805,7 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         const compositeWrap = document.createElement("div");
         css(compositeWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;box-sizing:border-box;padding:0 4px;");
         const compositeImg = document.createElement("img");
-        css(compositeImg, "width:80%;height:auto;aspect-ratio:1/1;object-fit:contain;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
+        css(compositeImg, "width:100%;height:auto;aspect-ratio:1/1;object-fit:contain;border-radius:6px;border:1px solid #333;background:#1a1a1a;");
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
         const compositeDimensions = document.createElement("div");
@@ -947,6 +952,10 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
                 dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
+                // Match the element AR to the composite canvas so the cover tiles
+                // fill the field with no letterbox; buildComposite uses the same
+                // dims (square fallback when unknown) (#354).
+                compositeImg.style.aspectRatio = (data.width && data.height) ? `${data.width} / ${data.height}` : "1 / 1";
                 compositeImg.src = await buildComposite(urls, data.width, data.height);
                 compositeDimensions.textContent = data.dimensions || "";
             }
