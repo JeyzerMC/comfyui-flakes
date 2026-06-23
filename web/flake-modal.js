@@ -492,18 +492,12 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     const reader = new FileReader();
                     reader.onload = () => updateCoverPreview(reader.result);
                     reader.readAsDataURL(file);
-                    if (file.path) {
-                        // Desktop/Electron exposes the absolute path: store a
-                        // reference instead of copying the bytes next to the
-                        // flake YAML (#259). Backend reads the path directly.
-                        coverSourcePath = file.path;
-                        coverFile = null;
-                    } else {
-                        // Plain browser — no path available; fall back to the
-                        // upload-and-store-beside-yaml behaviour.
-                        coverFile = file;
-                        coverSourcePath = null;
-                    }
+                    // Manual selection always copies the image beside the flake
+                    // yaml as <name>.<ext> and uses that copy — never an external
+                    // reference (#352). Automatic covers (LoRA / CN siblings) keep
+                    // their reference behaviour via setCoverFrom* below.
+                    coverFile = file;
+                    coverSourcePath = null;
                 }
             });
 
