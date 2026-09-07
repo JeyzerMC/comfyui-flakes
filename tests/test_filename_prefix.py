@@ -29,7 +29,9 @@ def _load_module():
     sys.modules["nodes"] = nodes
 
     pkg = types.ModuleType("_flakepkg")
-    pkg.__path__ = []
+    # Point at the repo root so `from . import flake_families` resolves to the
+    # real module (it has no ComfyUI dependencies, so it imports cleanly).
+    pkg.__path__ = [os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]
     sys.modules["_flakepkg"] = pkg
     flake_io = types.ModuleType("_flakepkg.flake_io")
     flake_io._resolve_model_name = lambda *a, **k: ""

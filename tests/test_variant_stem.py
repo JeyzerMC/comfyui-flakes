@@ -28,7 +28,9 @@ def _load_flake_io():
             sys.modules["yaml"] = yaml_stub
 
     pkg = types.ModuleType("_flakepkg2")
-    pkg.__path__ = []
+    # Point at the repo root so `from . import flake_families` resolves to the
+    # real module (it has no ComfyUI dependencies, so it imports cleanly).
+    pkg.__path__ = [os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]
     sys.modules["_flakepkg2"] = pkg
     spec = importlib.util.spec_from_file_location("_flakepkg2.flake_io", src)
     mod = importlib.util.module_from_spec(spec)

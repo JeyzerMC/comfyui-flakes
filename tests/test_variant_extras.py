@@ -18,7 +18,9 @@ def _load_flake_io():
     sys.modules["folder_paths"] = fp
 
     pkg = types.ModuleType("_fpkg2")
-    pkg.__path__ = []
+    # Point at the repo root so `from . import flake_families` resolves to the
+    # real module (it has no ComfyUI dependencies, so it imports cleanly).
+    pkg.__path__ = [os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]
     sys.modules["_fpkg2"] = pkg
 
     here = os.path.dirname(os.path.abspath(__file__))
