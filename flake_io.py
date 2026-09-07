@@ -9,6 +9,8 @@ import yaml
 
 import folder_paths
 
+from . import flake_families
+
 
 def _resolve_model_name(category: str, stem_or_name: str) -> str:
     available = folder_paths.get_filename_list(category)
@@ -29,138 +31,19 @@ def _resolve_model_name(category: str, stem_or_name: str) -> str:
 
 _NAME_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_\- ]+$")
 
-_FAMILY_MAP = {
-    "SDXL/Base": "sdxl",
-    "SDXL/Illustrious": "illustrious",
-    "SDXL/Pony": "pony",
-    "ZImage/Base": "zib",
-    "ZImage/Turbo": "zit",
-    "Anima/Base": "anima",
-    "Flux/Klein": "flux_klein",
-    "Common": "common",
-}
+# Family routing tables. All derived from the flake_families registry (#355) —
+# add a family there, not here.
+_FAMILY_MAP = flake_families.FAMILY_MAP
 
-_FAMILY_COMPAT = {
-    "SDXL/Base": {"common", "sdxl"},
-    "SDXL/Illustrious": {"common", "sdxl", "illustrious"},
-    "SDXL/Pony": {"common", "sdxl", "pony"},
-    "ZImage/Base": {"common", "zib"},
-    "ZImage/Turbo": {"common", "zit"},
-    "Anima/Base": {"common", "anima"},
-    "Flux/Klein": {"common", "flux_klein"},
-}
+_FAMILY_COMPAT = flake_families.FAMILY_COMPAT
 
 _FAMILY_FROM_FOLDER = {v: k for k, v in _FAMILY_MAP.items()}
 
-_CN_MODEL_MAP = {
-    "sdxl": {
-        "openpose": "controlnet_openpose_sdxl",
-        "depth": "controlnet_depth_sdxl",
-        "canny": "controlnet_canny_sdxl",
-        "lineart": "controlnet_lineart_sdxl",
-        "lineart_anime": "controlnet_lineart_anime_sdxl",
-        "softedge": "controlnet_softedge_sdxl",
-        "scribble": "controlnet_scribble_sdxl",
-        "normalbae": "controlnet_normalbae_sdxl",
-        "seg": "controlnet_seg_sdxl",
-        "tile": "controlnet_tile_sdxl",
-        "ip2p": "controlnet_ip2p_sdxl",
-    },
-    "illustrious": {
-        "openpose": "controlnet_openpose_sdxl",
-        "depth": "controlnet_depth_sdxl",
-        "canny": "controlnet_canny_sdxl",
-        "lineart": "controlnet_lineart_sdxl",
-        "lineart_anime": "controlnet_lineart_anime_sdxl",
-        "softedge": "controlnet_softedge_sdxl",
-        "scribble": "controlnet_scribble_sdxl",
-        "normalbae": "controlnet_normalbae_sdxl",
-        "seg": "controlnet_seg_sdxl",
-        "tile": "controlnet_tile_sdxl",
-        "ip2p": "controlnet_ip2p_sdxl",
-    },
-    "pony": {
-        "openpose": "controlnet_openpose_sdxl",
-        "depth": "controlnet_depth_sdxl",
-        "canny": "controlnet_canny_sdxl",
-        "lineart": "controlnet_lineart_sdxl",
-        "lineart_anime": "controlnet_lineart_anime_sdxl",
-        "softedge": "controlnet_softedge_sdxl",
-        "scribble": "controlnet_scribble_sdxl",
-        "normalbae": "controlnet_normalbae_sdxl",
-        "seg": "controlnet_seg_sdxl",
-        "tile": "controlnet_tile_sdxl",
-        "ip2p": "controlnet_ip2p_sdxl",
-    },
-    "zib": {
-        "openpose": "controlnet_openpose_zib",
-        "depth": "controlnet_depth_zib",
-        "canny": "controlnet_canny_zib",
-        "lineart": "controlnet_lineart_zib",
-        "lineart_anime": "controlnet_lineart_anime_zib",
-        "softedge": "controlnet_softedge_zib",
-        "scribble": "controlnet_scribble_zib",
-        "normalbae": "controlnet_normalbae_zib",
-        "seg": "controlnet_seg_zib",
-        "tile": "controlnet_tile_zib",
-        "ip2p": "controlnet_ip2p_zib",
-    },
-    "zit": {
-        "openpose": "controlnet_openpose_zib",
-        "depth": "controlnet_depth_zib",
-        "canny": "controlnet_canny_zib",
-        "lineart": "controlnet_lineart_zib",
-        "lineart_anime": "controlnet_lineart_anime_zib",
-        "softedge": "controlnet_softedge_zib",
-        "scribble": "controlnet_scribble_zib",
-        "normalbae": "controlnet_normalbae_zib",
-        "seg": "controlnet_seg_zib",
-        "tile": "controlnet_tile_zib",
-        "ip2p": "controlnet_ip2p_zib",
-    },
-    "common": {
-        "openpose": "controlnet_openpose_sdxl",
-        "depth": "controlnet_depth_sdxl",
-        "canny": "controlnet_canny_sdxl",
-        "lineart": "controlnet_lineart_sdxl",
-        "lineart_anime": "controlnet_lineart_anime_sdxl",
-        "softedge": "controlnet_softedge_sdxl",
-        "scribble": "controlnet_scribble_sdxl",
-        "normalbae": "controlnet_normalbae_sdxl",
-        "seg": "controlnet_seg_sdxl",
-        "tile": "controlnet_tile_sdxl",
-        "ip2p": "controlnet_ip2p_sdxl",
-    },
-    # Controlnet model names follow the `controlnet_<type>_<family>` convention;
-    # they resolve only if the user has matching files (LoRA support is family-
-    # agnostic and works regardless). Adjust if your models are named otherwise.
-    "anima": {
-        "openpose": "controlnet_openpose_anima",
-        "depth": "controlnet_depth_anima",
-        "canny": "controlnet_canny_anima",
-        "lineart": "controlnet_lineart_anima",
-        "lineart_anime": "controlnet_lineart_anime_anima",
-        "softedge": "controlnet_softedge_anima",
-        "scribble": "controlnet_scribble_anima",
-        "normalbae": "controlnet_normalbae_anima",
-        "seg": "controlnet_seg_anima",
-        "tile": "controlnet_tile_anima",
-        "ip2p": "controlnet_ip2p_anima",
-    },
-    "flux_klein": {
-        "openpose": "controlnet_openpose_flux",
-        "depth": "controlnet_depth_flux",
-        "canny": "controlnet_canny_flux",
-        "lineart": "controlnet_lineart_flux",
-        "lineart_anime": "controlnet_lineart_anime_flux",
-        "softedge": "controlnet_softedge_flux",
-        "scribble": "controlnet_scribble_flux",
-        "normalbae": "controlnet_normalbae_flux",
-        "seg": "controlnet_seg_flux",
-        "tile": "controlnet_tile_flux",
-        "ip2p": "controlnet_ip2p_flux",
-    },
-}
+# Controlnet model names follow the `controlnet_<type>_<family>` convention;
+# they resolve only if the user has matching files (LoRA support is family-
+# agnostic and works regardless). Adjust flake_families.CN_TYPES if your models
+# are named otherwise.
+_CN_MODEL_MAP = flake_families.CN_MODEL_MAP
 
 
 def infer_cn_model(cn_type: str, family_folder: str) -> str:
@@ -172,16 +55,7 @@ def infer_cn_model(cn_type: str, family_folder: str) -> str:
 # subfolder under models/controlnet/ where that family's controlnets live.
 # All SDXL-based families share the `sdxl/` folder; ZImage families share
 # `zimage/`.
-_CN_SUBFOLDER = {
-    "sdxl": "sdxl",
-    "illustrious": "sdxl",
-    "pony": "sdxl",
-    "common": "sdxl",
-    "zib": "zimage",
-    "zit": "zimage",
-    "anima": "anima",
-    "flux_klein": "flux",
-}
+_CN_SUBFOLDER = flake_families.CN_SUBFOLDER
 
 
 def _cn_norm(value: str) -> str:

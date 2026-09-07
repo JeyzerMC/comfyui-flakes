@@ -10,7 +10,7 @@ import comfy.sd
 import comfy.utils
 from nodes import CLIPTextEncode, EmptyLatentImage, ControlNetApplyAdvanced, ControlNetLoader, LoraLoader
 
-from . import flake_io
+from . import flake_families, flake_io
 from .flake_io import _resolve_model_name
 
 
@@ -263,7 +263,9 @@ def _apply_preset_overrides(overrides_json, model_bundle, generation_data, sampl
     return model_bundle, generation_data, sampling_preset
 
 
-_MODEL_FAMILIES = ["SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "ZImage/Base", "ZImage/Turbo", "Anima/Base", "Flux/Klein"]
+# Dropdown options for the model_family widget. Derived from the family
+# registry (#355); "Common" is a real folder but is deliberately not selectable.
+_MODEL_FAMILIES = flake_families.MODEL_FAMILIES
 
 
 class FlakeModelPreset:
