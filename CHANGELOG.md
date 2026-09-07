@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Generation support for the **Anima**, **Krea2** and **Z-Image** model families,
+  which ship as a bare diffusion model plus a separate text encoder and VAE
+  rather than an all-in-one checkpoint (#356, #357, #358).
+  - New `Krea2/Turbo` family (folder `krea2`).
+  - Preset fields `diffusion_model`, `clip_type` and `shift`, with a
+    diffusion-model picker and text-encoder type dropdown in the preset editor
+    (#357, #360).
+  - New presets seed their sampler settings from the selected family (#356).
+  - `GET /flakes/families`, `/flakes/diffusion_models` and `/flakes/clip_types`
+    (#360).
+  - **Requires ComfyUI v0.34 or newer** — `comfy/ldm/krea2/`,
+    `comfy.text_encoders.anima`/`.krea2`/`.z_image` and `CLIPType.KREA2` do not
+    exist in older releases.
+
+### Fixed
+
+- A UNET-only checkpoint (how Anima, Krea2 and Z-Image are usually distributed,
+  even when the file sits in `models/checkpoints/`) no longer fails on the first
+  `CLIPTextEncode`. The loader detects the missing text encoder and VAE and takes
+  them from the preset (#358).
+- Standalone text encoders load through `comfy.sd.load_clip` with an explicit
+  `CLIPType`, so `lumina2` and `krea2` encoders work at all (#358).
+- `clip_skip` is no longer applied to Qwen-based text encoders, where it is
+  meaningless and can raise (#359).
+- The negative prompt is zeroed out when sampling at CFG ≤ 1, as distilled models
+  require (#359).
+- Missing files named by a preset now fail with an actionable error instead of
+  being silently ignored and generating with the wrong components (#358).
+
+### Changed
+
+- Model families are defined once in `flake_families.py` instead of being
+  duplicated across eight places in the Python and web layers (#355).
+
 ## [0.1.0] - 2026-05-19
 
 First tagged release. ComfyUI Flakes is a custom-node pack for ComfyUI that turns

@@ -112,9 +112,37 @@ Prompts are joined with `BREAK` between flakes so each flake acts as an independ
 
 ## Flake Model Preset
 
-A Flake model preset is a config for checkpoints. They currently support SDXL based checkpoints, and will be extended to work for other architectures as well. 
+A Flake model preset is a config for checkpoints. Alongside the SDXL family it
+supports Anima, Krea2 and Z-Image.
 
 ![Preset Edit](assets/img/preset_fields.png)
+
+### Model families
+
+The `model_family` dropdown picks both the on-disk layout (`img/<folder>/` under
+`models/flakes/`, `models/flakes/model_presets/` and `output/`) and how the model
+is loaded and sampled.
+
+| Family | Folder | Model file | Text encoder | Encoder type | VAE |
+|---|---|---|---|---|---|
+| `SDXL/Base`, `SDXL/Illustrious`, `SDXL/Pony` | `sdxl`, `illustrious`, `pony` | all-in-one checkpoint | baked in | `STABLE_DIFFUSION` | baked in |
+| `Anima/Base` | `anima` | `anima-base-v1.0` | `qwen_3_06b_base` | `STABLE_DIFFUSION` | `qwen_image_vae` |
+| `Krea2/Turbo` | `krea2` | `krea2_turbo_fp8_scaled` | `qwen3vl_4b_fp8_scaled` | `KREA2` | `qwen_image_vae` |
+| `ZImage/Base`, `ZImage/Turbo` | `zib`, `zit` | `z_image_turbo_bf16` | `qwen_3_4b` | `LUMINA2` | `ae.safetensors` |
+
+SDXL presets need only a **Checkpoint**. The other families ship as a bare
+diffusion model, so they also need a **Text Encoder**, its **Text Encoder Type**
+and a **VAE**. Point the preset at either a **Checkpoint** or a **Diffusion
+Model** — a UNET-only file that happens to live in `models/checkpoints/` is
+detected automatically, so you don't have to move it.
+
+Presets seed their sampler defaults from the family (Z-Image and Krea2 Turbo: 8
+steps at CFG 1; Anima base: 30 steps at CFG 4). At CFG ≤ 1 the negative prompt is
+zeroed out, matching how distilled models are sampled. **Clip Skip** is hidden
+for the Qwen-based families, where it does not apply.
+
+> Anima, Krea2 and Z-Image require **ComfyUI v0.34 or newer**. Their
+> architectures and the `KREA2` encoder type do not exist in older releases.
 
 ---
 
