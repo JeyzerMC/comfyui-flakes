@@ -159,6 +159,21 @@ def _resolve_clip_type(name: str | None, family=None):
         ) from None
 
 
+def _apply_sampling_shift(model, shift: float):
+    """Apply a ModelSamplingAuraFlow sigma shift to the model (#359).
+
+    Imported lazily: comfy_extras is not importable at module scope during node
+    registration. Degrades to a warning rather than failing the run, since the
+    detected model config already carries a sensible default shift.
+    """
+    try:
+        from comfy_extras.nodes_model_advanced import ModelSamplingAuraFlow
+    except ImportError:
+        logging.warning("[flakes] ModelSamplingAuraFlow unavailable; skipping shift=%s", shift)
+        return model
+    return ModelSamplingAuraFlow().patch_aura(model, shift)[0]
+
+
 def _load_preset_bundle(preset_name: str, model_family: str | None = None):
     """Load a model preset and return (model_bundle, generation_data, sampling_preset).
 
@@ -224,9 +239,25 @@ def _load_preset_bundle(preset_name: str, model_family: str | None = None):
         )
 
     # --- Clip skip ----------------------------------------------------------
-    if preset_data.clip_skip:
+    # clip_layer() is a CLIP-ism: it drops the last N transformer layers of a
+    # CLIP text encoder. Anima, Krea2 and Z-Image encode with Qwen3 / Qwen3-VL,
+    # where it is meaningless and can raise, so families declare whether they
+    # support it (#359). Presets carry clip_skip: -2 by default whether or not
+    # the family can use it, so this has to be gated here rather than on the
+    # value being set.
+    if preset_data.clip_skip and (family is None or family.supports_clip_skip):
         clip = clip.clone()
         clip.clip_layer(preset_data.clip_skip)
+
+    # --- Sampling shift -----------------------------------------------------
+    # Flow-matching families need a sigma shift; the templates apply it with an
+    # explicit ModelSamplingAuraFlow node. The preset value wins over the
+    # family default so a preset can be tuned without touching the registry.
+    shift = preset_data.shift if preset_data.shift is not None else (
+        family.default_shift if family else None
+    )
+    if shift is not None:
+        model = _apply_sampling_shift(model, shift)
 
     # --- Encode prompts -----------------------------------------------------
     encoder = CLIPTextEncode()

@@ -13,6 +13,7 @@ except Exception:
 import folder_paths
 from nodes import KSampler, VAEDecode, SaveImage
 
+from . import flake_compose
 from .full_flake_node import _build_filename_prefix
 
 _ADETAILER_DEFAULT_BBOX = "bbox/face_yolov8m.pt"
@@ -493,6 +494,14 @@ class FlakeGenerate:
         cfg = parts["cfg"]
         sampler_name = parts["sampler_name"]
         scheduler = parts["scheduler"]
+
+        # Distilled models sample at cfg 1 with a zeroed negative (#359). Done
+        # here rather than at preset-load time because this is the one place the
+        # conditioning and the cfg are both final: upstream Flake nodes re-encode
+        # the accumulated prompt on every hop, and cfg can still be changed by a
+        # per-instance override (#279). ControlNets have already been applied by
+        # this point, so the `control` key is carried through the zero-out.
+        negative = flake_compose.maybe_zero_out_negative(negative, cfg)
 
         ks = KSampler()
         sampled = ks.sample(

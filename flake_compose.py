@@ -84,6 +84,26 @@ def _fit_cn_image(image: torch.Tensor, target_w: int, target_h: int) -> torch.Te
     return samples.movedim(1, -1)  # back to [B, H, W, 3]
 
 
+def maybe_zero_out_negative(negative: Any, cfg: float) -> Any:
+    """Zero out the negative conditioning when sampling at cfg <= 1 (#359).
+
+    Distilled/turbo models (Z-Image Turbo, Krea2 Turbo, Anima with the turbo
+    LoRA) run at cfg 1.0, where the negative branch is never evaluated — the
+    workflow templates ComfyUI ships all feed those samplers a
+    ``ConditioningZeroOut`` instead of encoded text.
+
+    Keying this off the *effective* cfg rather than the model family is what
+    makes it correct for free: Anima base at cfg 4 keeps its real negative,
+    Anima + turbo LoRA at cfg 1 does not, and no per-family flag can get out of
+    step with the value the user actually sampled at.
+    """
+    if negative is None or cfg is None or cfg > 1.0:
+        return negative
+    from nodes import ConditioningZeroOut
+
+    return ConditioningZeroOut().zero_out(negative)[0]
+
+
 def compose(
     model: Any,
     clip: Any,
