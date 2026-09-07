@@ -6,6 +6,7 @@ import { setupFlakeModelComboWidget } from "./widgets/flake-model-combo.js";
 import { setupFlakeDataSplitSelect, setupIntoFlakeDataSelect, DEFAULT_SPLIT_PINS, DEFAULT_INTO_PINS } from "./widgets/flake-data-select.js";
 import { setupPreviewFlakeDataWidget } from "./widgets/flake-preview.js";
 import { setupFlakeGenerateWidget } from "./widgets/flake-generate.js";
+import { ensureFamilies } from "./utils.js";
 import "./queue.js";
 
 function removeHiddenInputs(node, names) {
@@ -49,6 +50,11 @@ function _recoverShiftedWidgets(node, otherWidgetName) {
 
 app.registerExtension({
     name: "comfyui-flakes.FlakeStack",
+    // Warm the family registry at startup (#360) so modals — which build their
+    // widgets synchronously — can read family defaults without awaiting.
+    async setup() {
+        try { await ensureFamilies(); } catch { /* falls back to the literals */ }
+    },
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name === "FlakeStack") {
             const origOnNodeCreated = nodeType.prototype.onNodeCreated;

@@ -1,4 +1,10 @@
 // ---------- Model family ----------
+//
+// The server owns the family registry (flake_families.py, #355). These literals
+// are a bootstrap fallback only: they are what the module exports until
+// loadFamilies() resolves, so a failed fetch degrades to the previous behaviour
+// instead of breaking the editor. Anything family-derived that renders after
+// startup should await ensureFamilies().
 
 export const FAMILY_FOLDERS = {
     "SDXL/Base": "sdxl",
@@ -7,15 +13,57 @@ export const FAMILY_FOLDERS = {
     "ZImage/Base": "zib",
     "ZImage/Turbo": "zit",
     "Anima/Base": "anima",
+    "Krea2/Turbo": "krea2",
     "Flux/Klein": "flux_klein",
     "Common": "common",
 };
+
+// label -> full spec from /flakes/families (clip_type, sampling defaults,
+// supports_clip_skip, default_shift). Empty until ensureFamilies() resolves.
+export const FAMILY_SPECS = {};
+
+let _familiesPromise = null;
+
+export function ensureFamilies() {
+    if (!_familiesPromise) {
+        _familiesPromise = fetch("/flakes/families")
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => {
+                const list = d?.families;
+                if (!Array.isArray(list) || !list.length) return FAMILY_SPECS;
+                // Only clear the fallback once we know we have a real payload.
+                for (const k of Object.keys(FAMILY_FOLDERS)) delete FAMILY_FOLDERS[k];
+                for (const f of list) {
+                    FAMILY_FOLDERS[f.label] = f.folder;
+                    FAMILY_SPECS[f.label] = f;
+                    if (f.cn_models) CN_MODEL_MAP[f.folder] = f.cn_models;
+                }
+                return FAMILY_SPECS;
+            })
+            .catch(() => FAMILY_SPECS);
+    }
+    return _familiesPromise;
+}
 
 export function familyFolder(family) {
     return FAMILY_FOLDERS[family] || null;
 }
 
-// Mirror of flake_io._CN_MODEL_MAP — keep in sync.
+export function familySpec(family) {
+    return FAMILY_SPECS[family] || null;
+}
+
+// label -> family folder, reversed. Used to recognise an `img/<folder>/` prefix.
+export function familyFromFolder(folder) {
+    for (const [label, f] of Object.entries(FAMILY_FOLDERS)) {
+        if (f === folder) return label;
+    }
+    return null;
+}
+
+// Bootstrap fallback for flake_io._CN_MODEL_MAP; replaced per-family by
+// ensureFamilies(). Krea2 is intentionally absent here — it only exists on
+// builds new enough to serve /flakes/families.
 export const CN_MODEL_MAP = {
     sdxl: {
         openpose: "controlnet_openpose_sdxl",

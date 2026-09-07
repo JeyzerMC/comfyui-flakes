@@ -7,7 +7,7 @@ from aiohttp import web
 from server import PromptServer
 
 import folder_paths
-from . import flake_io
+from . import flake_families, flake_io
 
 routes = PromptServer.instance.routes
 
@@ -227,6 +227,62 @@ async def _list_checkpoints(_request: web.Request) -> web.Response:
         logging.exception("[flakes] failed to list checkpoints")
         return _server_error(str(exc))
     return web.json_response({"checkpoints": _shorten_filenames(ckpts)})
+
+
+@routes.get("/flakes/diffusion_models")
+async def _list_diffusion_models(_request: web.Request) -> web.Response:
+    """Anima, Krea2 and Z-Image ship as bare diffusion models rather than
+    all-in-one checkpoints, so the preset editor needs to browse them (#360)."""
+    try:
+        models = folder_paths.get_filename_list("diffusion_models")
+    except Exception as exc:
+        logging.exception("[flakes] failed to list diffusion models")
+        return _server_error(str(exc))
+    return web.json_response({"diffusion_models": _shorten_filenames(models)})
+
+
+@routes.get("/flakes/families")
+async def _list_families(_request: web.Request) -> web.Response:
+    """Serve the model-family registry so the web layer stops duplicating it
+    (#355, #360). The JS keeps its own literals as a bootstrap fallback, so a
+    failure here degrades to the previous behaviour rather than breaking the
+    editor."""
+    try:
+        families = [
+            {
+                "label": f.label,
+                "folder": f.folder,
+                "selectable": f.selectable,
+                "clip_type": f.clip_type,
+                "steps": f.steps,
+                "cfg": f.cfg,
+                "sampler": f.sampler,
+                "scheduler": f.scheduler,
+                "width": f.width,
+                "height": f.height,
+                "supports_clip_skip": f.supports_clip_skip,
+                "default_shift": f.default_shift,
+                "cn_models": f.cn_models,
+            }
+            for f in flake_families.FAMILIES
+        ]
+    except Exception as exc:
+        logging.exception("[flakes] failed to list families")
+        return _server_error(str(exc))
+    return web.json_response({"families": families})
+
+
+@routes.get("/flakes/clip_types")
+async def _list_clip_types(_request: web.Request) -> web.Response:
+    """CLIPType members this ComfyUI build supports, for the preset editor's
+    text-encoder type dropdown."""
+    try:
+        import comfy.sd
+
+        types = sorted(m.name for m in comfy.sd.CLIPType)
+    except Exception:
+        types = ["STABLE_DIFFUSION"]
+    return web.json_response({"clip_types": types})
 
 
 @routes.get("/flakes/vaes")

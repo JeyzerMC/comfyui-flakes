@@ -3,12 +3,28 @@ import {
     css, makeButton, makeComfyLabel, makeComfyInput,
     makeComfyDropdown, makeSearchableDropdown, makeChipMultiSelect, makeComfySlider,
     makeTextarea, makeHoverRemoveWrapper, attachAutoGrow,
+    familyFolder, familyFromFolder, familySpec, ensureFamilies,
 } from "./utils.js";
 import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchVaes, fetchEmbeddings } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
 import { app } from "../../scripts/app.js";
 
 export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) {
+    // Seed a brand-new preset from the family's defaults (#360) — 8 steps at
+    // cfg 1 with res_multistep for Z-Image, 30 at cfg 4 for Anima base, etc.
+    // Done before the widgets are built because the sliders are write-once.
+    // Only fills blanks, so an explicitly supplied value always wins, and an
+    // existing preset being edited is never touched.
+    if (mode === "create") {
+        const spec = familySpec(family);
+        if (spec) {
+            data = data || {};
+            for (const k of ["steps", "cfg", "sampler", "scheduler", "width", "height"]) {
+                if (data[k] === undefined || data[k] === null || data[k] === "") data[k] = spec[k];
+            }
+            if (!data.clip_type && spec.clip_type !== "STABLE_DIFFUSION") data.clip_type = spec.clip_type;
+        }
+    }
     return new Promise((resolve) => {
         let { content, footer, close, handlers, panel } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
@@ -34,16 +50,12 @@ export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) 
         let availableRoots = [];
         let resolvedPathLabel = null;
 
-        const FAMILY_FROM_FOLDER = {
-            sdxl: "SDXL/Base",
-            illustrious: "SDXL/Illustrious",
-            pony: "SDXL/Pony",
-            zib: "ZImage/Base",
-            zit: "ZImage/Turbo",
-            anima: "Anima/Base",
-            flux_klein: "Flux/Klein",
-            common: "Common",
-        };
+        // Folder -> label, from the shared registry (#355/#360) rather than a
+        // local copy that has to be edited every time a family is added.
+        const FAMILY_FROM_FOLDER = new Proxy({}, {
+            get: (_t, folder) => familyFromFolder(String(folder)) || undefined,
+            has: (_t, folder) => !!familyFromFolder(String(folder)),
+        });
 
         function stripPresetPrefix(p) {
             const parts = p.replace(/\\/g, "/").split("/");
@@ -117,17 +129,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         filenamePrefixInput.addEventListener("input", () => { filenamePrefixManuallyEdited = true; });
 
         function familyFolderLocal(fam) {
-            const map = {
-                "SDXL/Base": "sdxl",
-                "SDXL/Illustrious": "illustrious",
-                "SDXL/Pony": "pony",
-                "ZImage/Base": "zib",
-                "ZImage/Turbo": "zit",
-                "Anima/Base": "anima",
-                "Flux/Klein": "flux_klein",
-                "Common": "common",
-            };
-            return map[fam] || "";
+            return familyFolder(fam) || "";
         }
 
         function snake(s) {
@@ -397,6 +399,52 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         schedColWrap.appendChild(schedDD.container);
         teSchedRow.appendChild(schedColWrap);
         ckptCol.appendChild(teSchedRow);
+
+        // Diffusion model + CLIP type (#360). Anima, Krea2 and Z-Image ship as a
+        // bare diffusion model with a separate text encoder, and the encoder
+        // cannot be loaded without knowing its CLIPType.
+        const dmRow = document.createElement("div");
+        css(dmRow, "display:flex;gap:8px;align-items:flex-start;");
+        const dmColWrap = document.createElement("div");
+        css(dmColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        dmColWrap.appendChild(makeComfyLabel("Diffusion Model (optional)"));
+        const dmWrap = makeSearchableDropdown([], data.diffusion_model || "", "Select diffusion model...");
+        dmWrap.element.title = "Use instead of Checkpoint for models shipped as a bare UNET. Requires a Text Encoder and VAE.";
+        dmColWrap.appendChild(dmWrap.container);
+        dmRow.appendChild(dmColWrap);
+        const ctColWrap = document.createElement("div");
+        css(ctColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+        ctColWrap.appendChild(makeComfyLabel("Text Encoder Type"));
+        const ctDD = makeComfyDropdown([{ value: "", label: "Family default" }], data.clip_type || "");
+        ctColWrap.appendChild(ctDD.container);
+        dmRow.appendChild(ctColWrap);
+        ckptCol.appendChild(dmRow);
+
+        (async () => {
+            try {
+                const r = await fetch("/flakes/diffusion_models");
+                const d = await r.json();
+                for (const m of (d.diffusion_models || [])) {
+                    dmWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: m }));
+                }
+            } catch { /* ignore — the field stays free-text */ }
+            try {
+                const r = await fetch("/flakes/clip_types");
+                const d = await r.json();
+                const types = d.clip_types || [];
+                if (types.length) {
+                    const want = data.clip_type || "";
+                    ctDD.element.replaceChildren();
+                    for (const [value, label] of [["", "Family default"], ...types.map(t => [t, t])]) {
+                        const o = document.createElement("option");
+                        o.value = value; o.textContent = label;
+                        if (value === want) o.selected = true;
+                        ctDD.element.appendChild(o);
+                    }
+                    ctDD.element.value = types.includes(want) ? want : "";
+                }
+            } catch { /* ignore */ }
+        })();
         // Replace the hardcoded sampler/scheduler lists with the installed
         // ComfyUI's KSampler options so the editor matches core's Advanced
         // KSampler. Falls back to the hardcoded lists above on fetch failure.
@@ -466,6 +514,17 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         cfgWrap.appendChild(cfgSlider);
         numRow.appendChild(cfgWrap);
         content.appendChild(numRow);
+
+        // Clip Skip only means something on a CLIP text encoder. Anima, Krea2
+        // and Z-Image encode with Qwen3 / Qwen3-VL, so hide it there rather
+        // than offer a control the loader ignores (#359/#360). Re-applied once
+        // the registry resolves, in case the modal opened before startup did.
+        function applyClipSkipVisibility() {
+            const spec = familySpec(family);
+            csWrap.style.display = (spec && spec.supports_clip_skip === false) ? "none" : "";
+        }
+        applyClipSkipVisibility();
+        ensureFamilies().then(applyClipSkipVisibility).catch(() => {});
 
         const embRow = document.createElement("div");
         css(embRow, "display:flex;gap:8px;align-items:flex-start;");
@@ -595,9 +654,11 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                 filename_prefix: (filenamePrefixInput.value || "").trim() || undefined,
                 checkpoint: ckptWrap.element.value,
                 checkpoint_url: ckptUrlInput.value || "",
+                diffusion_model: dmWrap.element.value || null,
                 clip_skip: -Math.abs(csSlider.getValue()),
                 vae: vaeWrap.element.value || null,
                 text_encoder: teWrap.element.value || null,
+                clip_type: ctDD.element.value || null,
                 steps: stepsSlider.getValue(),
                 cfg: cfgSlider.getValue(),
                 sampler: samplerDD.element.value,

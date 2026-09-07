@@ -4,7 +4,7 @@ import {
     makeComfyDropdown, makePanelDropdown, makeSearchableDropdown,
     makeComfyNumberInput, makeComfyValueSlider, makeSmallValueSlider,
     makeTextarea, makeLabel, makeNumberInput, attachAutoGrow,
-    familyFolder, makeHoverRemoveWrapper, CN_MODEL_MAP,
+    familyFolder, familyFromFolder, makeHoverRemoveWrapper, CN_MODEL_MAP,
 } from "./utils.js";
 import {
     getCoverUrl, getVariantImageUrl, uploadCover, fetchLoras, fetchCnTypes, fetchInputs,
@@ -382,22 +382,12 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         let currentFamily = family;
 
         function inferFamilyFromPath(path) {
+            // Derives the family from an `img/<folder>/` prefix using the shared
+            // registry (#355/#360) rather than a local copy of the family list.
             if (!path) return family;
-            const norm = path.replace(/\\/g, "/");
-            const FAMILY_PATH_MAP = {
-                "img/sdxl/": "SDXL/Base",
-                "img/illustrious/": "SDXL/Illustrious",
-                "img/pony/": "SDXL/Pony",
-                "img/zib/": "ZImage/Base",
-                "img/zit/": "ZImage/Turbo",
-                "img/anima/": "Anima/Base",
-                "img/flux_klein/": "Flux/Klein",
-                "img/common/": "Common",
-            };
-            for (const [prefix, fam] of Object.entries(FAMILY_PATH_MAP)) {
-                if (norm.toLowerCase().startsWith(prefix)) return fam;
-            }
-            return family;
+            const parts = path.replace(/\\/g, "/").toLowerCase().split("/");
+            if (parts[0] !== "img" || parts.length < 2) return family;
+            return familyFromFolder(parts[1]) || family;
         }
 
         if (mode === "edit" && name) {
