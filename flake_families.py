@@ -64,6 +64,28 @@ class FamilySpec:
     # the model_family dropdown.
     selectable: bool = True
 
+    # --- Generation metadata (#356) ----------------------------------------
+    # Name of the ``comfy.sd.CLIPType`` member used when the preset loads its
+    # text encoder from a standalone file. Looked up by name, never by value —
+    # the enum gets renumbered upstream.
+    clip_type: str = "STABLE_DIFFUSION"
+
+    # Defaults seeded into a newly created preset. Existing presets keep
+    # whatever is on disk; these only fill the editor's blank form.
+    steps: int = 20
+    cfg: float = 4.0
+    sampler: str = "euler_ancestral"
+    scheduler: str = "normal"
+    width: int = 832
+    height: int = 1216
+
+    # ``clip.clip_layer()`` is a CLIP-ism. On the Qwen3 / Qwen3-VL encoders the
+    # newer families use it is meaningless and can raise, so it must be skipped.
+    supports_clip_skip: bool = True
+
+    # ModelSamplingAuraFlow shift, or None for families that don't use it.
+    default_shift: float | None = None
+
     @property
     def compat(self) -> set[str]:
         return {"common", *self.extra_compat, self.folder}
@@ -73,16 +95,39 @@ class FamilySpec:
         return {t: f"controlnet_{t}_{self.cn_suffix}" for t in CN_TYPES}
 
 
+# Generation metadata for the non-SDXL families is taken from the workflow
+# templates ComfyUI ships (comfyui_workflow_templates_json): image_anima_base_v1,
+# image_krea2_turbo_t2i and image_z_image_turbo. They are the reference graphs —
+# if a default here disagrees with a template, the template wins.
 FAMILIES: tuple[FamilySpec, ...] = (
     FamilySpec("SDXL/Base", "sdxl", cn_suffix="sdxl", cn_subfolder="sdxl"),
     FamilySpec("SDXL/Illustrious", "illustrious", cn_suffix="sdxl", cn_subfolder="sdxl",
                extra_compat=("sdxl",)),
     FamilySpec("SDXL/Pony", "pony", cn_suffix="sdxl", cn_subfolder="sdxl",
                extra_compat=("sdxl",)),
-    FamilySpec("ZImage/Base", "zib", cn_suffix="zib", cn_subfolder="zimage"),
+    # Z-Image: Lumina2 architecture, Qwen3-4B text encoder, ae.safetensors VAE.
+    # Both variants are distilled and run at cfg 1 with res_multistep.
+    FamilySpec("ZImage/Base", "zib", cn_suffix="zib", cn_subfolder="zimage",
+               clip_type="LUMINA2", steps=8, cfg=1.0, sampler="res_multistep",
+               scheduler="simple", width=1024, height=1024,
+               supports_clip_skip=False, default_shift=3.0),
     # zit deliberately reuses zib's controlnet files — same architecture.
-    FamilySpec("ZImage/Turbo", "zit", cn_suffix="zib", cn_subfolder="zimage"),
-    FamilySpec("Anima/Base", "anima", cn_suffix="anima", cn_subfolder="anima"),
+    FamilySpec("ZImage/Turbo", "zit", cn_suffix="zib", cn_subfolder="zimage",
+               clip_type="LUMINA2", steps=8, cfg=1.0, sampler="res_multistep",
+               scheduler="simple", width=1024, height=1024,
+               supports_clip_skip=False, default_shift=3.0),
+    # Anima: Qwen3-0.6B encoder loaded as a plain stable_diffusion CLIP, qwen
+    # image VAE. Base is undistilled — 30 steps at cfg 4 with a real negative.
+    FamilySpec("Anima/Base", "anima", cn_suffix="anima", cn_subfolder="anima",
+               clip_type="STABLE_DIFFUSION", steps=30, cfg=4.0, sampler="euler",
+               scheduler="simple", width=1024, height=1024,
+               supports_clip_skip=False, default_shift=3.0),
+    # Krea2: Qwen3-VL-4B encoder (CLIPType.KREA2), qwen image VAE. The public
+    # weights are the distilled turbo variant — 8 steps at cfg 1.
+    FamilySpec("Krea2/Turbo", "krea2", cn_suffix="krea2", cn_subfolder="krea2",
+               clip_type="KREA2", steps=8, cfg=1.0, sampler="euler",
+               scheduler="simple", width=1024, height=1024,
+               supports_clip_skip=False, default_shift=1.15),
     FamilySpec("Flux/Klein", "flux_klein", cn_suffix="flux", cn_subfolder="flux"),
     FamilySpec("Common", "common", cn_suffix="sdxl", cn_subfolder="sdxl", selectable=False),
 )
