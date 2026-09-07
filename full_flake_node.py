@@ -125,6 +125,40 @@ def _resolve_lora_name(stem_or_name: str) -> str:
     raise FileNotFoundError(f"LoRA '{stem_or_name}' not found in models/loras/")
 
 
+def _require_model_file(category: str, ref: str, field: str) -> str:
+    """Resolve a preset's model reference to a real path or fail loudly (#358).
+
+    Silently skipping a missing file (as the old VAE/text-encoder overrides did)
+    means the preset quietly generates with the wrong components.
+    """
+    resolved = _resolve_model_name(category, ref)
+    path = folder_paths.get_full_path(category, resolved)
+    if not path or not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"Preset field '{field}' points at '{ref}', which was not found in "
+            f"models/{category}/."
+        )
+    return path
+
+
+def _resolve_clip_type(name: str | None, family=None):
+    """Look up a ``comfy.sd.CLIPType`` member by name (#358).
+
+    By name, never by value: the enum is renumbered upstream whenever a new
+    architecture lands, so a hardcoded integer silently selects the wrong
+    encoder after a ComfyUI update.
+    """
+    key = (name or (family.clip_type if family else None) or "STABLE_DIFFUSION").strip().upper()
+    try:
+        return comfy.sd.CLIPType[key]
+    except KeyError:
+        available = ", ".join(sorted(m.name for m in comfy.sd.CLIPType))
+        raise ValueError(
+            f"clip_type '{key}' is not supported by this ComfyUI build. "
+            f"Available types: {available}"
+        ) from None
+
+
 def _load_preset_bundle(preset_name: str, model_family: str | None = None):
     """Load a model preset and return (model_bundle, generation_data, sampling_preset).
 
@@ -133,51 +167,66 @@ def _load_preset_bundle(preset_name: str, model_family: str | None = None):
     passed by the node so the structural prefix is present.
     """
     preset_data = flake_io.load_preset(preset_name)
-
-    # --- Load checkpoint ----------------------------------------------------
-    ckpt_name = _resolve_model_name("checkpoints", preset_data.checkpoint)
-    ckpt_path = folder_paths.get_full_path("checkpoints", ckpt_name)
-    if not ckpt_path or not os.path.isfile(ckpt_path):
-        raise FileNotFoundError(
-            f"Checkpoint '{preset_data.checkpoint}' not found in models/checkpoints/"
-        )
+    family = flake_families.get(model_family)
 
     embedding_dir = folder_paths.get_folder_paths("embeddings")
-    model, clip, vae, _ = comfy.sd.load_checkpoint_guess_config(
-        ckpt_path,
-        output_vae=True,
-        output_clip=True,
-        embedding_directory=embedding_dir,
-    )
+    category, model_ref = preset_data.model_source
+
+    # --- Load the model -----------------------------------------------------
+    if category == "diffusion_models":
+        model = comfy.sd.load_diffusion_model(
+            _require_model_file("diffusion_models", model_ref, "diffusion_model")
+        )
+        clip = vae = None
+    else:
+        ckpt_path = _require_model_file("checkpoints", model_ref, "checkpoint")
+        model, clip, vae, _ = comfy.sd.load_checkpoint_guess_config(
+            ckpt_path,
+            output_vae=True,
+            output_clip=True,
+            embedding_directory=embedding_dir,
+        )
+        if clip is None or vae is None:
+            # A UNET-only file living under models/checkpoints/ — how Anima,
+            # Krea2 and Z-Image are usually distributed (#358). The call still
+            # built `model` correctly from the model.diffusion_model.* keys; it
+            # just had no text encoder or VAE to give us, so those come from the
+            # preset. Only reached when the call *succeeded*: a genuine load
+            # failure raises and is left to propagate.
+            logging.info(
+                "[flakes] '%s' has no bundled %s — loading them from the preset",
+                model_ref,
+                " or ".join(n for n, v in (("text encoder", clip), ("VAE", vae)) if v is None),
+            )
+
+    # --- Text encoder -------------------------------------------------------
+    if preset_data.text_encoder:
+        te_path = _require_model_file("text_encoders", preset_data.text_encoder, "text_encoder")
+        clip = comfy.sd.load_clip(
+            ckpt_paths=[te_path],
+            embedding_directory=embedding_dir,
+            clip_type=_resolve_clip_type(preset_data.clip_type, family),
+        )
+    if clip is None:
+        raise ValueError(
+            f"Preset '{preset_name}' loads a model with no built-in text encoder, "
+            f"so it needs a 'text_encoder' set in the preset editor."
+        )
+
+    # --- VAE ----------------------------------------------------------------
+    if preset_data.vae:
+        vae_path = _require_model_file("vae", preset_data.vae, "vae")
+        vae = comfy.sd.VAE(sd=comfy.utils.load_torch_file(vae_path))
+    if vae is None:
+        raise ValueError(
+            f"Preset '{preset_name}' loads a model with no built-in VAE, "
+            f"so it needs a 'vae' set in the preset editor."
+        )
 
     # --- Clip skip ----------------------------------------------------------
     if preset_data.clip_skip:
         clip = clip.clone()
         clip.clip_layer(preset_data.clip_skip)
-
-    # --- Optional VAE override ----------------------------------------------
-    if preset_data.vae:
-        vae_name = _resolve_model_name("vae", preset_data.vae)
-        vae_path = folder_paths.get_full_path("vae", vae_name)
-        if vae_path and os.path.isfile(vae_path):
-            vae_sd = comfy.utils.load_torch_file(vae_path)
-            vae = comfy.sd.VAE(sd=vae_sd)
-
-    # --- Optional text encoder override ------------------------------------
-    if preset_data.text_encoder:
-        te_name = _resolve_model_name("text_encoders", preset_data.text_encoder)
-        te_path = folder_paths.get_full_path("text_encoders", te_name)
-        if te_path and os.path.isfile(te_path):
-            te_sd = comfy.utils.load_torch_file(te_path)
-            _, clip, _ = comfy.sd.load_checkpoint_guess_config(
-                te_path,
-                output_vae=False,
-                output_clip=True,
-                embedding_directory=embedding_dir,
-            )
-            if preset_data.clip_skip:
-                clip = clip.clone()
-                clip.clip_layer(preset_data.clip_skip)
 
     # --- Encode prompts -----------------------------------------------------
     encoder = CLIPTextEncode()
