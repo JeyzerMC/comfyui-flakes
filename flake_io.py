@@ -127,6 +127,11 @@ class ModelPreset:
     display_name: str = ""
     checkpoint: str = ""
     checkpoint_url: str = ""
+    # Anima, Krea2 and Z-Image ship as a bare diffusion model plus a separate
+    # text encoder and VAE rather than an all-in-one checkpoint (#357). Set this
+    # instead of ``checkpoint`` and the loader takes the component path; both
+    # ``text_encoder`` and ``vae`` then become required.
+    diffusion_model: str | None = None
     clip_skip: int = -2
     vae: str | None = None
     steps: int = 20
@@ -136,10 +141,32 @@ class ModelPreset:
     width: int = 832
     height: int = 1216
     text_encoder: str | None = None
+    # ``comfy.sd.CLIPType`` member name for a standalone text encoder, e.g.
+    # "LUMINA2" (Z-Image) or "KREA2". None falls back to the family's default.
+    clip_type: str | None = None
+    # ModelSamplingAuraFlow shift. None falls back to the family's default.
+    shift: float | None = None
     positive: str = ""
     negative: str = ""
     embeddings: list[str] = field(default_factory=list)
     filename_prefix: str = ""
+
+    @property
+    def model_source(self) -> tuple[str, str]:
+        """``(category, path)`` for the model file this preset loads.
+
+        ``diffusion_model`` wins over ``checkpoint`` when both are set. Raises a
+        readable error rather than letting an empty path reach the loader and
+        surface as a confusing FileNotFoundError (#357).
+        """
+        if self.diffusion_model:
+            return "diffusion_models", self.diffusion_model
+        if self.checkpoint:
+            return "checkpoints", self.checkpoint
+        raise ValueError(
+            f"Preset '{self.name}' has neither a 'checkpoint' nor a "
+            f"'diffusion_model' set — pick a model file in the preset editor."
+        )
 
 # ---------------------------------------------------------------------------
 # Flake dataclass + ControlNetEntry
@@ -1230,9 +1257,12 @@ def load_preset(name: str) -> ModelPreset:
         display_name=str(raw.get("display_name", "") or ""),
         checkpoint=str(raw.get("checkpoint", "")),
         checkpoint_url=str(raw.get("checkpoint_url", "")),
+        diffusion_model=raw.get("diffusion_model") or None,
         clip_skip=int(raw.get("clip_skip", -2)),
         vae=raw.get("vae") or None,
         text_encoder=raw.get("text_encoder") or None,
+        clip_type=(str(raw["clip_type"]).strip().upper() or None) if raw.get("clip_type") else None,
+        shift=float(raw["shift"]) if raw.get("shift") not in (None, "") else None,
         steps=int(raw.get("steps", 20)),
         cfg=float(raw.get("cfg", 4.0)),
         sampler=str(raw.get("sampler", "dpmpp_2m")),
