@@ -22,8 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Requires ComfyUI v0.34 or newer** — `comfy/ldm/krea2/`,
     `comfy.text_encoders.anima`/`.krea2`/`.z_image` and `CLIPType.KREA2` do not
     exist in older releases.
+- ControlNet support for **Anima** (ControlNet-LLLite) and **Z-Image** (Fun
+  ControlNet Union). Both are model patches loaded from `models/model_patches/`
+  and applied to the model rather than the conditioning; the flake ControlNet
+  editor is unchanged and only lists the types the family supports
+  (#363, #364, #365, #366).
 
 ### Fixed
+
+- Z-Image flake ControlNets failed to load: the Fun ControlNet Union is a model
+  patch, not a regular ControlNet (#365).
 
 - A UNET-only checkpoint (how Anima, Krea2 and Z-Image are usually distributed,
   even when the file sits in `models/checkpoints/`) no longer fails on the first

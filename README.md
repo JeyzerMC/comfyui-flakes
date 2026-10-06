@@ -144,6 +144,27 @@ for the Qwen-based families, where it does not apply.
 > Anima, Krea2 and Z-Image require **ComfyUI v0.34 or newer**. Their
 > architectures and the `KREA2` encoder type do not exist in older releases.
 
+### ControlNets for Anima and Z-Image
+
+A flake's ControlNet field works the same for every family: pick an image, a
+type, then tweak strength, start and end. Anima and Z-Image don't use regular
+ControlNets, though. Their ControlNets are **model patches** that hook the
+diffusion model, so the files go in `models/model_patches/`, not
+`models/controlnet/`:
+
+| Family | Folder | Files | Types |
+|---|---|---|---|
+| `Anima/Base` | `models/model_patches/anima/` | `anima-lllite-{pose,depth,lineart,scribble}-1` ([Comfy-Org/Anima-LLLite](https://huggingface.co/Comfy-Org/Anima-LLLite)) | openpose, depth, lineart, scribble |
+| `ZImage/Base`, `ZImage/Turbo` | `models/model_patches/zimage/` | `Z-Image-Turbo-Fun-Controlnet-Union` (any version) | openpose, depth, canny, softedge |
+
+- Anima depth expects a Depth Anything V2 map (white = near). The pose model is
+  noticeably weaker than depth; for locking a pose, depth works better.
+- The Anima LLLite weights are Preview3 releases and lose some quality on Anima
+  Base v1.0.
+- Z-Image's Fun ControlNet has no start/end: it applies to every step.
+- The base model is not reloaded when switching flakes. Each patch is a hook on
+  a clone that shares its weights, and recently used patch files stay cached.
+
 ---
 
 ## Nodes
@@ -186,7 +207,7 @@ TODO
 
 ## Roadmap
 
-- Z-Image / Flux / Anima support
+- Flux support
 - Video support (Starting with WAN)
 - Post Process (ADetailler / Upscalers)
 - IP Adapters
