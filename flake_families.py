@@ -56,6 +56,17 @@ class FamilySpec:
     cn_suffix: str
     cn_subfolder: str
 
+    # How a flake's ControlNet is applied. "controlnet" goes through core
+    # ControlNetLoader/ControlNetApplyAdvanced on the conditioning. The other
+    # kinds are model patches loaded from models/model_patches/ that hook the
+    # MODEL instead: "anima_lllite" (ControlNet-LLLite, AnimaLLLiteApply) and
+    # "zimage_fun" (Fun ControlNet Union, ZImageFunControlnet).
+    cn_kind: str = "controlnet"
+
+    # Per-type filename stems that replace the ``controlnet_<type>_<suffix>``
+    # convention. When set, only these types are offered for the family.
+    cn_names: tuple[tuple[str, str], ...] = ()
+
     # Compat tags beyond the implicit {"common", folder} — only the SDXL
     # derivatives need this, so illustrious/pony can consume plain sdxl flakes.
     extra_compat: tuple[str, ...] = ()
@@ -92,13 +103,22 @@ class FamilySpec:
 
     @property
     def cn_models(self) -> dict[str, str]:
+        if self.cn_names:
+            return dict(self.cn_names)
         return {t: f"controlnet_{t}_{self.cn_suffix}" for t in CN_TYPES}
+
+    @property
+    def cn_category(self) -> str:
+        """``folder_paths`` category the family's ControlNet files live in."""
+        return "controlnet" if self.cn_kind == "controlnet" else "model_patches"
 
 
 # Generation metadata for the non-SDXL families is taken from the workflow
 # templates ComfyUI ships (comfyui_workflow_templates_json): image_anima_base_v1,
 # image_krea2_turbo_t2i and image_z_image_turbo. They are the reference graphs —
 # if a default here disagrees with a template, the template wins.
+_ZIMAGE_FUN_UNION = "Z-Image-Turbo-Fun-Controlnet-Union"
+
 FAMILIES: tuple[FamilySpec, ...] = (
     FamilySpec("SDXL/Base", "sdxl", cn_suffix="sdxl", cn_subfolder="sdxl"),
     FamilySpec("SDXL/Illustrious", "illustrious", cn_suffix="sdxl", cn_subfolder="sdxl",
@@ -106,19 +126,28 @@ FAMILIES: tuple[FamilySpec, ...] = (
     FamilySpec("SDXL/Pony", "pony", cn_suffix="sdxl", cn_subfolder="sdxl",
                extra_compat=("sdxl",)),
     # Z-Image: Lumina2 architecture, Qwen3-4B text encoder, ae.safetensors VAE.
-    # Both variants are distilled and run at cfg 1 with res_multistep.
+    # Both variants are distilled and run at cfg 1 with res_multistep. One Fun
+    # ControlNet Union file serves every control type.
     FamilySpec("ZImage/Base", "zib", cn_suffix="zib", cn_subfolder="zimage",
+               cn_kind="zimage_fun",
+               cn_names=tuple((t, _ZIMAGE_FUN_UNION) for t in ("openpose", "depth", "canny", "softedge")),
                clip_type="LUMINA2", steps=8, cfg=1.0, sampler="res_multistep",
                scheduler="simple", width=1024, height=1024,
                supports_clip_skip=False, default_shift=3.0),
     # zit deliberately reuses zib's controlnet files — same architecture.
     FamilySpec("ZImage/Turbo", "zit", cn_suffix="zib", cn_subfolder="zimage",
+               cn_kind="zimage_fun",
+               cn_names=tuple((t, _ZIMAGE_FUN_UNION) for t in ("openpose", "depth", "canny", "softedge")),
                clip_type="LUMINA2", steps=8, cfg=1.0, sampler="res_multistep",
                scheduler="simple", width=1024, height=1024,
                supports_clip_skip=False, default_shift=3.0),
     # Anima: Qwen3-0.6B encoder loaded as a plain stable_diffusion CLIP, qwen
     # image VAE. Base is undistilled — 30 steps at cfg 4 with a real negative.
+    # ControlNets are kohya's ControlNet-LLLite (anima-lllite-<type>-1).
     FamilySpec("Anima/Base", "anima", cn_suffix="anima", cn_subfolder="anima",
+               cn_kind="anima_lllite",
+               cn_names=(("openpose", "anima-lllite-pose"), ("depth", "anima-lllite-depth"),
+                         ("lineart", "anima-lllite-lineart"), ("scribble", "anima-lllite-scribble")),
                clip_type="STABLE_DIFFUSION", steps=30, cfg=4.0, sampler="euler",
                scheduler="simple", width=1024, height=1024,
                supports_clip_skip=False, default_shift=3.0),

@@ -82,6 +82,9 @@ _PRE_REFACTOR_MODEL_FAMILIES = [
 _ADDED_LABELS = {"Krea2/Turbo"}
 _ADDED_FOLDERS = {"krea2"}
 
+# Families whose ControlNets are model patches with their own names (#363).
+_PATCH_CN_FOLDERS = {"zib", "zit", "anima"}
+
 
 def _without_added(d, keys):
     return {k: v for k, v in d.items() if k not in keys}
@@ -100,11 +103,14 @@ def test_cn_subfolder_matches_pre_refactor():
 
 
 def test_cn_model_map_matches_pre_refactor():
+    # Z-Image and Anima moved to model-patch ControlNets with their own file
+    # names (#363); every other family keeps the original convention.
     expected = {
         folder: {t: f"controlnet_{t}_{suffix}" for t in F.CN_TYPES}
         for folder, suffix in _PRE_REFACTOR_CN_SUFFIX.items()
+        if folder not in _PATCH_CN_FOLDERS
     }
-    assert _without_added(F.CN_MODEL_MAP, _ADDED_FOLDERS) == expected
+    assert _without_added(F.CN_MODEL_MAP, _ADDED_FOLDERS | _PATCH_CN_FOLDERS) == expected
 
 
 def test_model_families_matches_pre_refactor():
@@ -129,8 +135,39 @@ def test_label_folder_round_trip():
 
 def test_every_family_has_cn_coverage():
     for spec in F.FAMILIES:
-        assert F.CN_MODEL_MAP[spec.folder].keys() == set(F.CN_TYPES)
+        types = F.CN_MODEL_MAP[spec.folder].keys()
+        if spec.cn_names:
+            assert types == {t for t, _ in spec.cn_names}
+            assert types <= set(F.CN_TYPES)
+        else:
+            assert types == set(F.CN_TYPES)
         assert F.CN_SUBFOLDER[spec.folder]
+
+
+def test_cn_kind_and_category():
+    for spec in F.FAMILIES:
+        if spec.folder in _PATCH_CN_FOLDERS:
+            assert spec.cn_category == "model_patches"
+        else:
+            assert spec.cn_kind == "controlnet"
+            assert spec.cn_category == "controlnet"
+    assert F.BY_LABEL["Anima/Base"].cn_kind == "anima_lllite"
+    assert F.BY_LABEL["ZImage/Base"].cn_kind == "zimage_fun"
+    assert F.BY_LABEL["ZImage/Turbo"].cn_kind == "zimage_fun"
+
+
+def test_anima_cn_names_follow_kohya_lllite():
+    assert F.CN_MODEL_MAP["anima"] == {
+        "openpose": "anima-lllite-pose",
+        "depth": "anima-lllite-depth",
+        "lineart": "anima-lllite-lineart",
+        "scribble": "anima-lllite-scribble",
+    }
+
+
+def test_zimage_types_share_the_union_file():
+    for folder in ("zib", "zit"):
+        assert set(F.CN_MODEL_MAP[folder].values()) == {"Z-Image-Turbo-Fun-Controlnet-Union"}
 
 
 def test_common_is_not_selectable():

@@ -263,6 +263,7 @@ async def _list_families(_request: web.Request) -> web.Response:
                 "supports_clip_skip": f.supports_clip_skip,
                 "default_shift": f.default_shift,
                 "cn_models": f.cn_models,
+                "cn_kind": f.cn_kind,
             }
             for f in flake_families.FAMILIES
         ]
