@@ -394,6 +394,17 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             currentFamily = inferFamilyFromPath(name);
         }
 
+        // ControlNet types the family has files for (#366): Anima LLLite and
+        // the Z-Image union only cover a subset of the SDXL types. `keep` stays
+        // listed so an existing entry's type remains visible.
+        async function familyCnTypes(keep = "") {
+            const types = await fetchCnTypes();
+            const mapped = CN_MODEL_MAP[familyFolder(currentFamily)];
+            const out = mapped ? types.filter(t => t in mapped) : types;
+            if (keep && !out.includes(keep)) out.push(keep);
+            return out;
+        }
+
         function loraBrowserDefaultPath() {
             const folder = familyFolder(currentFamily);
             return folder ? `img/${folder}` : "";
@@ -1196,7 +1207,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                                 let inferredType = "";
                                                 let siblingCandidates = [];
                                                 try {
-                                                    const types = await fetchCnTypes();
+                                                    const types = await familyCnTypes();
                                                     const res = inferCnFromImage(fileName, types);
                                                     inferredType = res.inferredType;
                                                     siblingCandidates = res.siblings || [];
@@ -1279,7 +1290,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             );
                             (async () => {
                                 try {
-                                    const types = await fetchCnTypes();
+                                    const types = await familyCnTypes(cn.type);
                                     for (const t of types) {
                                         const o = document.createElement("option");
                                         o.value = t;
@@ -1824,7 +1835,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                                         // Infer the type and seed the flake cover from the CN's
                                                         // sibling cover when none is set yet (#353).
                                                         try {
-                                                            const types = await fetchCnTypes();
+                                                            const types = await familyCnTypes();
                                                             const r = inferCnFromImage(cn.image, types);
                                                             if (r.inferredType && !cn.type) cn.type = r.inferredType;
                                                             if (trySiblingCover) trySiblingCover(r.siblings || []);
@@ -1865,7 +1876,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         css(r2, "display:flex;gap:6px;align-items:flex-end;");
                                         const ctlCol = (labelText, el, basis) => { const c = document.createElement("div"); css(c, `${basis};min-width:0;display:flex;flex-direction:column;gap:2px;`); const l = document.createElement("span"); l.textContent = labelText; css(l, "font-size:10px;color:#888;"); el.style.width = "100%"; c.appendChild(l); c.appendChild(el); return c; };
                                         const typeDD = makeComfyDropdown([{ value: "", label: "— type —" }], cn.type || "");
-                                        fetchCnTypes().then((types) => { for (const t of types) { const o = document.createElement("option"); o.value = t; o.textContent = t; if (t === cn.type) o.selected = true; typeDD.element.appendChild(o); } }).catch(() => {});
+                                        familyCnTypes(cn.type).then((types) => { for (const t of types) { const o = document.createElement("option"); o.value = t; o.textContent = t; if (t === cn.type) o.selected = true; typeDD.element.appendChild(o); } }).catch(() => {});
                                         typeDD.element.addEventListener("change", () => { cn.type = typeDD.element.value; renderChoiceExtras(); });
                                         r2.appendChild(ctlCol("Type", typeDD.container, "flex:0 0 96px"));
                                         const strS = makeComfyValueSlider(cn.strength ?? 1.0, 0, 2, 0.05, (v) => { cn.strength = v; });
