@@ -65,11 +65,14 @@ def _cn_norm(value: str) -> str:
     return re.sub(r"[^a-z0-9]", "", value.lower())
 
 
-def resolve_cn_model_name(model_name: str, family_folder: str | None) -> str:
+def resolve_cn_model_name(model_name: str, family_folder: str | None, category: str = "controlnet") -> str:
     """Resolve an inferred/explicit controlnet model name to an entry in
-    ``folder_paths.get_filename_list("controlnet")``, preferring the family's
-    controlnet subfolder (``models/controlnet/sdxl/`` for SDXL families,
-    ``.../zimage/`` for ZImage).
+    ``folder_paths.get_filename_list(category)``, preferring the family's
+    controlnet subfolder (``models/controlnet/sdxl/`` for SDXL families).
+
+    Families whose ControlNets are model patches pass
+    ``category="model_patches"`` (#364), so Anima resolves under
+    ``models/model_patches/anima/`` and Z-Image under ``.../zimage/``.
 
     Resolution order (#254):
       1. Exact-stem or normalized match inside the target subfolder.
@@ -80,7 +83,7 @@ def resolve_cn_model_name(model_name: str, family_folder: str | None) -> str:
     if not model_name:
         return model_name
 
-    available = folder_paths.get_filename_list("controlnet")
+    available = folder_paths.get_filename_list(category)
     subfolder = _CN_SUBFOLDER.get(family_folder or "")
 
     if subfolder:
@@ -114,7 +117,7 @@ def resolve_cn_model_name(model_name: str, family_folder: str | None) -> str:
 
     # Fall back to the generic resolver (exact / global stem match) so flat
     # `models/controlnet/` layouts keep working.
-    return _resolve_model_name("controlnet", model_name)
+    return _resolve_model_name(category, model_name)
 
 
 # ---------------------------------------------------------------------------
