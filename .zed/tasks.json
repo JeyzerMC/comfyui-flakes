@@ -1,0 +1,19 @@
+// ComfyUI is managed with comfy-cli; this repo lives in <ComfyUI>/custom_nodes/.
+[
+  {
+    "label": "ComfyUI: launch",
+    "command": "comfy",
+    "args": ["--skip-prompt", "--workspace", "$ZED_WORKTREE_ROOT/../..", "launch"],
+    "use_new_terminal": true,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "ComfyUI: update",
+    "command": "comfy",
+    "args": ["--skip-prompt", "--workspace", "$ZED_WORKTREE_ROOT/../..", "update", "comfy"],
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  }
+]
