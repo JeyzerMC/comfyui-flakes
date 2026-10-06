@@ -531,7 +531,7 @@ class FlakeStack:
                 break
 
         # --- Apply ControlNets (from flakes) ------------------------------------
-        from .flake_compose import _load_cn_image, _fit_cn_image
+        from .flake_compose import _load_cn_image, _fit_cn_image, apply_model_patch_cn, load_cn_patch
 
         # ControlNet "use image dimensions as resolution" override (#260): the
         # first active CN entry flagged resolution_from_image drives the
@@ -554,6 +554,12 @@ class FlakeStack:
                 break
 
         family_folder = flake_io._FAMILY_MAP.get(model_family, "sdxl")
+        # Anima and Z-Image ControlNets are model patches that hook the MODEL
+        # instead of the conditioning (#365); the patched model flows out in
+        # the bundle, so downstream Flake nodes chain on top of it.
+        family = flake_families.get(model_family)
+        cn_kind = family.cn_kind if family else "controlnet"
+        cn_category = family.cn_category if family else "controlnet"
         cn_model_cache = {}
         cn_loader = ControlNetLoader()
         cn_apply = ControlNetApplyAdvanced()
@@ -572,16 +578,21 @@ class FlakeStack:
                 if not cn.image_name.strip():
                     print(f"[flakes] skipping controlnet entry with empty image_name (type={cn.type})")
                     continue
-                cn_resolved = flake_io.resolve_cn_model_name(model_name, family_folder)
-                if cn_resolved not in cn_model_cache:
-                    cn_model_cache[cn_resolved] = cn_loader.load_controlnet(cn_resolved)[0]
-                cn_model = cn_model_cache[cn_resolved]
+                cn_resolved = flake_io.resolve_cn_model_name(model_name, family_folder, cn_category)
                 image = _load_cn_image(cn.image_name)
                 image = _fit_cn_image(image, new_width, new_height)
-                positive_cond, negative_cond = cn_apply.apply_controlnet(
-                    positive_cond, negative_cond, cn_model, image,
-                    cn.strength, cn.start_percent, cn.end_percent,
-                )
+                if cn_kind == "controlnet":
+                    if cn_resolved not in cn_model_cache:
+                        cn_model_cache[cn_resolved] = cn_loader.load_controlnet(cn_resolved)[0]
+                    positive_cond, negative_cond = cn_apply.apply_controlnet(
+                        positive_cond, negative_cond, cn_model_cache[cn_resolved], image,
+                        cn.strength, cn.start_percent, cn.end_percent,
+                    )
+                else:
+                    model = apply_model_patch_cn(
+                        cn_kind, model, vae, load_cn_patch(cn_resolved), image,
+                        cn.strength, cn.start_percent, cn.end_percent,
+                    )
                 logging.info(
                     "[flakes] applied CN model=%s image=%s fit=%dx%d strength=%.2f start=%.2f end=%.2f",
                     cn_resolved, cn.image_name, new_width, new_height,

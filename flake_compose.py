@@ -84,6 +84,45 @@ def _fit_cn_image(image: torch.Tensor, target_w: int, target_h: int) -> torch.Te
     return samples.movedim(1, -1)  # back to [B, H, W, 3]
 
 
+# Model-patch ControlNets (#365), most recently used last: {name: (mtime, MODEL_PATCH)}.
+# Reusing the same MODEL_PATCH object across runs lets a Flake Combo batch skip
+# re-reading the file and lets ComfyUI keep it resident. Bounded so a multi-GB
+# Z-Image union patch isn't pinned once workflows stop using it.
+_CN_PATCH_CACHE: dict[str, tuple[float, Any]] = {}
+_CN_PATCH_CACHE_SIZE = 4
+
+
+def load_cn_patch(name: str) -> Any:
+    """Load a ControlNet model patch from models/model_patches/ (#365)."""
+    from comfy_extras.nodes_model_patch import ModelPatchLoader
+
+    mtime = os.path.getmtime(folder_paths.get_full_path_or_raise("model_patches", name))
+    hit = _CN_PATCH_CACHE.pop(name, None)
+    if hit is None or hit[0] != mtime:
+        hit = (mtime, ModelPatchLoader().load_model_patch(name)[0])
+    _CN_PATCH_CACHE[name] = hit
+    while len(_CN_PATCH_CACHE) > _CN_PATCH_CACHE_SIZE:
+        del _CN_PATCH_CACHE[next(iter(_CN_PATCH_CACHE))]
+    return hit[1]
+
+
+def apply_model_patch_cn(cn_kind: str, model: Any, vae: Any, model_patch: Any, image: torch.Tensor,
+                         strength: float, start_percent: float, end_percent: float) -> Any:
+    """Apply an Anima LLLite or Z-Image Fun ControlNet by patching the model (#365).
+
+    These hook the diffusion model's blocks rather than the conditioning. The
+    returned model is a clone sharing the base weights, so swapping the patch
+    between runs does not reload the diffusion model.
+    """
+    from comfy_extras.nodes_model_patch import AnimaLLLiteApply, ZImageFunControlnet
+
+    if cn_kind == "anima_lllite":
+        return AnimaLLLiteApply().apply_patch(model, model_patch, image, strength, start_percent, end_percent)[0]
+    if (start_percent, end_percent) != (0.0, 1.0):
+        logging.warning("[flakes] Z-Image Fun ControlNet has no start/end; applying it to every step")
+    return ZImageFunControlnet().diffsynth_controlnet(model, model_patch, vae, image=image, strength=strength)[0]
+
+
 def maybe_zero_out_negative(negative: Any, cfg: float) -> Any:
     """Zero out the negative conditioning when sampling at cfg <= 1 (#359).
 
