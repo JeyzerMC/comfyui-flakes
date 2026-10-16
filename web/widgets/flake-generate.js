@@ -1,5 +1,5 @@
 import { css, setWidgetHidden } from "../utils.js";
-import { computeJobCount, getBatchImages, getBatchProgress } from "../queue.js";
+import { computeJobCount, getBatchImages, getBatchProgress, getLivePreview } from "../queue.js";
 import { buildModel, openGenerationDataOverlay } from "./generation-data.js";
 
 const ACCENT = "#4a9eff";
@@ -122,6 +122,7 @@ export function setupFlakeGenerateWidget(node) {
 
     // Double-click the output image to reveal it in the OS file explorer (#329).
     let currentImage = null;
+    let previewUrl = null; // live sampling preview shown instead of currentImage (#374)
     imageEl.addEventListener("dblclick", () => {
         if (!currentImage) return;
         fetch("/flakes/reveal", {
@@ -157,6 +158,7 @@ export function setupFlakeGenerateWidget(node) {
 
     function showImage(img) {
         currentImage = img;
+        previewUrl = null;
         imageEl.src = `/view?filename=${encodeURIComponent(img.filename)}&type=${img.type || "output"}&subfolder=${encodeURIComponent(img.subfolder || "")}`;
         imageEl.style.display = "block";
         noImageLabel.style.display = "none";
@@ -182,8 +184,22 @@ export function setupFlakeGenerateWidget(node) {
     }
 
     function clearImage() {
+        previewUrl = null;
         imageEl.style.display = "none";
         noImageLabel.style.display = "block";
+        filenameLabel.style.display = "none";
+        dimensionsLabel.style.display = "none";
+    }
+
+    // Live sampling preview (#374), shown until the result replaces it.
+    function showPreview(url) {
+        if (url === previewUrl) return;
+        previewUrl = url;
+        currentImage = null;
+        imageEl.onload = null;
+        imageEl.src = url;
+        imageEl.style.display = "block";
+        noImageLabel.style.display = "none";
         filenameLabel.style.display = "none";
         dimensionsLabel.style.display = "none";
     }
@@ -192,26 +208,35 @@ export function setupFlakeGenerateWidget(node) {
 
     // Per-combo results: the live batch state when this workflow ran a batch,
     // else what the saved workflow carried (#373).
+    // `preview` is the live sampling preview ({ url, comboKey }) or null (#374).
     function comboImages() {
-        return getBatchImages(node) || {
+        const images = getBatchImages(node) || {
             combo: node.properties._images_by_combo || {},
             ad: node.properties._images_by_combo_ad || {},
             ab: !!node.properties._adetailer_ab,
         };
+        return { ...images, preview: getLivePreview(node) };
     }
 
-    // Called by queue.js when batch results change, and after a workflow load.
-    // Mirrors them into properties so they are saved with the workflow.
+    // Called by queue.js when batch results or the live preview change, and
+    // after a workflow load. Mirrors batch results into properties so they are
+    // saved with the workflow.
     node._flake_generate_render = function () {
         const entry = getBatchImages(node);
-        if (!entry) return;
-        node.properties._images_by_combo = entry.combo;
-        node.properties._images_by_combo_ad = entry.ad;
-        node.properties._adetailer_ab = entry.ab;
-        if (entry.last) {
-            node.properties._last_image = entry.last;
-            showImage(entry.last);
+        if (entry) {
+            node.properties._images_by_combo = entry.combo;
+            node.properties._images_by_combo_ad = entry.ad;
+            node.properties._adetailer_ab = entry.ab;
+            if (entry.last) node.properties._last_image = entry.last;
         }
+        const preview = getLivePreview(node);
+        if (preview) {
+            showPreview(preview.url);
+            return;
+        }
+        const img = node.properties._last_image;
+        if (img && (previewUrl || img !== currentImage)) showImage(img);
+        else if (!img && previewUrl) clearImage();
     };
 
     // ── Add DOM widget ──
@@ -239,16 +264,11 @@ export function setupFlakeGenerateWidget(node) {
                 node.properties._last_image_ad = null;
                 node.properties._adetailer_ab = false;
             }
-            // Per-combo storage is populated from queue.js via the `executed`
-            // websocket event (which carries the correct prompt_id), so we no
-            // longer write _images_by_combo here — doing so raced when the
-            // batch loop advanced to the next combo before this fired.
-            // For single-prompt (no combo) runs, still record under the empty
-            // key as a safety net.
-            if (!node.properties._images_by_combo || Object.keys(node.properties._images_by_combo).length === 0) {
-                node.properties._images_by_combo = node.properties._images_by_combo || {};
-                node.properties._images_by_combo[""] = img;
-            }
+            // Batch results are stored per combination by queue.js (from the
+            // `executed` event, which carries the prompt_id). A plain run
+            // replaces them with its own result under the empty key, so the
+            // overlay shows it once its live preview ends (#374).
+            if (!getBatchImages(node)) node.properties._images_by_combo = { "": img };
         } else if (output && output.flake_images) {
             clearImage();
         }

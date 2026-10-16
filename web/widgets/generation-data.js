@@ -609,9 +609,10 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 // Leave width at 0% — onProgress will fill it in.
             }
         })();
-        // Re-render the image when a result for the selected combination arrives.
+        // Re-render the image when a preview or result for the selected combination arrives.
         const unsubscribe = subscribeBatch(() => {
-            if (shownData && selectedResult() !== currentGenerated) renderImage(shownData);
+            const preview = selectedPreview();
+            if (shownData && (preview !== shownPreview || (!preview && selectedResult() !== currentGenerated))) renderImage(shownData);
         });
         // Tear down the listeners however the overlay closes (button, Esc, outside click).
         handlers.onClose = () => {
@@ -714,16 +715,28 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             const images = getImages();
             return (showAd ? images.ad[key] : images.combo[key]) || null;
         }
+        function selectedPreview() {
+            const preview = getImages().preview;
+            return preview && preview.comboKey === combinationKeyFor(model, selIdx) ? preview.url : null;
+        }
 
-        // Generated output for the selected combination, else the cover placeholder.
+        // Live preview while the selected combination samples (#374), else its
+        // generated output, else the cover placeholder.
         let imageToken = 0;
+        let shownPreview = null;
         async function renderImage(data) {
             const token = ++imageToken;
-            const generated = selectedResult();
+            shownPreview = selectedPreview();
+            const generated = shownPreview ? null : selectedResult();
             currentGenerated = generated;
             // Match the preview aspect ratio to the output's resolution (#231).
             applyAspectRatio(data.width, data.height);
-            if (generated) {
+            if (shownPreview) {
+                dimsFromImage = false;
+                compositeImg.src = shownPreview;
+                compositeLabel.textContent = "Generating…";
+                compositeDimensions.textContent = data.dimensions || "";
+            } else if (generated) {
                 dimsFromImage = true;
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
                 const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
@@ -952,14 +965,24 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             const byKey = showAd ? images.ad : images.combo;
             return byKey[key] ?? byKey[""] ?? null;
         }
+        function selectedPreview() {
+            return getImages().preview?.url || null;
+        }
 
         let imageToken = 0;
+        let shownPreview = null;
         async function renderImage(data) {
             const token = ++imageToken;
-            const generated = selectedResult();
+            shownPreview = selectedPreview();
+            const generated = shownPreview ? null : selectedResult();
             currentGenerated = generated;
             applyAspectRatioSingle(data.width, data.height);
-            if (generated) {
+            if (shownPreview) {
+                dimsFromImage = false;
+                compositeImg.src = shownPreview;
+                compositeLabel.textContent = "Generating…";
+                compositeDimensions.textContent = data.dimensions || "";
+            } else if (generated) {
                 dimsFromImage = true;
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
                 const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
@@ -1012,7 +1035,8 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         }
 
         const unsubscribe = subscribeBatch(() => {
-            if (shownData && selectedResult() !== currentGenerated) renderImage(shownData);
+            const preview = selectedPreview();
+            if (shownData && (preview !== shownPreview || (!preview && selectedResult() !== currentGenerated))) renderImage(shownData);
         });
         handlers.onClose = unsubscribe;
 

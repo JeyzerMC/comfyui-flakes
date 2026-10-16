@@ -142,23 +142,59 @@ function renderHighlights(state) {
     }
 }
 
-function renderResults(state) {
-    if (activeState() === state) {
-        for (const n of app.graph.nodes) {
-            if (n.type === "FlakeGenerate") n._flake_generate_render?.();
-        }
+// FlakeGenerate nodes read the active workflow's state themselves.
+function renderResults() {
+    for (const n of app.graph.nodes) {
+        if (n.type === "FlakeGenerate") n._flake_generate_render?.();
     }
     for (const fn of _batchListeners) fn();
 }
 
-// The workflow store switches the active workflow only after the new graph's
-// nodes are configured, so re-read the store once loading is complete.
+// Latest per-step sampling preview (#374). Only one prompt executes at a time,
+// so a single blob URL is kept; the previous one is revoked when replaced.
+let _preview = null; // { url, nodeId, promptId }
+
+function setPreview(next) {
+    if (_preview) URL.revokeObjectURL(_preview.url);
+    _preview = next;
+    renderResults();
+}
+
+// { url, comboKey } while `node` is sampling, else null. comboKey is the
+// running batch combination ("" for a plain run). Previews of a batch queued
+// from another workflow are not shown.
+export function getLivePreview(node) {
+    if (!_preview || _preview.nodeId !== String(node.id)) return null;
+    const idx = _activeBatch.promptIds.indexOf(_preview.promptId);
+    if (idx >= 0 && _activeBatch.state !== activeState()) return null;
+    return { url: _preview.url, comboKey: idx >= 0 ? _activeBatch.comboKeys[idx] : "" };
+}
+
 app.registerExtension({
     name: "comfyui-flakes.BatchState",
+    setup() {
+        const comfyApi = _resolveComfyApi();
+        if (!comfyApi) return;
+        comfyApi.addEventListener("b_preview_with_metadata", ({ detail }) => {
+            setPreview({ url: URL.createObjectURL(detail.blob), nodeId: String(detail.displayNodeId), promptId: detail.jobId });
+        });
+        // The node's result replaces its preview; a finished, interrupted or
+        // superseded prompt drops it.
+        comfyApi.addEventListener("executed", ({ detail }) => {
+            if (_preview && String(detail.display_node || detail.node) === _preview.nodeId) setPreview(null);
+        });
+        const dropForPrompt = (e) => { if (_preview && getPromptIdFromEvent(e) === _preview.promptId) setPreview(null); };
+        comfyApi.addEventListener("execution_success", dropForPrompt);
+        comfyApi.addEventListener("execution_error", dropForPrompt);
+        comfyApi.addEventListener("execution_interrupted", dropForPrompt);
+        comfyApi.addEventListener("execution_start", (e) => { if (_preview && getPromptIdFromEvent(e) !== _preview.promptId) setPreview(null); });
+        comfyApi.addEventListener("reconnected", () => { if (_preview) setPreview(null); });
+    },
+    // The workflow store switches the active workflow only after the new
+    // graph's nodes are configured, so re-read the store once loading is complete.
     afterLoadGraph() {
-        const state = activeState();
-        renderHighlights(state);
-        renderResults(state);
+        renderHighlights(activeState());
+        renderResults();
     },
 });
 
@@ -187,7 +223,7 @@ let _currentComboIndex = null;
 
 // Active batch promptId → comboKey map, plus a live "running" pointer.
 // Exported so the Generation Data overlay can show per-combo progress (#230).
-const _activeBatch = { promptIds: [], comboKeys: [], runningPromptId: null };
+const _activeBatch = { promptIds: [], comboKeys: [], runningPromptId: null, state: null };
 export function getActiveBatch() {
     return _activeBatch;
 }
@@ -207,6 +243,7 @@ function setupBatchTracking(state, combinations, comboKeys) {
     const comboIndexByPrompt = []; // parallel to promptIds: the combination index (#348)
     const done = new Set(); // finished prompt ids (events and /history backfill may both report one)
     let closed = false;
+    _activeBatch.state = state;
 
     // Pending event buffer: websocket events for a prompt_id can arrive BEFORE
     // the REST response that gives us that prompt_id (different transport
@@ -304,7 +341,7 @@ function setupBatchTracking(state, combinations, comboKeys) {
             entry.ad[comboKey] = adImages[0];
             entry.ab = true;
         }
-        renderResults(state);
+        renderResults();
     }
 
     // Websocket events are lost while the socket is down (background tabs,
@@ -359,6 +396,7 @@ function setupBatchTracking(state, combinations, comboKeys) {
         _activeBatch.promptIds = [];
         _activeBatch.comboKeys = [];
         _activeBatch.runningPromptId = null;
+        _activeBatch.state = null;
         pendingByPid.clear();
         state.generating = {};
         renderHighlights(state);
@@ -532,7 +570,7 @@ app.queuePrompt = async function(number, batchCount = 1) {
         n.properties._images_by_combo_ad = {};
         n.properties._adetailer_ab = false;
     }
-    renderResults(state);
+    renderResults();
 
     const comboKeys = []; // parallel to promptIds; comboKeys[idx] = key for promptIds[idx]
     const tracker = setupBatchTracking(state, combinations, comboKeys);
