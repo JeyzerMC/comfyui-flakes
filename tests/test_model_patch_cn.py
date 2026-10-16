@@ -11,6 +11,7 @@ Run directly (``python tests/test_model_patch_cn.py``) or via pytest.
 import importlib.machinery
 import importlib.util
 import json
+import logging
 import os
 import sys
 import types
@@ -26,6 +27,14 @@ CALLS = {"patch_load": [], "lllite": [], "zimage": [], "cn_load": [], "cn_apply"
          "acn_load": [], "acn_apply": []}
 
 ACN_PKG = "fake_acn.adv_control"
+
+
+class FakeModel(str):
+    """A MODEL stand-in that compares by name; flow-model sigmas = 1 - percent."""
+
+    def get_model_object(self, name):
+        assert name == "model_sampling"
+        return types.SimpleNamespace(percent_to_sigma=lambda p: 1.0 - p)
 
 
 class ACNLoader:
@@ -126,7 +135,7 @@ def _stub_externals():
     class AnimaLLLiteApply:
         def apply_patch(self, model, model_patch, image, strength, start_percent, end_percent):
             CALLS["lllite"].append((model, model_patch, image, strength, start_percent, end_percent))
-            return (f"{model}+lllite",)
+            return (FakeModel(f"{model}+lllite"),)
 
     class ZImageFunControlnet:
         def diffsynth_controlnet(self, model, model_patch, vae, image=None, strength=1.0):
@@ -190,12 +199,12 @@ def _cn(cn_type="depth", **kw):
     return flake_io.ControlNetEntry(**base)
 
 
-def _run(model_family, *flake_cns):
+def _run(model_family, *flake_cns, upstream_family=None):
     flakes = {f"f{i}": flake_io.Flake(name=f"f{i}", controlnets=list(cns)) for i, cns in enumerate(flake_cns)}
     flake_io.resolve = lambda e: flakes[e["name"]]
     flake_data = (
-        ("BASE_MODEL", "CLIP", "VAE"),
-        ([["P", {}]], [["N", {}]], {"samples": "l"}, 1024, 1024, "", "", {"stems": []}),
+        (FakeModel("BASE_MODEL"), "CLIP", "VAE"),
+        ([["P", {}]], [["N", {}]], {"samples": "l"}, 1024, 1024, "", "", {"stems": [], "model_family": upstream_family}),
         (30, 4.0, "euler", "simple"),
     )
     entries = [{"name": n} for n in flakes]
@@ -232,6 +241,16 @@ def test_zimage_passes_vae_and_strength():
     assert out[0][0] == "BASE_MODEL+zfun"
     m, _patch, vae, image, strength = CALLS["zimage"][0]
     assert (m, vae, image, strength) == ("BASE_MODEL", "VAE", "IMG(pose_a)@1024x1024", 0.8)
+
+
+def test_preset_family_wins_over_stale_widget():
+    # A reroute/subgraph leaves the widget on SDXL/Base; the family recorded by
+    # the preset loader must still route Anima CNs to LLLite (#382).
+    _reset()
+    FILES["model_patches"].append("anima/anima-lllite-depth-1.safetensors")
+    out = _run("SDXL/Base", [_cn("depth")], upstream_family="Anima/Base")
+    assert out[0][0] == "BASE_MODEL+lllite"
+    assert not CALLS["cn_load"] and not CALLS["cn_apply"]
 
 
 def test_sdxl_path_unchanged():
@@ -398,6 +417,36 @@ def test_anima_cn_files_lists_lllite_and_vace():
     FILES["model_patches"] += LLLITE_FILES + ["zimage/Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"]
     assert flake_compose.anima_cn_files() == [{"name": n, "kind": "lllite"} for n in LLLITE_FILES] + [
         {"name": VACE_FILE, "kind": "vace"}]
+
+
+def _logged_run(*args):
+    records = []
+    handler = logging.Handler()
+    handler.emit = records.append
+    logger = logging.getLogger()
+    level = logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    try:
+        _run(*args)
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(level)
+    return [r.getMessage() for r in records if r.getMessage().startswith("[flakes] Anima")]
+
+
+def test_anima_patch_logs_file_kind_and_sigma_range():
+    _reset()
+    _install_acn(with_vace=True)
+    _add_vace_file()
+    FILES["model_patches"] += LLLITE_FILES
+    lines = _logged_run("Anima/Base", [_cn("depth"), _cn("depth", model_name=VACE_FILE)])
+    assert lines == [
+        "[flakes] Anima lllite anima/anima-lllite-depth-1.safetensors image=pose_a fit=1024x1024 "
+        "strength=0.80 start=0.10 end=0.90 sigma=0.900..0.100",
+        f"[flakes] Anima vace {VACE_FILE} image=pose_a fit=1024x1024 "
+        "strength=0.80 start=0.10 end=0.90 sigma=0.900..0.100",
+    ]
 
 
 if __name__ == "__main__":

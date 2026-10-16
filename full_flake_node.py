@@ -292,6 +292,7 @@ def _load_preset_bundle(preset_name: str, model_family: str | None = None):
         "vae": preset_data.vae or "baked-in",
         "text_encoder": preset_data.text_encoder or "baked-in",
         "loras": [],
+        "model_family": model_family,
     }
     generation_data = (positive, negative, latent, width, height, pos_text, neg_text, filename_state)
     sampling_preset = (preset_data.steps, preset_data.cfg, preset_data.sampler, preset_data.scheduler)
@@ -451,6 +452,11 @@ class FlakeStack:
             filename_state["stems"] = list(filename_state.get("stems", []))
         else:
             filename_state = {"preset": "", "stems": []}
+
+        # The widget is only a frontend copy of the upstream node's family and
+        # goes stale behind reroutes/subgraphs; the preset loader records the
+        # family it actually loaded (#382).
+        model_family = filename_state.get("model_family") or model_family
 
         # --- Parse flakes_json --------------------------------------------------
         try:
@@ -626,11 +632,23 @@ class FlakeStack:
                         cn_kind, model, vae, load_cn_patch(cn_resolved), image,
                         cn.strength, cn.start_percent, cn.end_percent,
                     )
-                logging.info(
-                    "[flakes] applied CN model=%s image=%s fit=%dx%d strength=%.2f start=%.2f end=%.2f",
-                    cn_resolved, cn.image_name, new_width, new_height,
-                    cn.strength, cn.start_percent, cn.end_percent,
-                )
+                # The sigma window shows which steps an Anima ControlNet can
+                # act on; FlakeGenerate logs whether the patch reached the sampler (#382).
+                if cn_kind == "anima_lllite":
+                    model_sampling = model.get_model_object("model_sampling")
+                    logging.info(
+                        "[flakes] Anima %s %s image=%s fit=%dx%d strength=%.2f start=%.2f end=%.2f sigma=%.3f..%.3f",
+                        picked[1] if picked else "lllite", cn_resolved, cn.image_name, new_width, new_height,
+                        cn.strength, cn.start_percent, cn.end_percent,
+                        float(model_sampling.percent_to_sigma(cn.start_percent)),
+                        float(model_sampling.percent_to_sigma(cn.end_percent)),
+                    )
+                else:
+                    logging.info(
+                        "[flakes] applied CN model=%s image=%s fit=%dx%d strength=%.2f start=%.2f end=%.2f",
+                        cn_resolved, cn.image_name, new_width, new_height,
+                        cn.strength, cn.start_percent, cn.end_percent,
+                    )
 
         # --- Latent (resolution resolved above, before ControlNets) -------------
         if (new_width, new_height) != (width, height):

@@ -189,6 +189,12 @@ diffusion model, so the files go in `models/model_patches/`, not
 - For Anima, the Model dropdown lists every file in `models/model_patches/anima/`
   and the VACE files in `models/controlnet/anima/`. `Auto (by type)` uses the
   LLLite file for the type; a model that no longer exists falls back to Auto.
+- If an Anima ControlNet seems to have no effect, check the console:
+  `[flakes] Anima lllite <file> ... sigma=<start>..<end>` per applied patch and
+  `[FlakeGenerate] model patches: post_input=1, ...` before sampling (`none` means
+  no patch reached the sampler). To compare, run ComfyUI's
+  `Control to Image (Anima LLLite)` blueprint with the same image, file,
+  strength, start/end, seed and sampler settings.
 - The base model is not reloaded when switching flakes. Each patch is a hook on
   a clone that shares its weights, and recently used patch files stay cached.
 

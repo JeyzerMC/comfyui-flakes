@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 
 try:
@@ -502,6 +503,12 @@ class FlakeGenerate:
         # per-instance override (#279). ControlNets have already been applied by
         # this point, so the `control` key is carried through the zero-out.
         negative = flake_compose.maybe_zero_out_negative(negative, cfg)
+
+        # Proves whether model-patch ControlNets (Anima LLLite: post_input,
+        # attn1/attn2_patch, mlp_patch) reached the sampler (#382).
+        patches = model.model_options["transformer_options"].get("patches", {})
+        logging.info("[FlakeGenerate] model patches: %s",
+                     ", ".join(f"{k}={len(v)}" for k, v in patches.items()) or "none")
 
         ks = KSampler()
         sampled = ks.sample(
