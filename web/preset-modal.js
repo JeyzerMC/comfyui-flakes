@@ -153,6 +153,10 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
             updateResolvedPath();
         }
 
+        // Stays disabled until roots load, otherwise Save would send a bogus root index.
+        const saveBtn = makeButton("Save", true);
+        saveBtn.disabled = true;
+
         (async () => {
             try {
                 const r = await fetch("/flakes/roots?type=model_presets");
@@ -182,13 +186,14 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                     }
                 }
                 // For new presets, default the base folder to the first Extra Path
-                // root (index > 0) when one is configured, instead of Comfy Install.
+                // root when one is configured, instead of Comfy Install.
                 if (mode === "create") {
-                    const extraRoot = availableRoots.find(r => r.index > 0);
+                    const extraRoot = availableRoots.find(r => !r.is_install);
                     if (extraRoot) baseRootSelect.value = String(extraRoot.index);
                 }
                 if (mode === "create" && !pathManuallyEdited) syncOutputPath();
                 updateResolvedPath();
+                saveBtn.disabled = !availableRoots.length;
             } catch { /* ignore */ }
         })();
 
@@ -648,7 +653,6 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         });
         footer.appendChild(cancelBtn);
 
-        const saveBtn = makeButton("Save", true);
         saveBtn.addEventListener("click", async () => {
             const ordered = {
                 display_name: (nameInput.value || "").trim() || undefined,

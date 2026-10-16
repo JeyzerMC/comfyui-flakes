@@ -640,18 +640,19 @@ async def _list_roots(request: web.Request) -> web.Response:
         roots = []
     if isinstance(roots, str):
         roots = [roots]
-    base_path = folder_paths.base_path
+    install_dir = os.path.join(folder_paths.models_dir, "flakes")
+    if kind == "model_presets":
+        install_dir = os.path.join(install_dir, "model_presets")
+    install_dir = os.path.normcase(os.path.realpath(install_dir))
     base_root = None
     extra_roots = []
     for i, root in enumerate(roots):
         if not root or not isinstance(root, str):
             continue
-        real_root = os.path.realpath(root)
-        real_base = os.path.realpath(base_path)
-        if real_root.startswith(real_base + os.sep) or real_root == real_base:
-            base_root = {"index": i, "path": root, "label": "Comfy Install"}
+        if os.path.normcase(os.path.realpath(root)) == install_dir:
+            base_root = {"index": i, "path": root, "label": "Comfy Install", "is_install": True}
         else:
-            extra_roots.append({"index": i, "path": root, "label": ""})
+            extra_roots.append({"index": i, "path": root, "label": "", "is_install": False})
 
     entries = []
     if base_root:
