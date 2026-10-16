@@ -76,6 +76,133 @@ function inferCnFromImage(filename, types = []) {
     return { inferredType, sibling, siblings };
 }
 
+// Transient menu anchored under a ☰ handle. `items` is [{ label, onClick }].
+function openFieldMenu(anchorEl, items) {
+    const menu = document.createElement("div");
+    css(menu, "display:flex;flex-direction:column;gap:2px;background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:4px;box-shadow:0 4px 12px rgba(0,0,0,0.5);position:fixed;z-index:10000;");
+    function cleanup() {
+        document.removeEventListener("click", onOutside, true);
+        if (menu.parentElement) menu.remove();
+    }
+    function onOutside(e) {
+        if (!menu.contains(e.target) && e.target !== anchorEl) cleanup();
+    }
+    for (const o of items) {
+        const it = document.createElement("button");
+        it.textContent = o.label;
+        css(it, "text-align:left;padding:4px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
+        it.addEventListener("click", (e) => { e.stopPropagation(); cleanup(); o.onClick(); });
+        menu.appendChild(it);
+    }
+    document.body.appendChild(menu);
+    const rect = anchorEl.getBoundingClientRect();
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.bottom + 4}px`;
+    // Defer so the opening click doesn't immediately close it.
+    setTimeout(() => document.addEventListener("click", onOutside, true), 0);
+}
+
+// ☰ handle for a schedulable card (LoRA / prompt / flake link, #372).
+function makeScheduleHandle(entry, rerender) {
+    const handle = document.createElement("span");
+    handle.textContent = "☰";
+    css(handle, "cursor:pointer;color:#666;font-size:12px;user-select:none;");
+    handle.title = "Options";
+    handle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openFieldMenu(handle, [scheduleMenuItem(entry, rerender)]);
+    });
+    return handle;
+}
+
+function scheduleMenuItem(entry, rerender) {
+    if (entry.schedule) {
+        return { label: "Remove Hook Scheduler", onClick: () => { delete entry.schedule; rerender(); } };
+    }
+    return {
+        label: "Add Hook Scheduler",
+        onClick: () => { entry.schedule = [{ start: 0.0, strength: 1.0 }, { start: 0.5, strength: 0.0 }]; rerender(); },
+    };
+}
+
+// Keyframe editor for `entry.schedule` (#372): a 0-100% timeline showing the
+// strength of each segment plus Start % / Strength rows. Start is stored as a
+// fraction; strength holds until the next keyframe and is 1.0 before the first.
+function makeSchedulePanel(entry) {
+    const panel = document.createElement("div");
+    css(panel, "display:flex;flex-direction:column;gap:4px;background:#1e1e1e;border:1px solid #333;border-radius:4px;padding:6px;");
+    const fmt = (v) => String(Math.round(v * 100) / 100);
+    function draw() {
+        panel.replaceChildren();
+        const kfs = entry.schedule;
+        kfs.sort((a, b) => a.start - b.start);
+        const maxStrength = Math.max(1, ...kfs.map(k => k.strength));
+        const bar = document.createElement("div");
+        css(bar, "position:relative;height:18px;background:#141414;border:1px solid #333;border-radius:3px;overflow:hidden;");
+        const segments = [{ start: 0, strength: 1.0 }, ...kfs];
+        segments.forEach((k, i) => {
+            const end = i + 1 < segments.length ? segments[i + 1].start : 1;
+            if (end <= k.start) return;
+            const seg = document.createElement("div");
+            const alpha = 0.15 + 0.75 * Math.min(1, k.strength / maxStrength);
+            css(seg, `position:absolute;top:0;bottom:0;left:${k.start * 100}%;width:${(end - k.start) * 100}%;background:rgba(74,158,255,${k.strength > 0 ? alpha : 0});border-left:1px solid #444;box-sizing:border-box;font-size:10px;color:#ddd;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;`);
+            seg.textContent = fmt(k.strength);
+            seg.title = `${fmt(k.start * 100)}% – ${fmt(end * 100)}%: strength ${fmt(k.strength)}`;
+            bar.appendChild(seg);
+        });
+        panel.appendChild(bar);
+
+        kfs.forEach((k, i) => {
+            const row = document.createElement("div");
+            css(row, "display:flex;gap:6px;align-items:center;");
+            const startLbl = document.createElement("span");
+            startLbl.textContent = "Start %";
+            css(startLbl, "font-size:11px;color:#888;white-space:nowrap;");
+            row.appendChild(startLbl);
+            const startIn = makeComfyNumberInput(fmt(k.start * 100), "0", 1);
+            startIn.min = "0";
+            startIn.max = "100";
+            css(startIn, startIn.style.cssText + "flex:1;min-width:0;padding:3px 6px;font-size:12px;");
+            startIn.addEventListener("change", () => {
+                const v = parseFloat(startIn.value);
+                k.start = Number.isFinite(v) ? Math.min(100, Math.max(0, v)) / 100 : k.start;
+                draw();
+            });
+            row.appendChild(startIn);
+            const strLbl = document.createElement("span");
+            strLbl.textContent = "Strength";
+            css(strLbl, "font-size:11px;color:#888;white-space:nowrap;");
+            row.appendChild(strLbl);
+            const strIn = makeComfyNumberInput(fmt(k.strength), "1", 0.05);
+            strIn.min = "0";
+            css(strIn, strIn.style.cssText + "flex:1;min-width:0;padding:3px 6px;font-size:12px;");
+            strIn.addEventListener("change", () => {
+                const v = parseFloat(strIn.value);
+                k.strength = Number.isFinite(v) ? Math.max(0, v) : k.strength;
+                draw();
+            });
+            row.appendChild(strIn);
+            const rm = makeSmallButton("✕");
+            rm.title = "Remove keyframe";
+            if (kfs.length === 1) rm.style.visibility = "hidden";
+            rm.addEventListener("click", () => { kfs.splice(i, 1); draw(); });
+            row.appendChild(rm);
+            panel.appendChild(row);
+        });
+
+        const addBtn = makeSmallButton("+ Keyframe");
+        addBtn.style.alignSelf = "flex-start";
+        addBtn.addEventListener("click", () => {
+            const last = kfs[kfs.length - 1];
+            kfs.push({ start: last ? (last.start + 1) / 2 : 0, strength: 1.0 });
+            draw();
+        });
+        panel.appendChild(addBtn);
+    }
+    draw();
+    return panel;
+}
+
 export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) {
     return new Promise((resolve) => {
         let { content, footer, close, handlers, panel } = openOverlay();
@@ -628,6 +755,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 target: String(l.target || ""),
                 variant: { ...(l.variant || {}) },
                 lora_strengths: Array.isArray(l.lora_strengths) ? [...l.lora_strengths] : [],
+                ...(Array.isArray(l.schedule) ? { schedule: l.schedule.map(k => ({ ...k })) } : {}),
             })),
         };
         if (!Array.isArray(fieldState.controlnets._)) {
@@ -820,10 +948,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             const header = document.createElement("div");
                             css(header, "display:flex;gap:6px;align-items:center;");
 
-                            const dragHandle = document.createElement("span");
-                            dragHandle.textContent = "\u2630";
-                            css(dragHandle, "cursor:grab;color:#666;font-size:12px;");
-                            header.appendChild(dragHandle);
+                            header.appendChild(makeScheduleHandle(lora, renderLoras));
 
                             const title = document.createElement("span");
                             const titleText = lora.name ? `LoRA: ${lora.name}` : "LoRA";
@@ -988,6 +1113,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 lora.strength = v;
                             });
                             card.appendChild(strSlider);
+                            if (lora.schedule) card.appendChild(makeSchedulePanel(lora));
 
                             loraBox.appendChild(card);
                         }
@@ -1028,6 +1154,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             css(card, "background:#252525;padding:8px;border-radius:6px;border:1px solid #333;display:flex;flex-direction:column;gap:6px;");
                             const header = document.createElement("div");
                             css(header, "display:flex;gap:6px;align-items:center;");
+                            header.appendChild(makeScheduleHandle(prompt, renderPrompts));
                             const title = document.createElement("span");
                             title.textContent = `Prompt ${i + 1}`;
                             css(title, "flex:1;font-size:12px;font-weight:500;color:#aaa;");
@@ -1092,6 +1219,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 });
                                 negCol.appendChild(negBtn);
                             }
+                            if (prompt.schedule) card.appendChild(makeSchedulePanel(prompt));
                             promptBox.appendChild(card);
                         });
                         const addBtn = makeSmallButton("+ Add prompt");
@@ -1407,7 +1535,11 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 });
                                 dragHandle.addEventListener("click", (e) => {
                                     e.stopPropagation();
-                                    openChoiceFieldMenu(dragHandle);
+                                    openFieldMenu(dragHandle, [
+                                        { label: "LoRA", onClick: () => addChoiceField("lora") },
+                                        { label: "ControlNet", onClick: () => addChoiceField("controlnets") },
+                                        { label: "Flake Link", onClick: () => addChoiceField("flake_link") },
+                                    ]);
                                 });
                                 cRow.appendChild(dragHandle);
 
@@ -1739,37 +1871,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     }
                                 }
 
-                                // Transient "Add field" popup anchored under the hamburger.
-                                function openChoiceFieldMenu(anchorEl) {
-                                    const menu = document.createElement("div");
-                                    css(menu, "display:flex;flex-direction:column;gap:2px;background:#1e1e1e;border:1px solid #444;border-radius:4px;padding:4px;box-shadow:0 4px 12px rgba(0,0,0,0.5);position:fixed;z-index:10000;");
-                                    const opts = [
-                                        { key: "lora", label: "LoRA" },
-                                        { key: "controlnets", label: "ControlNet" },
-                                        { key: "flake_link", label: "Flake Link" },
-                                    ];
-                                    function cleanup() {
-                                        document.removeEventListener("click", onOutside, true);
-                                        if (menu.parentElement) menu.remove();
-                                    }
-                                    function onOutside(e) {
-                                        if (!menu.contains(e.target) && e.target !== anchorEl) cleanup();
-                                    }
-                                    for (const o of opts) {
-                                        const it = document.createElement("button");
-                                        it.textContent = o.label;
-                                        css(it, "text-align:left;padding:4px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
-                                        it.addEventListener("click", (e) => { e.stopPropagation(); cleanup(); addChoiceField(o.key); });
-                                        menu.appendChild(it);
-                                    }
-                                    document.body.appendChild(menu);
-                                    const rect = anchorEl.getBoundingClientRect();
-                                    menu.style.left = `${rect.left}px`;
-                                    menu.style.top = `${rect.bottom + 4}px`;
-                                    // Defer so the opening click doesn't immediately close it.
-                                    setTimeout(() => document.addEventListener("click", onOutside, true), 0);
-                                }
-
                                 function renderChoiceExtras() {
                                     extrasHost.replaceChildren();
                                     loraHost.replaceChildren();
@@ -1787,6 +1888,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     loras.forEach((lr, i) => {
                                         const row = document.createElement("div");
                                         css(row, "display:flex;gap:6px;align-items:center;margin-top:3px;");
+                                        row.appendChild(makeScheduleHandle(lr, renderChoiceExtras));
                                         // Clickable box that opens the same "Select LoRA" file
                                         // popup as the regular flake LoRA section (#310).
                                         const box = document.createElement("div");
@@ -1805,6 +1907,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         rm.addEventListener("click", () => { loras.splice(i, 1); if (!loras.length) delete co.loras; renderChoiceExtras(); });
                                         row.appendChild(rm);
                                         loraHost.appendChild(row);
+                                        if (lr.schedule) loraHost.appendChild(makeSchedulePanel(lr));
                                     });
                                     // ---- ControlNets ----
                                     const cnets = Array.isArray(co.controlnets) ? co.controlnets : [];
@@ -1915,6 +2018,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         css(card, "background:#252525;padding:6px;border-radius:6px;border:1px solid #333;display:flex;flex-direction:column;gap:6px;");
                                         const header = document.createElement("div");
                                         css(header, "display:flex;gap:8px;align-items:center;");
+                                        header.appendChild(makeScheduleHandle(link, renderChoiceExtras));
                                         const title = document.createElement("span");
                                         title.textContent = link.target ? link.target.split("/").pop() : "(no target)";
                                         title.title = link.target || "";
@@ -1950,6 +2054,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                                 });
                                             }).catch(() => {});
                                         }
+                                        if (link.schedule) card.appendChild(makeSchedulePanel(link));
                                         extrasHost.appendChild(card);
                                     });
                                 }
@@ -2173,6 +2278,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             css(card, "background:#252525;padding:8px;border-radius:6px;border:1px solid #333;display:flex;flex-direction:column;gap:6px;");
                             const header = document.createElement("div");
                             css(header, "display:flex;gap:8px;align-items:center;");
+                            header.appendChild(makeScheduleHandle(link, renderLinks));
                             const title = document.createElement("span");
                             title.textContent = link.target ? link.target.split("/").pop() : "(no target)";
                             title.title = link.target || "";
@@ -2200,6 +2306,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             css(ovrBox, "display:flex;flex-direction:column;gap:6px;");
                             card.appendChild(ovrBox);
                             renderOneLinkOverrides(link, ovrBox);
+                            if (link.schedule) card.appendChild(makeSchedulePanel(link));
                             linkBox.appendChild(card);
                         });
                         const addBtn = makeSmallButton("+ Add flake link");
@@ -2354,6 +2461,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         path: l.path || "",
                         strength: l.strength ?? 1.0,
                         ...(l.tag_name ? { tag_name: true } : {}),
+                        ...(l.schedule?.length ? { schedule: l.schedule } : {}),
                     }));
                 }
                 if (ft === "prompt" && fieldState.prompts.length > 0) {
@@ -2412,6 +2520,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         while (strengths.length && (strengths[strengths.length - 1] == null)) strengths.pop();
                                         if (strengths.length) out.lora_strengths = strengths;
                                         if (l.variant && Object.keys(l.variant).length) out.variant = l.variant;
+                                        if (l.schedule?.length) out.schedule = l.schedule;
                                         return out;
                                     });
                                 if (choice.flake_links.length === 0) delete choice.flake_links;
@@ -2433,6 +2542,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             strengths.pop();
                         }
                         if (strengths.length > 0) out.lora_strengths = strengths;
+                        if (link.schedule?.length) out.schedule = link.schedule;
                         outLinks.push(out);
                     }
                     if (outLinks.length > 0) ordered.flake_links = outLinks;
