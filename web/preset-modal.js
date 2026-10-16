@@ -7,6 +7,7 @@ import {
 } from "./utils.js";
 import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchVaes, fetchEmbeddings } from "./api.js";
 import { openFileBrowser } from "./pickers.js";
+import { pickFlakeTarget, renderLoraList, serializeLoras, normalizeLinks, renderLinkList, serializeLinks } from "./list-editors.js";
 import { app } from "../../scripts/app.js";
 
 export async function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) {
@@ -631,6 +632,20 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         }
         renderNegative();
 
+        // LoRAs and flake links applied whenever the preset is used, edited
+        // like the flake editor's fields.
+        const presetLoras = JSON.parse(JSON.stringify(data.loras || []));
+        const presetLinks = normalizeLinks(data);
+        function addListSection(label) {
+            const box = document.createElement("div");
+            css(box, "display:flex;flex-direction:column;gap:6px;");
+            content.appendChild(makeComfyLabel(label));
+            content.appendChild(box);
+            return box;
+        }
+        renderLoraList(addListSection("LoRAs"), presetLoras, { family });
+        renderLinkList(addListSection("Flake Links"), presetLinks, () => pickFlakeTarget(family));
+
         if (mode === "edit") {
             const delBtn = makeButton("Delete");
             css(delBtn, delBtn.style.cssText + "background:#5a2a2a;border-color:#7a3a3a;color:#fdd;margin-right:auto;");
@@ -654,6 +669,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         footer.appendChild(cancelBtn);
 
         saveBtn.addEventListener("click", async () => {
+            const flakeLinks = serializeLinks(presetLinks);
             const ordered = {
                 display_name: (nameInput.value || "").trim() || undefined,
                 filename_prefix: (filenamePrefixInput.value || "").trim() || undefined,
@@ -675,6 +691,8 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                     positive: posEmbWrap.getValues(),
                     negative: negEmbWrap.getValues(),
                 },
+                loras: presetLoras.length ? serializeLoras(presetLoras) : undefined,
+                flake_links: flakeLinks.length ? flakeLinks : undefined,
             };
             // Drop undefined keys so the YAML stays clean
             for (const k of Object.keys(ordered)) if (ordered[k] === undefined) delete ordered[k];
