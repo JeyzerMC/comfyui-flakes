@@ -226,6 +226,48 @@ def scheduled_lora_hooks(lora_name: str, strength: float, schedule: list[flake_i
     return hooks
 
 
+def apply_loras(model: Any, clip: Any, flakes: list[flake_io.Flake]) -> tuple[Any, Any, list[dict], list]:
+    """Apply the flakes' LoRAs, returning ``(model, clip, lora_entries, hook_groups)``.
+
+    A scheduled LoRA's model weights become hooks on the conds (#370); its
+    text-encoder part is applied statically so trigger words encode.
+    """
+    lora_loader = LoraLoader()
+    lora_entries = []
+    hook_groups = []
+    for f in flakes:
+        for lr in f.loras:
+            if not lr.path:
+                continue
+            lora_name = _resolve_lora_name(lr.path)
+            if lr.schedule:
+                if all(s == 0 for _, _, s in schedule_segments(lr.schedule)):
+                    continue
+                model, clip = lora_loader.load_lora(model, clip, lora_name, 0, lr.strength)
+                hook_groups.append(scheduled_lora_hooks(lora_name, lr.strength, lr.schedule))
+            else:
+                model, clip = lora_loader.load_lora(model, clip, lora_name, lr.strength, lr.strength)
+            lora_entries.append({"name": lr.name or lr.path, "path": lr.path, "strength": lr.strength})
+        # Legacy single LoRA fallback
+        if f.lora_path:
+            lora_name = _resolve_lora_name(f.lora_path)
+            model, clip = lora_loader.load_lora(model, clip, lora_name, f.strength, f.strength)
+            lora_entries.append({"name": f.lora_path, "path": f.lora_path, "strength": f.strength})
+    return model, clip, lora_entries, hook_groups
+
+
+def encode_scheduled_prompts(clip: Any, flakes: list[flake_io.Flake]) -> tuple[list, list]:
+    """Time-ranged positive and negative entries for the flakes' scheduled prompts (#370)."""
+    pos_ranged, neg_ranged = [], []
+    for f in flakes:
+        for p in f.scheduled_prompts:
+            if p.positive.strip():
+                pos_ranged += encode_scheduled(clip, p.positive.strip(), p.schedule)
+            if p.negative.strip():
+                neg_ranged += encode_scheduled(clip, p.negative.strip(), p.schedule)
+    return pos_ranged, neg_ranged
+
+
 def encode_scheduled(clip: Any, text: str, schedule: list[flake_io.ScheduleKeyframe]) -> list:
     """Encode ``text`` as one cond entry per schedule segment with strength > 0,
     to be appended after the base cond (#370)."""

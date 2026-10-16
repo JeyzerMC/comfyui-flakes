@@ -153,6 +153,9 @@ class ModelPreset:
     negative: str = ""
     embeddings: list[str] = field(default_factory=list)
     filename_prefix: str = ""
+    # Applied whenever the preset is used, like a flake's own LoRAs and links.
+    loras: list[LoraEntry] = field(default_factory=list)
+    flake_links: list[FlakeLink] = field(default_factory=list)
 
     @property
     def model_source(self) -> tuple[str, str]:
@@ -1362,4 +1365,6 @@ def load_preset(name: str) -> ModelPreset:
         negative=str(prompt.get("negative", "") or ""),
         embeddings=list(raw.get("embeddings") or []),
         filename_prefix=str(raw.get("filename_prefix", "") or ""),
+        loras=_parse_lora_list(raw.get("loras")),
+        flake_links=_parse_link_list(raw),
     )

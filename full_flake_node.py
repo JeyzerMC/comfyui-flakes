@@ -8,7 +8,7 @@ from datetime import datetime
 import folder_paths
 import comfy.sd
 import comfy.utils
-from nodes import CLIPTextEncode, EmptyLatentImage, ControlNetApplyAdvanced, ControlNetLoader, LoraLoader
+from nodes import CLIPTextEncode, EmptyLatentImage, ControlNetApplyAdvanced, ControlNetLoader
 
 from . import flake_families, flake_io
 from .flake_io import _resolve_model_name
@@ -115,14 +115,6 @@ def _carry_controlnets(src_cond, dst_cond):
             d["control_apply_to_uncond"] = src_meta["control_apply_to_uncond"]
         out.append([t[0], d])
     return out
-
-
-def _resolve_lora_name(stem_or_name: str) -> str:
-    result = _resolve_model_name("loras", stem_or_name)
-    available = folder_paths.get_filename_list("loras")
-    if result.replace("\\", "/") in {p.replace("\\", "/") for p in available}:
-        return result
-    raise FileNotFoundError(f"LoRA '{stem_or_name}' not found in models/loras/")
 
 
 def _require_model_file(category: str, ref: str, field: str) -> str:
@@ -259,12 +251,31 @@ def _load_preset_bundle(preset_name: str, model_family: str | None = None):
     if shift is not None:
         model = _apply_sampling_shift(model, shift)
 
+    # --- LoRAs and flake links ---------------------------------------------
+    # The preset acts as a flake of its own, so its links resolve (and
+    # schedule) exactly like a flake's. Hooks attached here are kept by
+    # carry_schedules in downstream Flake nodes.
+    from .flake_compose import apply_loras, carry_schedules, encode_scheduled_prompts
+
+    preset_flake = flake_io.Flake(
+        name="__preset__",
+        positive=preset_data.positive.strip(),
+        negative=preset_data.negative.strip(),
+        loras=list(preset_data.loras),
+        flake_links=list(preset_data.flake_links),
+    )
+    flake_io._apply_flake_link(preset_flake, {})
+    model, clip, lora_entries, hook_groups = apply_loras(model, clip, [preset_flake])
+
     # --- Encode prompts -----------------------------------------------------
     encoder = CLIPTextEncode()
-    pos_text = preset_data.positive.strip()
-    neg_text = preset_data.negative.strip()
+    pos_text = preset_flake.positive.strip()
+    neg_text = preset_flake.negative.strip()
     positive = encoder.encode(clip, pos_text)[0] if pos_text else encoder.encode(clip, "")[0]
     negative = encoder.encode(clip, neg_text)[0] if neg_text else encoder.encode(clip, "")[0]
+    pos_ranged, neg_ranged = encode_scheduled_prompts(clip, [preset_flake])
+    positive = carry_schedules(positive, positive, pos_ranged, hook_groups)
+    negative = carry_schedules(negative, negative, neg_ranged, hook_groups)
 
     # --- Latent -------------------------------------------------------------
     width, height = preset_data.width, preset_data.height
@@ -291,7 +302,7 @@ def _load_preset_bundle(preset_name: str, model_family: str | None = None):
         "checkpoint": preset_data.checkpoint,
         "vae": preset_data.vae or "baked-in",
         "text_encoder": preset_data.text_encoder or "baked-in",
-        "loras": [],
+        "loras": lora_entries,
         "model_family": model_family,
     }
     generation_data = (positive, negative, latent, width, height, pos_text, neg_text, filename_state)
@@ -390,6 +401,7 @@ class FlakeModelPreset:
         # selected preset name (the node input) stays the same. Without this,
         # ComfyUI caches the output and edits to Steps/CFG/etc. are ignored.
         # The override JSON is part of the signature so override edits re-run too.
+        # Edits to a flake the preset links to are not tracked.
         preset_name = preset.strip() if preset else ""
         if not preset_name or preset_name in ("Select a preset...", "No model preset is selected"):
             return f"{preset_name}:{overrides_json}"
@@ -482,34 +494,12 @@ class FlakeStack:
         flakes = [flake_io.resolve(e) for e in active_entries]
 
         from .flake_compose import (
-            _load_cn_image, _fit_cn_image, anima_cn_choice, apply_anima_vace, apply_model_patch_cn,
-            carry_schedules, encode_scheduled, load_cn_patch, schedule_segments, scheduled_lora_hooks,
+            _load_cn_image, _fit_cn_image, anima_cn_choice, apply_anima_vace, apply_loras, apply_model_patch_cn,
+            carry_schedules, encode_scheduled_prompts, load_cn_patch,
         )
 
         # --- Apply LoRAs --------------------------------------------------------
-        # A scheduled LoRA's model weights become hooks on the conds (#370);
-        # its text-encoder part is applied statically so trigger words encode.
-        lora_loader = LoraLoader()
-        lora_entries = []
-        hook_groups = []
-        for f in flakes:
-            for lr in f.loras:
-                if not lr.path:
-                    continue
-                lora_name = _resolve_lora_name(lr.path)
-                if lr.schedule:
-                    if all(s == 0 for _, _, s in schedule_segments(lr.schedule)):
-                        continue
-                    model, clip = lora_loader.load_lora(model, clip, lora_name, 0, lr.strength)
-                    hook_groups.append(scheduled_lora_hooks(lora_name, lr.strength, lr.schedule))
-                else:
-                    model, clip = lora_loader.load_lora(model, clip, lora_name, lr.strength, lr.strength)
-                lora_entries.append({"name": lr.name or lr.path, "path": lr.path, "strength": lr.strength})
-            # Legacy single LoRA fallback
-            if f.lora_path:
-                lora_name = _resolve_lora_name(f.lora_path)
-                model, clip = lora_loader.load_lora(model, clip, lora_name, f.strength, f.strength)
-                lora_entries.append({"name": f.lora_path, "path": f.lora_path, "strength": f.strength})
+        model, clip, lora_entries, hook_groups = apply_loras(model, clip, flakes)
 
         # --- Build prompt text (existing → flakes) ------------------------------
         pos_parts: list[str] = []
@@ -540,13 +530,7 @@ class FlakeStack:
         negative_cond = encoder.encode(clip, new_neg_text)[0] if new_neg_text else encoder.encode(clip, "")[0]
 
         # Scheduled prompts become time-ranged entries after the base cond (#370).
-        pos_ranged, neg_ranged = [], []
-        for f in flakes:
-            for p in f.scheduled_prompts:
-                if p.positive.strip():
-                    pos_ranged += encode_scheduled(clip, p.positive.strip(), p.schedule)
-                if p.negative.strip():
-                    neg_ranged += encode_scheduled(clip, p.negative.strip(), p.schedule)
+        pos_ranged, neg_ranged = encode_scheduled_prompts(clip, flakes)
         positive_cond = carry_schedules(prev_positive_cond, positive_cond, pos_ranged, hook_groups)
         negative_cond = carry_schedules(prev_negative_cond, negative_cond, neg_ranged, hook_groups)
 
@@ -655,7 +639,7 @@ class FlakeStack:
             latent = EmptyLatentImage().generate(new_width, new_height, 1)[0]
 
         # --- Lora metadata for Preview Flake Data ---------------------------------
-        filename_state["loras"] = lora_entries
+        filename_state["loras"] = list(filename_state.get("loras", [])) + lora_entries
 
         # --- Filename prefix (skip bypassed) ------------------------------------
         for f in flakes:

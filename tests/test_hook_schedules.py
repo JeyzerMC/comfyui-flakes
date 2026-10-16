@@ -79,6 +79,8 @@ def _stub_externals():
     fp = types.ModuleType("folder_paths")
     fp.get_filename_list = lambda cat: list(LORAS) if cat == "loras" else []
     fp.get_full_path_or_raise = lambda cat, name: f"/fake/{cat}/{name}"
+    fp.get_full_path = lambda cat, name: os.path.abspath(__file__)
+    fp.get_folder_paths = lambda cat: []
     fp.get_input_directory = lambda: "/fake/input"
     fp.base_path = "/fake"
     sys.modules["folder_paths"] = fp
@@ -96,6 +98,7 @@ def _stub_externals():
 
     comfy = types.ModuleType("comfy")
     comfy.sd = types.ModuleType("comfy.sd")
+    comfy.sd.load_checkpoint_guess_config = lambda path, **kw: ("MODEL", "CLIP", "VAE", None)
     comfy.utils = types.ModuleType("comfy.utils")
     comfy.utils.load_torch_file = lambda path, safe_load=False: {"sd": path}
     comfy.hooks = types.ModuleType("comfy.hooks")
@@ -294,6 +297,58 @@ def test_chain_without_schedules_unchanged():
     _bundle, gen, _ = _run([flake_io.Flake(name="second", positive="hat")], flake_data=upstream)
     assert gen[0] == [["COND(cat BREAK hat)", {}]]
     assert gen[1] == [["COND()", {}]]
+
+
+def _preset_bundle(**kw):
+    preset = flake_io.ModelPreset(name="p", checkpoint="ckpt.safetensors", clip_skip=0, **kw)
+    flake_io.load_preset = lambda n: preset
+    return full_flake_node._load_preset_bundle("p", "SDXL/Illustrious")
+
+
+def test_preset_loras_apply_and_seed_metadata():
+    _reset()
+    (model, clip, _vae), gen, _ = _preset_bundle(positive="cat", loras=[
+        flake_io.LoraEntry(path="a", strength=0.7),
+        flake_io.LoraEntry(path="b", strength=0.4, schedule=HALF),
+    ])
+    assert CALLS["lora"] == [("a.safetensors", 0.7, 0.7), ("b.safetensors", 0, 0.4)]
+    assert model == "MODEL+a.safetensors+b.safetensors"
+    assert [h.lora["sd"] for h in _hooks(gen[0])[0].hooks] == ["/fake/loras/b.safetensors"]
+    assert _hooks(gen[1])[0].hooks == _hooks(gen[0])[0].hooks
+    assert [lr["path"] for lr in gen[7]["loras"]] == ["a", "b"]
+
+
+def test_preset_links_add_prompts_and_loras():
+    _reset()
+    linked = flake_io.Flake(name="style", positive="ink", negative="color",
+                            loras=[flake_io.LoraEntry(path="a", strength=0.5)])
+    flake_io.resolve = lambda e: linked if e["name"] == "style" else None
+    _bundle, gen, _ = _preset_bundle(positive="cat", flake_links=[flake_io.FlakeLink(target="style")])
+    assert (gen[5], gen[6]) == ("cat, ink", "color")
+    assert gen[0] == [["COND(cat, ink)", {}]]
+    assert CALLS["lora"] == [("a.safetensors", 0.5, 0.5)]
+
+
+def test_preset_scheduled_link_becomes_ranged_entries():
+    _reset()
+    linked = flake_io.Flake(name="style", positive="ink")
+    flake_io.resolve = lambda e: linked
+    _bundle, gen, _ = _preset_bundle(positive="cat", flake_links=[flake_io.FlakeLink(target="style", schedule=HALF)])
+    assert gen[5] == "cat"
+    assert gen[0] == [
+        ["COND(cat)", {}],
+        ["COND(ink)", {"start_percent": 0.0, "end_percent": 0.5, "strength": 1.0}],
+    ]
+
+
+def test_flake_stack_keeps_preset_hooks_and_loras():
+    _reset()
+    upstream = _preset_bundle(loras=[flake_io.LoraEntry(path="a", schedule=HALF)])
+    _bundle, gen, _ = _run([flake_io.Flake(name="f", loras=[flake_io.LoraEntry(path="b", strength=0.3)])],
+                           flake_data=upstream)
+    assert [lr["path"] for lr in gen[7]["loras"]] == ["a", "b"]
+    for cond in (gen[0], gen[1]):
+        assert [h.lora["sd"] for h in _hooks(cond)[0].hooks] == ["/fake/loras/a.safetensors"]
 
 
 if __name__ == "__main__":

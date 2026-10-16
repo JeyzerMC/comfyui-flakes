@@ -105,6 +105,9 @@ def _stub_externals():
     sys.modules["comfy.sd"] = sd
     sys.modules["comfy.utils"] = utils
     comfy.hooks = types.ModuleType("comfy.hooks")
+    # Presets without LoRAs or links attach no hooks.
+    comfy.hooks.HookGroup = types.SimpleNamespace(combine_all_hooks=lambda groups: None)
+    comfy.hooks.set_hooks_for_conditioning = lambda cond, hooks, append_hooks=True: cond
     sys.modules["comfy.hooks"] = comfy.hooks
     sys.modules["node_helpers"] = types.ModuleType("node_helpers")
 
@@ -277,6 +280,21 @@ def test_load_preset_back_compat_without_new_keys():
     assert p.clip_skip == -2
     assert (p.steps, p.cfg, p.sampler, p.scheduler) == (20, 4.0, "euler_ancestral", "normal")
     assert p.model_source[0] == "checkpoints"
+
+
+def test_load_preset_reads_loras_and_links():
+    _restore_load_preset()
+    raw = {
+        "checkpoint": "a.safetensors",
+        "loras": [{"name": "Ink", "path": "ink", "strength": 0.6,
+                   "schedule": [{"start": 0.5, "strength": 0.0}]}],
+        "flake_links": [{"target": "style", "variant": {"tone": "dark"}}],
+    }
+    flake_io.read_preset_raw = lambda n: raw
+    p = flake_io.load_preset("x")
+    assert [(lr.path, lr.strength) for lr in p.loras] == [("ink", 0.6)]
+    assert p.loras[0].schedule == [flake_io.ScheduleKeyframe(0.5, 0.0)]
+    assert [(ln.target, ln.variant) for ln in p.flake_links] == [("style", {"tone": "dark"})]
 
 
 # --- CLIPType resolution (#358) --------------------------------------------
