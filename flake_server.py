@@ -73,7 +73,7 @@ async def _flake_meta(request: web.Request) -> web.Response:
     if not name:
         return _bad_request("missing 'name' query param")
     try:
-        variants = flake_io.flake_variants(name)
+        flake = flake_io.load_flake(name)
     except FileNotFoundError as exc:
         return _not_found(str(exc))
     except ValueError as exc:
@@ -83,7 +83,8 @@ async def _flake_meta(request: web.Request) -> web.Response:
         return _server_error(str(exc))
     # Return both keys for a transitional window; clients should prefer
     # `variants`.
-    return web.json_response({"name": name, "variants": variants, "options": variants})
+    variants = {group: list(choices.keys()) for group, choices in flake.variants.items()}
+    return web.json_response({"name": name, "variants": variants, "options": variants, "defaults": flake_io.variant_defaults(flake)})
 
 
 @routes.get("/flakes/get")

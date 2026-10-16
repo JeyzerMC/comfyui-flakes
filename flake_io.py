@@ -795,7 +795,12 @@ def resolve(entry: dict[str, Any]) -> Flake:
             if i < len(flake.loras) and override is not None:
                 flake.loras[i].strength = float(override)
 
-    selected = entry.get("variant") or entry.get("option") or {}
+    # A group with no selection falls back to its default choice (#387);
+    # "__none__" is an explicit "no choice" that skips the default.
+    selected = dict(entry.get("variant") or entry.get("option") or {})
+    for group, default in variant_defaults(flake).items():
+        if not selected.get(group):
+            selected[group] = default
     for group, choice in selected.items():
         variant = flake.variants.get(group, {}).get(choice)
         if not variant:
@@ -911,13 +916,14 @@ def _apply_single_link(host: "Flake", link: "FlakeLink", grid_override: dict[str
     host.scheduled_prompts.extend(linked.scheduled_prompts)
 
 
-def flake_variants(name: str) -> dict[str, list[str]]:
-    flake = load_flake(name)
-    return {group: list(choices.keys()) for group, choices in flake.variants.items()}
-
-
-# Backwards-compatible alias
-flake_options = flake_variants
+def variant_defaults(flake: Flake) -> dict[str, str]:
+    """{group: choice} for groups whose first choice has ``default: true`` (#387)."""
+    defaults = {}
+    for group, choices in flake.variants.items():
+        first = next(iter((choices or {}).items()), None)
+        if first and (first[1] or {}).get("default"):
+            defaults[group] = first[0]
+    return defaults
 
 # ---------------------------------------------------------------------------
 # Cover image helpers
