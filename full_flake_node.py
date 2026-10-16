@@ -475,15 +475,29 @@ class FlakeStack:
         active_entries = [e for i, e in enumerate(normalized) if not e.get("bypassed")]
         flakes = [flake_io.resolve(e) for e in active_entries]
 
+        from .flake_compose import (
+            _load_cn_image, _fit_cn_image, apply_model_patch_cn, carry_schedules, encode_scheduled,
+            load_cn_patch, schedule_segments, scheduled_lora_hooks,
+        )
+
         # --- Apply LoRAs --------------------------------------------------------
+        # A scheduled LoRA's model weights become hooks on the conds (#370);
+        # its text-encoder part is applied statically so trigger words encode.
         lora_loader = LoraLoader()
         lora_entries = []
+        hook_groups = []
         for f in flakes:
             for lr in f.loras:
                 if not lr.path:
                     continue
                 lora_name = _resolve_lora_name(lr.path)
-                model, clip = lora_loader.load_lora(model, clip, lora_name, lr.strength, lr.strength)
+                if lr.schedule:
+                    if all(s == 0 for _, _, s in schedule_segments(lr.schedule)):
+                        continue
+                    model, clip = lora_loader.load_lora(model, clip, lora_name, 0, lr.strength)
+                    hook_groups.append(scheduled_lora_hooks(lora_name, lr.strength, lr.schedule))
+                else:
+                    model, clip = lora_loader.load_lora(model, clip, lora_name, lr.strength, lr.strength)
                 lora_entries.append({"name": lr.name or lr.path, "path": lr.path, "strength": lr.strength})
             # Legacy single LoRA fallback
             if f.lora_path:
@@ -519,6 +533,17 @@ class FlakeStack:
         positive_cond = encoder.encode(clip, new_pos_text)[0] if new_pos_text else encoder.encode(clip, "")[0]
         negative_cond = encoder.encode(clip, new_neg_text)[0] if new_neg_text else encoder.encode(clip, "")[0]
 
+        # Scheduled prompts become time-ranged entries after the base cond (#370).
+        pos_ranged, neg_ranged = [], []
+        for f in flakes:
+            for p in f.scheduled_prompts:
+                if p.positive.strip():
+                    pos_ranged += encode_scheduled(clip, p.positive.strip(), p.schedule)
+                if p.negative.strip():
+                    neg_ranged += encode_scheduled(clip, p.negative.strip(), p.schedule)
+        positive_cond = carry_schedules(prev_positive_cond, positive_cond, pos_ranged, hook_groups)
+        negative_cond = carry_schedules(prev_negative_cond, negative_cond, neg_ranged, hook_groups)
+
         positive_cond = _carry_controlnets(prev_positive_cond, positive_cond)
         negative_cond = _carry_controlnets(prev_negative_cond, negative_cond)
 
@@ -531,8 +556,6 @@ class FlakeStack:
                 break
 
         # --- Apply ControlNets (from flakes) ------------------------------------
-        from .flake_compose import _load_cn_image, _fit_cn_image, apply_model_patch_cn, load_cn_patch
-
         # ControlNet "use image dimensions as resolution" override (#260): the
         # first active CN entry flagged resolution_from_image drives the
         # generation size, taking precedence over the flake resolution above.

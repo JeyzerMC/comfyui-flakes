@@ -8,7 +8,10 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
+import comfy.hooks
+import comfy.utils
 import folder_paths
+import node_helpers
 from nodes import (
     CLIPTextEncode,
     ControlNetApplyAdvanced,
@@ -72,8 +75,6 @@ def _fit_cn_image(image: torch.Tensor, target_w: int, target_h: int) -> torch.Te
     from the generation resolution. Crop-and-resize (matching A1111's default)
     keeps the pose aligned with the generated frame.
     """
-    import comfy.utils
-
     if target_w <= 0 or target_h <= 0:
         return image
     h, w = int(image.shape[1]), int(image.shape[2])
@@ -141,6 +142,58 @@ def maybe_zero_out_negative(negative: Any, cfg: float) -> Any:
     from nodes import ConditioningZeroOut
 
     return ConditioningZeroOut().zero_out(negative)[0]
+
+
+def schedule_segments(schedule: list[flake_io.ScheduleKeyframe]) -> list[tuple[float, float, float]]:
+    """``(start, end, strength)`` spans covering [0, 1] for a hook schedule (#370)."""
+    segments = []
+    start, strength = 0.0, 1.0
+    for kf in schedule:
+        if kf.start > start:
+            segments.append((start, kf.start, strength))
+        start, strength = kf.start, kf.strength
+    if start < 1.0:
+        segments.append((start, 1.0, strength))
+    return segments
+
+
+def scheduled_lora_hooks(lora_name: str, strength: float, schedule: list[flake_io.ScheduleKeyframe]) -> Any:
+    """Hook group applying a LoRA's model weights under ``schedule`` (#370).
+
+    Hooked weights only act on conds that carry the hooks, so the caller
+    attaches the group to both positive and negative.
+    """
+    lora = comfy.utils.load_torch_file(folder_paths.get_full_path_or_raise("loras", lora_name), safe_load=True)
+    hooks = comfy.hooks.create_hook_lora(lora, strength, 0.0)
+    keyframes = comfy.hooks.HookKeyframeGroup()
+    for kf in schedule:
+        keyframes.add(comfy.hooks.HookKeyframe(strength=kf.strength, start_percent=kf.start))
+    hooks.set_keyframes_on_hooks(keyframes)
+    return hooks
+
+
+def encode_scheduled(clip: Any, text: str, schedule: list[flake_io.ScheduleKeyframe]) -> list:
+    """Encode ``text`` as one cond entry per schedule segment with strength > 0,
+    to be appended after the base cond (#370)."""
+    cond = CLIPTextEncode().encode(clip, text)[0]
+    out = []
+    for start, end, strength in schedule_segments(schedule):
+        if strength > 0:
+            out += node_helpers.conditioning_set_values(
+                cond, {"start_percent": start, "end_percent": end, "strength": strength})
+    return out
+
+
+def carry_schedules(src_cond: list, dst_cond: list, ranged: list, hook_groups: list) -> list:
+    """Append upstream and new time-ranged prompt entries to freshly encoded
+    ``dst_cond`` and attach upstream and new LoRA hooks to every entry (#370).
+
+    A chained Flake node re-encodes the accumulated text, which drops what
+    upstream nodes attached (like ``control``, see ``_carry_controlnets``).
+    """
+    upstream_ranged = [t for t in src_cond if "start_percent" in t[1]]
+    hooks = comfy.hooks.HookGroup.combine_all_hooks([src_cond[0][1].get("hooks")] + hook_groups)
+    return comfy.hooks.set_hooks_for_conditioning(dst_cond + upstream_ranged + ranged, hooks, append_hooks=False)
 
 
 def compose(

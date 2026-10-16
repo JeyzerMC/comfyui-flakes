@@ -45,6 +45,12 @@ def _stub_externals():
     sys.modules["comfy"] = comfy
     sys.modules["comfy.sd"] = comfy.sd
     sys.modules["comfy.utils"] = comfy.utils
+    # No scheduled LoRAs here, so carry_schedules sees no hooks.
+    comfy.hooks = types.ModuleType("comfy.hooks")
+    comfy.hooks.HookGroup = types.SimpleNamespace(combine_all_hooks=lambda groups: None)
+    comfy.hooks.set_hooks_for_conditioning = lambda cond, hooks, append_hooks=True: cond
+    sys.modules["comfy.hooks"] = comfy.hooks
+    sys.modules["node_helpers"] = types.ModuleType("node_helpers")
 
     class CLIPTextEncode:
         def encode(self, clip, text):

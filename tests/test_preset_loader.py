@@ -104,6 +104,9 @@ def _stub_externals():
     sys.modules["comfy"] = comfy
     sys.modules["comfy.sd"] = sd
     sys.modules["comfy.utils"] = utils
+    comfy.hooks = types.ModuleType("comfy.hooks")
+    sys.modules["comfy.hooks"] = comfy.hooks
+    sys.modules["node_helpers"] = types.ModuleType("node_helpers")
 
     class _Clip:
         def __init__(self, tag="CLIP"):
