@@ -164,67 +164,86 @@ export async function buildModel(startNode) {
     return { axes, fixed };
 }
 
-// ── composite image ─────────────────────────────────────────────────────────
-// Vertical-first split with a column interleave (#350): even-indexed covers fill
-// the left column (top→bottom), odd-indexed covers fill the right column
-// (top→bottom). A single image fills the canvas; a column with one item spans
-// full height (so 3 items → right item full height, left split in two).
-function layoutRects(urls, W, H) {
-    if (urls.length === 1) return [{ x: 0, y: 0, w: W, h: H, url: urls[0] }];
-    const left = [], right = [];
-    urls.forEach((u, i) => (i % 2 === 0 ? left : right).push(u));
-    const colW = right.length ? W / 2 : W;
-    const rects = [];
-    const place = (col, x, w) => {
-        const n = col.length;
-        col.forEach((u, j) => rects.push({ x, y: (H * j) / n, w, h: H / n, url: u }));
+// ── placeholder image ───────────────────────────────────────────────────────
+// Seeded PRNG (FNV-1a hash of the key into mulberry32) so a combination's card
+// layout is the same on every render.
+function seededRandom(key) {
+    let h = 2166136261;
+    for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+    return () => {
+        h = (h + 0x6D2B79F5) | 0;
+        let t = Math.imul(h ^ (h >>> 15), 1 | h);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
-    place(left, 0, colW);
-    if (right.length) place(right, colW, W - colW);
-    return rects;
 }
 
-// Render the cover mosaic at the output aspect ratio. The long edge is DPR-aware
-// (~1024 logical px × devicePixelRatio, capped at 2×) so it isn't upscaled and
-// blurred when shown large in the overlay (#350, #354).
-function buildComposite(urls, width, height, longEdge = Math.round(1024 * Math.min(window.devicePixelRatio || 1, 2))) {
+function loadImage(url) {
     return new Promise((resolve) => {
-        let cw = longEdge, ch = longEdge;
-        if (width && height) {
-            if (width >= height) ch = Math.max(1, Math.round((longEdge * height) / width));
-            else cw = Math.max(1, Math.round((longEdge * width) / height));
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = cw;
-        canvas.height = ch;
-        const ctx = canvas.getContext("2d");
-        ctx.fillStyle = "#1a1a1a";
-        ctx.fillRect(0, 0, cw, ch);
-        if (urls.length === 0) { resolve(canvas.toDataURL()); return; }
-        const rects = layoutRects(urls, cw, ch);
-        let pending = rects.length;
-        if (pending === 0) { resolve(canvas.toDataURL()); return; }
-        for (const r of rects) {
-            const img = new Image();
-            img.onload = () => {
-                // cover-fit
-                const ar = img.width / img.height;
-                const rar = r.w / r.h;
-                let sx = 0, sy = 0, sw = img.width, sh = img.height;
-                if (ar > rar) { sw = img.height * rar; sx = (img.width - sw) / 2; }
-                else { sh = img.width / rar; sy = (img.height - sh) / 2; }
-                ctx.drawImage(img, sx, sy, sw, sh, r.x, r.y, r.w, r.h);
-                if (--pending === 0) resolve(canvas.toDataURL());
-            };
-            img.onerror = () => { if (--pending === 0) resolve(canvas.toDataURL()); };
-            img.src = r.url;
-        }
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url;
     });
 }
 
 // A flake's prompts: the `prompts:` list or the legacy single `prompt:` (#371).
 function flakePrompts(d) {
     return Array.isArray(d.prompts) ? d.prompts : (d.prompt ? [d.prompt] : []);
+}
+
+// Placeholder for a combination with no output yet (#375): one card per selected
+// cover, at the cover's own aspect ratio, scattered along the long axis of the
+// output-aspect canvas with a rotation (±15°) and offset seeded by `seedKey`.
+// A missing cover is drawn as a plain card. The long edge is DPR-aware (~1024
+// logical px × devicePixelRatio, capped at 2×) so it isn't upscaled and blurred
+// when shown large in the overlay (#354).
+async function buildCardStack(urls, width, height, seedKey, longEdge = Math.round(1024 * Math.min(window.devicePixelRatio || 1, 2))) {
+    let cw = longEdge, ch = longEdge;
+    if (width && height) {
+        if (width >= height) ch = Math.max(1, Math.round((longEdge * height) / width));
+        else cw = Math.max(1, Math.round((longEdge * width) / height));
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(0, 0, cw, ch);
+    const images = await Promise.all(urls.map(loadImage));
+    const rand = seededRandom(seedKey);
+    const n = images.length;
+    const cardEdge = Math.min(cw, ch) * (n === 1 ? 0.7 : n <= 3 ? 0.55 : 0.42);
+    const border = Math.max(2, Math.round(cardEdge * 0.035));
+    const wide = cw >= ch;
+    images.forEach((img, i) => {
+        const ar = img ? img.width / img.height : 3 / 4;
+        const w = (ar >= 1 ? cardEdge : cardEdge * ar) + 2 * border;
+        const h = (ar >= 1 ? cardEdge / ar : cardEdge) + 2 * border;
+        const angle = (rand() * 2 - 1) * Math.PI / 12;
+        const along = (i + 1) / (n + 1) + (rand() * 2 - 1) * 0.05;
+        const across = 0.5 + (rand() * 2 - 1) * 0.1;
+        // Keep the rotated card inside the canvas when it fits.
+        const ex = (w * Math.abs(Math.cos(angle)) + h * Math.abs(Math.sin(angle))) / 2;
+        const ey = (w * Math.abs(Math.sin(angle)) + h * Math.abs(Math.cos(angle))) / 2;
+        const clamp = (v, e, size) => (2 * e < size ? Math.min(Math.max(v, e), size - e) : size / 2);
+        const cx = clamp((wide ? along : across) * cw, ex, cw);
+        const cy = clamp((wide ? across : along) * ch, ey, ch);
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        ctx.shadowColor = "rgba(0,0,0,0.55)";
+        ctx.shadowBlur = cardEdge * 0.08;
+        ctx.shadowOffsetY = cardEdge * 0.02;
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+        ctx.shadowColor = "transparent";
+        ctx.fillStyle = "#2a2a2a";
+        if (img) ctx.drawImage(img, -w / 2 + border, -h / 2 + border, w - 2 * border, h - 2 * border);
+        else ctx.fillRect(-w / 2 + border, -h / 2 + border, w - 2 * border, h - 2 * border);
+        ctx.restore();
+    });
+    return canvas.toDataURL();
 }
 
 // Convert a single flake entry into label/lora/prompt rows.
@@ -726,6 +745,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         let shownPreview = null;
         async function renderImage(data) {
             const token = ++imageToken;
+            const key = combinationKeyFor(model, selIdx);
             shownPreview = selectedPreview();
             const generated = shownPreview ? null : selectedResult();
             currentGenerated = generated;
@@ -748,11 +768,11 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
-                // Match the element AR to the composite canvas so the cover tiles
-                // fill the field with no letterbox; buildComposite uses the same
-                // dims (square fallback when unknown) (#354).
+                // Match the element AR to the card-stack canvas so it fills the
+                // field with no letterbox; buildCardStack uses the same dims
+                // (square fallback when unknown) (#354).
                 compositeImg.style.aspectRatio = (data.width && data.height) ? `${data.width} / ${data.height}` : "1 / 1";
-                const src = await buildComposite(urls, data.width, data.height);
+                const src = await buildCardStack(urls, data.width, data.height, key);
                 if (token !== imageToken) return;
                 compositeImg.src = src;
                 compositeDimensions.textContent = data.dimensions || "";
@@ -994,11 +1014,11 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
-                // Match the element AR to the composite canvas so the cover tiles
-                // fill the field with no letterbox; buildComposite uses the same
-                // dims (square fallback when unknown) (#354).
+                // Match the element AR to the card-stack canvas so it fills the
+                // field with no letterbox; buildCardStack uses the same dims
+                // (square fallback when unknown) (#354).
                 compositeImg.style.aspectRatio = (data.width && data.height) ? `${data.width} / ${data.height}` : "1 / 1";
-                const src = await buildComposite(urls, data.width, data.height);
+                const src = await buildCardStack(urls, data.width, data.height, key);
                 if (token !== imageToken) return;
                 compositeImg.src = src;
                 compositeDimensions.textContent = data.dimensions || "";
