@@ -1,5 +1,5 @@
 import { css, setWidgetHidden } from "../utils.js";
-import { computeJobCount } from "../queue.js";
+import { computeJobCount, getBatchImages, getBatchProgress } from "../queue.js";
 import { buildModel, openGenerationDataOverlay } from "./generation-data.js";
 
 const ACCENT = "#4a9eff";
@@ -61,10 +61,9 @@ export function setupFlakeGenerateWidget(node) {
         }
     }
     function renderBatchProgress() {
-        const total = node._batch_total_count ?? 0;
-        const done = node._batch_completed_count ?? 0;
-        if (total > 0) {
-            doneLabel.textContent = `[${done}/${total}] done`;
+        const progress = getBatchProgress();
+        if (progress?.total > 0) {
+            doneLabel.textContent = `[${progress.completed}/${progress.total}] done`;
             doneLabel.style.display = "block";
         } else {
             doneLabel.style.display = "none";
@@ -72,7 +71,6 @@ export function setupFlakeGenerateWidget(node) {
     }
     refreshJobCount();
     renderBatchProgress();
-    node._batch_progress_render = renderBatchProgress;
     const jobsPoll = setInterval(() => { refreshJobCount(); renderBatchProgress(); }, 200);
 
     // Generation Data button — width fits content (no flex:1) per #227.
@@ -100,9 +98,7 @@ export function setupFlakeGenerateWidget(node) {
         // buildModel is async (fetches variant meta for All Variants cards, #345).
         const model = startNode ? await buildModel(startNode) : { axes: [], fixed: { presetName: null, stackFlakes: [] } };
         const adetailer = findWidget("adetailer")?.value || "Off";
-        openGenerationDataOverlay(model, node.properties._images_by_combo || {}, {
-            lastImagesByComboAd: node.properties._images_by_combo_ad || {},
-            adetailerAB: !!node.properties._adetailer_ab,
+        openGenerationDataOverlay(model, comboImages, {
             adetailer,
             adetailerDenoise: findWidget("adetailer_denoise")?.value,
             adetailerSteps: findWidget("adetailer_steps")?.value,
@@ -193,6 +189,30 @@ export function setupFlakeGenerateWidget(node) {
     }
 
     container.appendChild(imageContainer);
+
+    // Per-combo results: the live batch state when this workflow ran a batch,
+    // else what the saved workflow carried (#373).
+    function comboImages() {
+        return getBatchImages(node) || {
+            combo: node.properties._images_by_combo || {},
+            ad: node.properties._images_by_combo_ad || {},
+            ab: !!node.properties._adetailer_ab,
+        };
+    }
+
+    // Called by queue.js when batch results change, and after a workflow load.
+    // Mirrors them into properties so they are saved with the workflow.
+    node._flake_generate_render = function () {
+        const entry = getBatchImages(node);
+        if (!entry) return;
+        node.properties._images_by_combo = entry.combo;
+        node.properties._images_by_combo_ad = entry.ad;
+        node.properties._adetailer_ab = entry.ab;
+        if (entry.last) {
+            node.properties._last_image = entry.last;
+            showImage(entry.last);
+        }
+    };
 
     // ── Add DOM widget ──
     const genWidget = node.addDOMWidget("flake_generate_ui", "div", container, { serialize: false, margin: 4 });

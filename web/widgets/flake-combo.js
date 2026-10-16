@@ -7,6 +7,7 @@ import {
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
+import { getGeneratingIndex } from "../queue.js";
 
 function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, onReplace, onToggleBypass, onSingleOut, onDuplicate, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const hasCover = !!entry.name;
@@ -558,7 +559,7 @@ export function setupFlakeComboWidget(node) {
     function render() {
         const flakes = readAllFlakes();
         const activeIdx = node.properties._combo_active_index || 0;
-        const generatingIdx = node._combo_generating_index;
+        const generatingIdx = getGeneratingIndex(node);
         grid.replaceChildren();
 
         for (let i = 0; i < flakes.length; i++) {

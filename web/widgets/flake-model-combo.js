@@ -6,6 +6,7 @@ import {
 import { openPresetPicker } from "../pickers.js";
 import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
 import { fetchPreset } from "../api.js";
+import { getGeneratingIndex } from "../queue.js";
 
 export function makeModelComboBlock({ preset, display_name, idx, isActive, isBypassed, isGenerating, overrides, onOverrideChange, onActivate, onToggleBypass, onSingleOut, onDuplicate, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const block = document.createElement("div");
@@ -244,7 +245,7 @@ export function setupFlakeModelComboWidget(node) {
     function render() {
         const presets = readPresets();
         const activeIdx = node.properties._combo_active_index || 0;
-        const generatingIdx = node._model_combo_generating_index;
+        const generatingIdx = getGeneratingIndex(node);
         grid.replaceChildren();
 
         for (let i = 0; i < presets.length; i++) {

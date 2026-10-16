@@ -1,7 +1,7 @@
 import { css } from "../utils.js";
 import { openOverlay } from "../modal.js";
 import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl, fetchFlakeMeta } from "../api.js";
-import { getActiveBatch } from "../queue.js";
+import { getActiveBatch, subscribeBatch } from "../queue.js";
 
 // Cartesian product of a flake's variant groups ({group:[choices]}) -> one
 // {group: choice} per combination (#345). Order matches queue.js so keys align.
@@ -397,10 +397,10 @@ export function combinationKeyFor(model, selIdx) {
 }
 
 // ── Overlay UI ─────────────────────────────────────────────────────────────
-export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
+// getImages() returns the Flake Generate node's current per-combo results
+// ({ combo, ad, ab }); it is re-read whenever batch state changes (#373).
+export function openGenerationDataOverlay(model, getImages, opts = {}) {
     const {
-        lastImagesByComboAd = {},
-        adetailerAB = false,
         adetailer = "Off",
         adetailerDenoise,
         adetailerSteps,
@@ -409,7 +409,8 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
         upscaleModel,
         upscaleFactor,
     } = opts;
-    let { content, footer, close } = openOverlay();
+    const { content, footer, close, handlers } = openOverlay();
+    const adetailerAB = getImages().ab;
     // Wider overlay (#324): give the right-hand image + data panel more room.
     css(content.parentElement, content.parentElement.style.cssText + "width:auto;max-width:min(1200px,85vw);min-width:0;");
 
@@ -608,16 +609,19 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
                 // Leave width at 0% — onProgress will fill it in.
             }
         })();
-        // Tear down the listeners when the overlay closes.
-        const _origClose = close;
-        close = function(...args) {
+        // Re-render the image when a result for the selected combination arrives.
+        const unsubscribe = subscribeBatch(() => {
+            if (shownData && selectedResult() !== currentGenerated) renderImage(shownData);
+        });
+        // Tear down the listeners however the overlay closes (button, Esc, outside click).
+        handlers.onClose = () => {
+            unsubscribe();
             if (_progressApi && typeof _progressApi.removeEventListener === "function") {
                 _progressApi.removeEventListener("progress", onProgress);
                 _progressApi.removeEventListener("execution_success", onExecDoneForProgress);
                 _progressApi.removeEventListener("execution_error", onExecDoneForProgress);
                 _progressApi.removeEventListener("execution_interrupted", onExecDoneForProgress);
             }
-            return _origClose(...args);
         };
 
         // Right: composite image + common data sections
@@ -705,22 +709,20 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
             return wrap;
         }
 
-        let refreshToken = 0;
-        async function refreshRight() {
-            const token = ++refreshToken;
-            const sel = currentSelection();
+        function selectedResult() {
             const key = combinationKeyFor(model, selIdx);
-            const data = await combinationData(model, sel);
-            if (token !== refreshToken) return;
+            const images = getImages();
+            return (showAd ? images.ad[key] : images.combo[key]) || null;
+        }
 
+        // Generated output for the selected combination, else the cover placeholder.
+        let imageToken = 0;
+        async function renderImage(data) {
+            const token = ++imageToken;
+            const generated = selectedResult();
+            currentGenerated = generated;
             // Match the preview aspect ratio to the output's resolution (#231).
             applyAspectRatio(data.width, data.height);
-
-            // Composite (or generated output if we have one for this combination)
-            const generated = showAd
-                ? (lastImagesByComboAd && lastImagesByComboAd[key])
-                : (lastImagesByCombo && lastImagesByCombo[key]);
-            currentGenerated = generated || null;
             if (generated) {
                 dimsFromImage = true;
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
@@ -737,9 +739,21 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
                 // fill the field with no letterbox; buildComposite uses the same
                 // dims (square fallback when unknown) (#354).
                 compositeImg.style.aspectRatio = (data.width && data.height) ? `${data.width} / ${data.height}` : "1 / 1";
-                compositeImg.src = await buildComposite(urls, data.width, data.height);
+                const src = await buildComposite(urls, data.width, data.height);
+                if (token !== imageToken) return;
+                compositeImg.src = src;
                 compositeDimensions.textContent = data.dimensions || "";
             }
+        }
+
+        let refreshToken = 0;
+        let shownData = null; // combinationData of the selected combination
+        async function refreshRight() {
+            const token = ++refreshToken;
+            const data = await combinationData(model, currentSelection());
+            if (token !== refreshToken) return;
+            shownData = data;
+            renderImage(data);
 
             // Right panel: common data only (Model Preset + Flake Stack).
             // Combo-axis data lives exclusively on the left (#228).
@@ -928,27 +942,23 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
             return rows;
         }
 
-        let refreshToken = 0;
-        async function refreshRight() {
-            const token = ++refreshToken;
-            // Even when no axis has multiple options, we may still have one or
-            // more axes with a single item each (e.g. one preset, one combo
-            // flake). combinationData needs an entry per axis, otherwise it
-            // dereferences `undefined` and the composite image stays empty.
-            const sel = model.axes.map(axis => axis.items[0]).filter(Boolean);
-            const data = await combinationData(model, sel);
-            if (token !== refreshToken) return;
+        // Match the key flake-generate.js writes when there's no combo
+        // (queue.js stamps an empty key in that case).
+        const key = model.axes.length === 0
+            ? ""
+            : combinationKeyFor(model, model.axes.map(() => 0));
+        function selectedResult() {
+            const images = getImages();
+            const byKey = showAd ? images.ad : images.combo;
+            return byKey[key] ?? byKey[""] ?? null;
+        }
 
-            // Match the key flake-generate.js writes when there's no combo
-            // (queue.js stamps an empty key in that case).
-            const key = model.axes.length === 0
-                ? ""
-                : combinationKeyFor(model, model.axes.map(() => 0));
+        let imageToken = 0;
+        async function renderImage(data) {
+            const token = ++imageToken;
+            const generated = selectedResult();
+            currentGenerated = generated;
             applyAspectRatioSingle(data.width, data.height);
-            const generated = showAd
-                ? (lastImagesByComboAd && (lastImagesByComboAd[key] ?? lastImagesByComboAd[""]))
-                : (lastImagesByCombo && (lastImagesByCombo[key] ?? lastImagesByCombo[""]));
-            currentGenerated = generated || null;
             if (generated) {
                 dimsFromImage = true;
                 compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
@@ -965,9 +975,26 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
                 // fill the field with no letterbox; buildComposite uses the same
                 // dims (square fallback when unknown) (#354).
                 compositeImg.style.aspectRatio = (data.width && data.height) ? `${data.width} / ${data.height}` : "1 / 1";
-                compositeImg.src = await buildComposite(urls, data.width, data.height);
+                const src = await buildComposite(urls, data.width, data.height);
+                if (token !== imageToken) return;
+                compositeImg.src = src;
                 compositeDimensions.textContent = data.dimensions || "";
             }
+        }
+
+        let refreshToken = 0;
+        let shownData = null;
+        async function refreshRight() {
+            const token = ++refreshToken;
+            // Even when no axis has multiple options, we may still have one or
+            // more axes with a single item each (e.g. one preset, one combo
+            // flake). combinationData needs an entry per axis, otherwise it
+            // dereferences `undefined` and the composite image stays empty.
+            const sel = model.axes.map(axis => axis.items[0]).filter(Boolean);
+            const data = await combinationData(model, sel);
+            if (token !== refreshToken) return;
+            shownData = data;
+            renderImage(data);
 
             // Single panel: no left/right split, so merge common+combo data.
             dataWrap.replaceChildren();
@@ -983,6 +1010,11 @@ export function openGenerationDataOverlay(model, lastImagesByCombo, opts = {}) {
                 dataWrap.appendChild(empty);
             }
         }
+
+        const unsubscribe = subscribeBatch(() => {
+            if (shownData && selectedResult() !== currentGenerated) renderImage(shownData);
+        });
+        handlers.onClose = unsubscribe;
 
         refreshRight();
     }

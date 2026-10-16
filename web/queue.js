@@ -97,18 +97,70 @@ function getPromptIdFromEvent(e) {
     return typeof detail === "string" ? detail : detail?.prompt_id;
 }
 
-function clearAllHighlights() {
+// Live batch state per workflow (#373): running combo item per combo node id,
+// results per FlakeGenerate node id, progress counters. Switching workflow tabs
+// rebuilds every node and the batch's workflow may not be the active one when
+// its events arrive, so nodes read this when they render instead of owning it.
+const _batchStates = new WeakMap(); // workflow -> { generating, images, completed, total }
+const _batchListeners = new Set();
+
+function activeWorkflow() {
+    // Frontends without a workflow store have a single implicit workflow.
+    return app.extensionManager?.workflow?.activeWorkflow ?? app;
+}
+
+function activeState() {
+    return _batchStates.get(activeWorkflow());
+}
+
+// Running item index of a FlakeCombo / FlakeModelCombo node, if any.
+export function getGeneratingIndex(node) {
+    return activeState()?.generating[node.id];
+}
+
+// { combo: {comboKey: img}, ad: {comboKey: img}, ab, last } for a FlakeGenerate
+// node, or null when no batch of this workflow produced results for it.
+export function getBatchImages(node) {
+    return activeState()?.images[node.id] || null;
+}
+
+export function getBatchProgress() {
+    return activeState() || null;
+}
+
+// fn() runs after any batch state change; returns an unsubscribe function.
+export function subscribeBatch(fn) {
+    _batchListeners.add(fn);
+    return () => _batchListeners.delete(fn);
+}
+
+function renderHighlights(state) {
+    if (activeState() !== state) return;
     for (const n of app.graph.nodes) {
-        if (n.type === "FlakeCombo") {
-            delete n._combo_generating_index;
-            n._combo_render?.();
-        }
-        if (n.type === "FlakeModelCombo") {
-            delete n._model_combo_generating_index;
-            n._model_combo_render?.();
-        }
+        if (n.type === "FlakeCombo") n._combo_render?.();
+        else if (n.type === "FlakeModelCombo") n._model_combo_render?.();
     }
 }
+
+function renderResults(state) {
+    if (activeState() === state) {
+        for (const n of app.graph.nodes) {
+            if (n.type === "FlakeGenerate") n._flake_generate_render?.();
+        }
+    }
+    for (const fn of _batchListeners) fn();
+}
+
+// The workflow store switches the active workflow only after the new graph's
+// nodes are configured, so re-read the store once loading is complete.
+app.registerExtension({
+    name: "comfyui-flakes.BatchState",
+    afterLoadGraph() {
+        const state = activeState();
+        renderHighlights(state);
+        renderResults(state);
+    },
+});
 
 // ComfyUI exposes the websocket-event-emitting `api` singleton in slightly
 // different places depending on frontend version. Try several spots so we
@@ -140,7 +192,7 @@ export function getActiveBatch() {
     return _activeBatch;
 }
 
-function setupBatchTracking(combinations, comboKeys, totalJobs) {
+function setupBatchTracking(state, combinations, comboKeys) {
     const comfyApi = _resolveComfyApi();
     if (!comfyApi || typeof comfyApi.addEventListener !== "function" || combinations.length === 0) {
         if (!comfyApi) {
@@ -149,11 +201,12 @@ function setupBatchTracking(combinations, comboKeys, totalJobs) {
         }
         return null;
     }
-    const jobs = totalJobs || combinations.length;
+    const jobs = state.total;
 
     const promptIds = []; // queue order
     const comboIndexByPrompt = []; // parallel to promptIds: the combination index (#348)
-    let completedCount = 0;
+    const done = new Set(); // finished prompt ids (events and /history backfill may both report one)
+    let closed = false;
 
     // Pending event buffer: websocket events for a prompt_id can arrive BEFORE
     // the REST response that gives us that prompt_id (different transport
@@ -164,25 +217,11 @@ function setupBatchTracking(combinations, comboKeys, totalJobs) {
     const pendingByPid = new Map(); // promptId -> [{type, e}]
     function applyEventForKnownPid(type, e, pid) {
         if (type === "execution_start") {
-            const idx = promptIds.indexOf(pid);
-            if (idx >= 0) { setComboHighlight(comboIndexByPrompt[idx]); _activeBatch.runningPromptId = pid; }
+            setRunning(pid);
         } else if (type === "execution_success" || type === "execution_error" || type === "execution_interrupted") {
-            const idx = promptIds.indexOf(pid);
-            if (idx < 0) return;
-            completedCount++;
-            for (const n of app.graph.nodes) {
-                if (n.type === "FlakeGenerate") {
-                    n._batch_completed_count = completedCount;
-                    n._batch_total_count = jobs;
-                    n._batch_progress_render?.();
-                }
-            }
-            maybeFinish();
+            markDone(pid);
         } else if (type === "executed") {
-            handleExecuted(e);
-        } else if (type === "progress") {
-            // Progress events are handled by the overlay subscription; nothing
-            // to replay batch-side. We only buffer the lifecycle events.
+            handleOutput(pid, e.detail.display_node || e.detail.node, e.detail.output);
         }
     }
     function bufferOrApply(type, e) {
@@ -228,58 +267,63 @@ function setupBatchTracking(combinations, comboKeys, totalJobs) {
         };
     }
 
-    function setComboHighlight(comboIndex) {
-        const combination = combinations[comboIndex];
-        if (!combination) return;
-        for (const item of combination) {
-            if (item.type === "combo") {
-                item.node._combo_generating_index = item.index;
-                item.node._combo_render?.();
-            } else if (item.type === "model_combo") {
-                item.node._model_combo_generating_index = item.index;
-                item.node._model_combo_render?.();
-            }
-            // stack_variant items have no node-level highlight (#343).
-        }
-    }
-
-    function maybeFinish() {
-        if (completedCount >= jobs) {
-            if (_batchCleanup) {
-                _batchCleanup();
-                _batchCleanup = null;
-            }
-        }
-    }
-
-    // The `executed` event carries the per-node output payload. Used to stamp
-    // generated images onto FlakeGenerate nodes keyed by their comboKey.
-    function handleExecuted(e) {
-        const detail = e?.detail || {};
-        const pid = typeof detail === "string" ? null : detail.prompt_id;
-        const output = detail?.output;
-        const nodeId = detail?.node;
-        if (!pid || !output) return;
+    function setRunning(pid) {
         const idx = promptIds.indexOf(pid);
         if (idx < 0) return;
-        const comboKey = (comboKeys && comboKeys[idx]) ?? "";
-        const images = output.flake_images;
-        const adImages = output.flake_images_ad;
-        const isAB = Array.isArray(output.adetailer_ab) && output.adetailer_ab.length > 0;
-        if (!Array.isArray(images) || images.length === 0) return;
-        const candidates = nodeId
-            ? [app.graph.getNodeById(nodeId)].filter(n => n && n.type === "FlakeGenerate")
-            : app.graph.nodes.filter(n => n.type === "FlakeGenerate");
-        for (const fg of candidates) {
-            fg.properties = fg.properties || {};
-            fg.properties._images_by_combo = fg.properties._images_by_combo || {};
-            fg.properties._images_by_combo[comboKey] = images[0];
-            if (isAB && Array.isArray(adImages) && adImages.length > 0) {
-                fg.properties._images_by_combo_ad = fg.properties._images_by_combo_ad || {};
-                fg.properties._images_by_combo_ad[comboKey] = adImages[0];
-                fg.properties._adetailer_ab = true;
-            }
+        _activeBatch.runningPromptId = pid;
+        state.generating = {};
+        for (const item of combinations[comboIndexByPrompt[idx]]) {
+            // stack_variant items have no node-level highlight (#343).
+            if (item.type === "combo" || item.type === "model_combo") state.generating[item.node.id] = item.index;
         }
+        renderHighlights(state);
+    }
+
+    function markDone(pid) {
+        if (!promptIds.includes(pid) || done.has(pid)) return;
+        done.add(pid);
+        state.completed = done.size;
+        if (done.size >= jobs && _batchCleanup === cleanup) {
+            _batchCleanup();
+            _batchCleanup = null;
+        }
+    }
+
+    // A FlakeGenerate output (from the `executed` event or /history): store
+    // its images by the prompt's comboKey under the producing node's id.
+    function handleOutput(pid, nodeId, output) {
+        const idx = promptIds.indexOf(pid);
+        const images = output?.flake_images;
+        if (idx < 0 || !Array.isArray(images) || images.length === 0) return;
+        const comboKey = comboKeys[idx] ?? "";
+        const entry = state.images[nodeId] || (state.images[nodeId] = { combo: {}, ad: {}, ab: false, last: null });
+        entry.combo[comboKey] = images[0];
+        entry.last = images[0];
+        const adImages = output.flake_images_ad;
+        if (Array.isArray(output.adetailer_ab) && output.adetailer_ab.length > 0 && Array.isArray(adImages) && adImages.length > 0) {
+            entry.ad[comboKey] = adImages[0];
+            entry.ab = true;
+        }
+        renderResults(state);
+    }
+
+    // Websocket events are lost while the socket is down (background tabs,
+    // reconnects): recover finished prompts from /history and the running one
+    // from /queue. Prompts gone from both were deleted from the queue.
+    async function backfill() {
+        if (closed) return;
+        const queue = await (await comfyApi.fetchApi("/queue")).json();
+        if (closed) return;
+        const queued = new Set([...queue.queue_running, ...queue.queue_pending].map(q => q[1]));
+        for (const pid of promptIds.slice()) {
+            if (done.has(pid) || queued.has(pid)) continue;
+            const history = (await (await comfyApi.fetchApi(`/history/${pid}`)).json())[pid];
+            if (closed) return;
+            for (const [nodeId, output] of Object.entries(history?.outputs || {})) handleOutput(pid, nodeId, output);
+            markDone(pid);
+        }
+        const running = queue.queue_running[0]?.[1];
+        if (running && !closed) setRunning(running);
     }
 
     // All websocket lifecycle/output events route through bufferOrApply so
@@ -289,19 +333,25 @@ function setupBatchTracking(combinations, comboKeys, totalJobs) {
     const onExecError = (e) => bufferOrApply("execution_error", e);
     const onExecInterrupted = (e) => bufferOrApply("execution_interrupted", e);
     const onExecuted = (e) => bufferOrApply("executed", e);
+    const onVisibility = () => { if (document.visibilityState === "visible") backfill(); };
 
     comfyApi.addEventListener("execution_start", onExecStart);
     comfyApi.addEventListener("execution_success", onExecSuccess);
     comfyApi.addEventListener("execution_error", onExecError);
     comfyApi.addEventListener("execution_interrupted", onExecInterrupted);
     comfyApi.addEventListener("executed", onExecuted);
+    comfyApi.addEventListener("reconnected", backfill);
+    document.addEventListener("visibilitychange", onVisibility);
 
-    const cleanup = () => {
+    function cleanup() {
+        closed = true;
         comfyApi.removeEventListener("execution_start", onExecStart);
         comfyApi.removeEventListener("execution_success", onExecSuccess);
         comfyApi.removeEventListener("execution_error", onExecError);
         comfyApi.removeEventListener("execution_interrupted", onExecInterrupted);
         comfyApi.removeEventListener("executed", onExecuted);
+        comfyApi.removeEventListener("reconnected", backfill);
+        document.removeEventListener("visibilitychange", onVisibility);
         if (_origApiQueuePrompt) {
             comfyApi.queuePrompt = _origApiQueuePrompt;
         }
@@ -310,8 +360,9 @@ function setupBatchTracking(combinations, comboKeys, totalJobs) {
         _activeBatch.comboKeys = [];
         _activeBatch.runningPromptId = null;
         pendingByPid.clear();
-        clearAllHighlights();
-    };
+        state.generating = {};
+        renderHighlights(state);
+    }
 
     return { promptIds, cleanup };
 }
@@ -369,6 +420,9 @@ app.queuePrompt = async function(number, batchCount = 1) {
     }
 
     if (orderedNodes.length === 0 && stackAxes.length === 0) {
+        // A plain run supersedes this workflow's finished batch results.
+        const state = activeState();
+        if (state && state.completed >= state.total) _batchStates.delete(activeWorkflow());
         return _originalQueuePrompt.call(this, number, batchCount);
     }
 
@@ -469,17 +523,21 @@ app.queuePrompt = async function(number, batchCount = 1) {
     const runsPerCombo = Math.max(1, batchCount | 0);
     const totalJobs = combinations.length * runsPerCombo;
 
+    // Fresh state for this workflow: the "[i/N] done" label restarts at "[0/N]"
+    // (#227) and the previous batch's results are dropped.
+    const state = { generating: {}, images: {}, completed: 0, total: totalJobs };
+    _batchStates.set(activeWorkflow(), state);
+    for (const n of flakeGenerateNodes) {
+        n.properties._images_by_combo = {};
+        n.properties._images_by_combo_ad = {};
+        n.properties._adetailer_ab = false;
+    }
+    renderResults(state);
+
     const comboKeys = []; // parallel to promptIds; comboKeys[idx] = key for promptIds[idx]
-    const tracker = setupBatchTracking(combinations, comboKeys, totalJobs);
+    const tracker = setupBatchTracking(state, combinations, comboKeys);
     if (tracker) {
         _batchCleanup = tracker.cleanup;
-    }
-    // Initialize progress counters on every FlakeGenerate node so the "[i/N] done"
-    // label resets to "[0/N]" at batch start (#227).
-    for (const n of flakeGenerateNodes) {
-        n._batch_completed_count = 0;
-        n._batch_total_count = totalJobs;
-        n._batch_progress_render?.();
     }
 
     try {
@@ -535,10 +593,6 @@ app.queuePrompt = async function(number, batchCount = 1) {
         for (const orig of nodeOriginals.values()) {
             if (orig.widget) orig.widget.value = orig.value;
             if (orig.overrideWidget) orig.overrideWidget.value = orig.overrideValue;
-        }
-        // If no tracker is available, clear highlights immediately as fallback
-        if (!tracker) {
-            clearAllHighlights();
         }
     }
 };
