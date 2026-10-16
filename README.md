@@ -185,7 +185,10 @@ diffusion model, so the files go in `models/model_patches/`, not
   is not supported by core ComfyUI. Install the
   [ComfyUI-Advanced-ControlNet-Anima](https://github.com/TaihoC/ComfyUI-Advanced-ControlNet-Anima)
   fork (branch `feat/anima-vace-controlnet`), put the file in
-  `models/controlnet/anima/` and select it as the ControlNet entry's model.
+  `models/controlnet/anima/` and select it in the ControlNet entry's Model dropdown.
+- For Anima, the Model dropdown lists every file in `models/model_patches/anima/`
+  and the VACE files in `models/controlnet/anima/`. `Auto (by type)` uses the
+  LLLite file for the type; a model that no longer exists falls back to Auto.
 - The base model is not reloaded when switching flakes. Each patch is a hook on
   a clone that shares its weights, and recently used patch files stay cached.
 

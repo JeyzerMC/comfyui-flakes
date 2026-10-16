@@ -8,6 +8,7 @@ from server import PromptServer
 
 import folder_paths
 from . import flake_families, flake_io
+from .flake_compose import anima_cn_files
 
 routes = PromptServer.instance.routes
 
@@ -202,14 +203,19 @@ async def _list_loras(_request: web.Request) -> web.Response:
     return web.json_response({"loras": _shorten_filenames(loras)})
 
 
-@routes.get("/flakes/cnmodels")
-async def _list_controlnets(_request: web.Request) -> web.Response:
+@routes.get("/flakes/cn_models")
+async def _list_cn_models(request: web.Request) -> web.Response:
+    """ControlNet files a flake's CN entry can name as ``model`` for a family:
+    Anima LLLite patches and VACE files (#381). Other families pick by type."""
+    family = flake_families.get(request.query.get("family"))
+    if family is None or family.cn_kind != "anima_lllite":
+        return web.json_response({"models": []})
     try:
-        cns = folder_paths.get_filename_list("controlnet")
+        models = anima_cn_files()
     except Exception as exc:
-        logging.exception("[flakes] failed to list controlnets")
+        logging.exception("[flakes] failed to list Anima controlnets")
         return _server_error(str(exc))
-    return web.json_response({"controlnets": _shorten_filenames(cns)})
+    return web.json_response({"models": models})
 
 
 @routes.get("/flakes/cn_types")

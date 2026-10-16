@@ -68,10 +68,14 @@ export function fetchLoras() {
     return LORAS_PROMISE;
 }
 
-let CNMODELS_PROMISE = null;
-export function fetchCnModels() {
-    if (!CNMODELS_PROMISE) CNMODELS_PROMISE = fetch("/flakes/cnmodels").then(r => r.json()).then(d => d.controlnets || []);
-    return CNMODELS_PROMISE;
+// family label -> [{name, kind}] files a CN entry can pick as `model` (#381).
+const CN_MODELS_PROMISES = {};
+export function fetchCnModels(family) {
+    if (!CN_MODELS_PROMISES[family]) {
+        CN_MODELS_PROMISES[family] = fetch(`/flakes/cn_models?family=${encodeURIComponent(family || "")}`)
+            .then(r => r.json()).then(d => d.models || []);
+    }
+    return CN_MODELS_PROMISES[family];
 }
 
 let CN_TYPES_PROMISE = null;

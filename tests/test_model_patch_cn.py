@@ -349,6 +349,57 @@ def test_anima_vace_with_upstream_acn_errors():
     assert not CALLS["acn_load"]
 
 
+LLLITE_FILES = ["anima/anima-lllite-depth-1.safetensors", "anima/anima-lllite-any-test-like-v2.safetensors"]
+
+
+def test_anima_explicit_lllite_file_wins_over_type():
+    _reset()
+    FILES["model_patches"] += LLLITE_FILES
+    out = _run("Anima/Base", [_cn("depth", model_name="anima/anima-lllite-any-test-like-v2.safetensors")])
+    assert out[0][0] == "BASE_MODEL+lllite"
+    assert CALLS["patch_load"] == ["anima/anima-lllite-any-test-like-v2.safetensors"]
+
+
+def test_anima_explicit_vace_wins_over_type():
+    _reset()
+    _install_acn(with_vace=True)
+    _add_vace_file()
+    FILES["model_patches"] += LLLITE_FILES
+    out = _run("Anima/Base", [_cn("depth", model_name=VACE_FILE)])
+    assert out[0][0] == "BASE_MODEL"
+    assert CALLS["acn_load"] == [VACE_FILE]
+    assert not CALLS["patch_load"]
+
+
+def test_anima_stale_model_falls_back_to_type():
+    _reset()
+    FILES["model_patches"] += LLLITE_FILES + ["zimage/Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"]
+    FILES["controlnet"].append("sdxl/controlnet_depth_sdxl.safetensors")
+    for stale in ("controlnet_depth_sdxl", "Z-Image-Turbo-Fun-Controlnet-Union-2.1", "anima/deleted.safetensors"):
+        CALLS["patch_load"].clear()
+        flake_compose._CN_PATCH_CACHE.clear()
+        out = _run("Anima/Base", [_cn("depth", model_name=stale)])
+        assert out[0][0] == "BASE_MODEL+lllite"
+        assert CALLS["patch_load"] == ["anima/anima-lllite-depth-1.safetensors"], stale
+
+
+def test_explicit_model_ignored_with_type_outside_anima():
+    _reset()
+    FILES["controlnet"] += ["sdxl/controlnet_depth_sdxl.safetensors", "sdxl/other_depth.safetensors"]
+    _run("SDXL/Base", [_cn("depth", model_name="other_depth")])
+    assert CALLS["cn_load"] == ["sdxl/controlnet_depth_sdxl.safetensors"]
+
+
+def test_anima_cn_files_lists_lllite_and_vace():
+    _reset()
+    _add_vace_file()
+    FILES["controlnet"] += ["anima/not-vace.safetensors", "sdxl/controlnet_depth_sdxl.safetensors"]
+    HEADERS["/fake/controlnet/anima/not-vace.safetensors"] = json.dumps({"x.weight": {}}).encode()
+    FILES["model_patches"] += LLLITE_FILES + ["zimage/Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"]
+    assert flake_compose.anima_cn_files() == [{"name": n, "kind": "lllite"} for n in LLLITE_FILES] + [
+        {"name": VACE_FILE, "kind": "vace"}]
+
+
 if __name__ == "__main__":
     for fname, fn in sorted(globals().items()):
         if fname.startswith("test_") and callable(fn):

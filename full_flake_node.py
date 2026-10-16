@@ -476,7 +476,7 @@ class FlakeStack:
         flakes = [flake_io.resolve(e) for e in active_entries]
 
         from .flake_compose import (
-            _load_cn_image, _fit_cn_image, anima_vace_name, apply_anima_vace, apply_model_patch_cn,
+            _load_cn_image, _fit_cn_image, anima_cn_choice, apply_anima_vace, apply_model_patch_cn,
             carry_schedules, encode_scheduled, load_cn_patch, schedule_segments, scheduled_lora_hooks,
         )
 
@@ -590,12 +590,13 @@ class FlakeStack:
             for cn in f.controlnets:
                 if cn.strength == 0:
                     continue
-                # An Anima entry whose model names a VACE file in
-                # models/controlnet/anima/ takes the fork's route (#378);
-                # LLLite stays the default.
-                vace_name = anima_vace_name(cn.model_name) if cn_kind == "anima_lllite" else None
+                # An Anima entry whose model resolves to an LLLite patch or a
+                # VACE file (fork route, #378) uses that file; otherwise the
+                # type picks the LLLite file (#381).
+                picked = anima_cn_choice(cn.model_name) if cn_kind == "anima_lllite" else None
+                vace_name = picked[0] if picked and picked[1] == "vace" else None
                 model_name = cn.model_name
-                if cn.type and not vace_name:
+                if cn.type and not picked:
                     inferred = flake_io.infer_cn_model(cn.type, family_folder)
                     if inferred:
                         model_name = inferred
@@ -605,7 +606,7 @@ class FlakeStack:
                 if not cn.image_name.strip():
                     print(f"[flakes] skipping controlnet entry with empty image_name (type={cn.type})")
                     continue
-                cn_resolved = vace_name or flake_io.resolve_cn_model_name(model_name, family_folder, cn_category)
+                cn_resolved = picked[0] if picked else flake_io.resolve_cn_model_name(model_name, family_folder, cn_category)
                 image = _load_cn_image(cn.image_name)
                 image = _fit_cn_image(image, new_width, new_height)
                 if vace_name:

@@ -127,16 +127,37 @@ def apply_model_patch_cn(cn_kind: str, model: Any, vae: Any, model_patch: Any, i
     return ZImageFunControlnet().diffsynth_controlnet(model, model_patch, vae, image=image, strength=strength)[0]
 
 
-def anima_vace_name(model_name: str) -> str | None:
-    """The models/controlnet/anima/ file ``model_name`` resolves to when it is
-    an Anima VACE ControlNet (``control_blocks.*.after_proj`` keys), else None (#378)."""
-    name = flake_io.resolve_cn_model_name(model_name, "anima", "controlnet")
-    if not name.replace("\\", "/").lower().startswith("anima/") or name not in folder_paths.get_filename_list("controlnet"):
-        return None
+def _in_anima_folder(name: str, category: str) -> bool:
+    return name.replace("\\", "/").lower().startswith("anima/") and name in folder_paths.get_filename_list(category)
+
+
+def _is_anima_vace(name: str) -> bool:
+    """Anima VACE ControlNets carry ``control_blocks.*.after_proj`` keys (#378)."""
     header = comfy.utils.safetensors_header(folder_paths.get_full_path_or_raise("controlnet", name))
-    if header and any("control_blocks" in k and "after_proj" in k for k in json.loads(header)):
-        return name
+    return bool(header) and any("control_blocks" in k and "after_proj" in k for k in json.loads(header))
+
+
+def anima_cn_choice(model_name: str) -> tuple[str, str] | None:
+    """The Anima ControlNet an explicit ``model_name`` picks, as ``(file, kind)``:
+    a VACE file in models/controlnet/anima/ (kind "vace", #378) or any patch in
+    models/model_patches/anima/ (kind "lllite"). None when it resolves to
+    neither, so the type-inferred LLLite file applies (#381)."""
+    name = flake_io.resolve_cn_model_name(model_name, "anima", "controlnet")
+    if _in_anima_folder(name, "controlnet") and _is_anima_vace(name):
+        return name, "vace"
+    name = flake_io.resolve_cn_model_name(model_name, "anima", "model_patches")
+    if _in_anima_folder(name, "model_patches"):
+        return name, "lllite"
     return None
+
+
+def anima_cn_files() -> list[dict[str, str]]:
+    """Files selectable as an Anima ControlNet ``model`` (#381)."""
+    files = [{"name": n, "kind": "lllite"} for n in folder_paths.get_filename_list("model_patches")
+             if n.replace("\\", "/").lower().startswith("anima/")]
+    files += [{"name": n, "kind": "vace"} for n in folder_paths.get_filename_list("controlnet")
+              if n.replace("\\", "/").lower().startswith("anima/") and n.endswith(".safetensors") and _is_anima_vace(n)]
+    return files
 
 
 def apply_anima_vace(positive: Any, negative: Any, name: str, vae: Any, image: torch.Tensor,

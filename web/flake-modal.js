@@ -11,6 +11,7 @@ import {
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
     fetchLoraVariantSiblingImagePath, invalidateList,
+    fetchCnModels,
 } from "./api.js";
 import { openFileBrowser, openFileLoadPicker } from "./pickers.js";
 
@@ -530,6 +531,29 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             const out = mapped ? types.filter(t => t in mapped) : types;
             if (keep && !out.includes(keep)) out.push(keep);
             return out;
+        }
+
+        // Families that list pickable files (Anima: LLLite patches + VACE, #381)
+        // swap the read-only model label for a "Model" dropdown. Empty = Auto:
+        // the type picks the file.
+        function attachCnModelPicker(cn, label) {
+            fetchCnModels(currentFamily).then((files) => {
+                if (!files.length) return;
+                const opts = [{ value: "", label: "Auto (by type)" }];
+                for (const f of files) {
+                    const base = f.name.split(/[\\/]/).pop();
+                    opts.push({ value: f.name, label: f.kind === "vace" ? `${base} (VACE)` : base });
+                }
+                if (cn.model && !files.some(f => f.name === cn.model)) opts.push({ value: cn.model, label: `${cn.model} (not found)` });
+                const dd = makeComfyDropdown(opts, cn.model || "");
+                dd.element.title = "ControlNet model file. Auto uses the LLLite file for the type.";
+                dd.element.addEventListener("change", () => {
+                    if (dd.element.value) cn.model = dd.element.value;
+                    else delete cn.model;
+                });
+                css(dd.container, "flex:1;min-width:0;");
+                label.replaceWith(dd.container);
+            }).catch(() => {});
         }
 
         function loraBrowserDefaultPath() {
@@ -1400,6 +1424,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             modelLabel.textContent = inferred ? `model: ${inferred}` : "model: \u2014";
                             css(modelLabel, "font-size:11px;color:#888;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
                             typeRow.appendChild(modelLabel);
+                            attachCnModelPicker(cn, modelLabel);
                             const resWrap = document.createElement("label");
                             css(resWrap, "display:flex;align-items:center;gap:3px;font-size:10px;color:#888;white-space:nowrap;cursor:pointer;");
                             const resChk = document.createElement("input");
@@ -1989,6 +2014,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         modelLbl.textContent = inferredModel ? `model: ${inferredModel}` : "model: —";
                                         css(modelLbl, "font-size:11px;color:#888;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
                                         r1.appendChild(modelLbl);
+                                        attachCnModelPicker(cn, modelLbl);
                                         const resW = document.createElement("label");
                                         css(resW, "display:flex;align-items:center;gap:3px;font-size:10px;color:#888;white-space:nowrap;cursor:pointer;");
                                         const resC = document.createElement("input"); resC.type = "checkbox"; resC.checked = !!cn.resolution_from_image; css(resC, "width:14px;height:14px;cursor:pointer;margin:0;");
@@ -2517,6 +2543,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     if (cnArr.length > 0) {
                         ordered.controlnets = cnArr.map(cn => {
                             const { model, model_name, resolution_from_image, ...rest } = cn;
+                            if (model) rest.model = model;
                             if (resolution_from_image) rest.resolution_from_image = true;
                             return rest;
                         });
