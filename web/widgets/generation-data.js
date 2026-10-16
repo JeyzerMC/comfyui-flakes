@@ -1,10 +1,10 @@
 import { css, effectiveVariant } from "../utils.js";
 import { openOverlay } from "../modal.js";
 import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults } from "../api.js";
-import { getActiveBatch, subscribeBatch } from "../queue.js";
+import { getActiveBatch, subscribeBatch, variantKey } from "../queue.js";
 
 // Cartesian product of a flake's variant groups ({group:[choices]}) -> one
-// {group: choice} per combination (#345). Order matches queue.js so keys align.
+// {group: choice} per combination (#345).
 function variantCombos(meta) {
     const groups = Object.keys(meta || {}).filter(g => Array.isArray(meta[g]) && meta[g].length);
     let acc = [{}];
@@ -16,8 +16,9 @@ function variantCombos(meta) {
     return acc;
 }
 
-// Build one combo-axis card descriptor for a flake entry (#345).
-function makeFlakeCard(e, i, variantSub) {
+// Build one combo-axis card descriptor for a flake entry (#345). itemKey is the
+// item part of the comboKey queue.js stamps for it (#383).
+function makeFlakeCard(e, itemKey) {
     // #237: fall back to the flake's main cover image when no variant is selected
     // (or when the variant image 404s — see card render's probe-load).
     const variant = effectiveVariant(e.variant, cachedVariantDefaults(e.name));
@@ -32,13 +33,11 @@ function makeFlakeCard(e, i, variantSub) {
         coverUrl: variantCover || baseCover,
         baseCoverUrl: baseCover,
         variantCoverUrl: variantCover,
-        originalIndex: i,
-        variantSub: variantSub,
+        itemKey,
     };
 }
 
-// Parse a comboKey like "12:0|7:2.1" into [nodeId, itemIdxStr] pairs. The item
-// part is kept as a string so all-variants sub-keys ("0.1") compare exactly (#345).
+// Parse a comboKey like "12:k3x9a|7:p0d2q.hair=red" into [nodeId, itemKey] pairs.
 function parseComboKey(key) {
     if (!key) return [];
     return key.split("|").map(pair => {
@@ -89,16 +88,18 @@ export function collectChain(startNode) {
     return chain.reverse();
 }
 
-function activeEntries(node, type) {
+// Active flakes of a FlakeStack with their index in flakes_json.
+function stackEntries(node) {
+    const w = node.widgets?.find(w => w.name === "flakes_json");
     let entries;
-    if (type === "FlakeCombo") {
-        entries = node.properties?._combo_flakes || [];
-    } else {
-        const w = node.widgets?.find(w => w.name === "flakes_json");
-        try { entries = JSON.parse(w?.value || "[]"); } catch { entries = []; }
-    }
+    try { entries = JSON.parse(w?.value || "[]"); } catch { entries = []; }
     if (!Array.isArray(entries)) return [];
-    return entries.filter(e => !e.inline && !e.bypassed && e.name);
+    return entries.map((e, i) => ({ e, i })).filter(({ e }) => !e.inline && !e.bypassed && e.name);
+}
+
+// Variant combinations of an "All Variants" flake, [] when its meta can't be read.
+async function flakeVariantCombos(name) {
+    try { return variantCombos(await fetchFlakeMeta(name)); } catch { return []; }
 }
 
 // Build the combo "axes" (one per Flake Model Combo / Flake Combo node) plus
@@ -117,49 +118,52 @@ export async function buildModel(startNode) {
             }
         } else if (type === "FlakeModelCombo") {
             const allPresets = node.properties?._combo_presets || [];
+            const uids = node.properties._combo_uids;
             const bypassed = new Set(node.properties?._combo_bypassed || []);
-            // Keep each kept preset's ORIGINAL index within _combo_presets so the
-            // overlay's combo key matches the key queue.js stamps (which uses the
-            // original index). Filtering shifts positions otherwise (#268).
             const presets = allPresets
-                .map((p, i) => ({ p, i }))
+                .map((p, i) => ({ p, uid: uids[i] }))
                 .filter(({ p }) => !bypassed.has(p));
             if (presets.length === 0) continue;
             axes.push({
                 node, kind: "model",
                 label: "Model Preset",
-                items: presets.map(({ p, i }) => ({
+                items: presets.map(({ p, uid }) => ({
                     label: (node.properties?._combo_display_names?.[p]) || p.split(/[\/\\]+/).pop() || p,
                     presetName: p,
                     coverUrl: `/flakes/preset_cover?name=${encodeURIComponent(p)}`,
-                    originalIndex: i,
+                    itemKey: uid,
                 })),
             });
         } else if (type === "FlakeStack") {
-            for (const e of activeEntries(node, "FlakeStack")) fixed.stackFlakes.push(e);
+            for (const { e, i } of stackEntries(node)) {
+                // An "All Variants" stack flake is an axis of its own, like in
+                // queue.js (#343).
+                const combos = e._all_variants ? await flakeVariantCombos(e.name) : [];
+                if (combos.length > 1) {
+                    axes.push({
+                        node, kind: "flake", label: "Flake Stack",
+                        items: combos.map(variant => makeFlakeCard({ ...e, variant }, `s${i}.${variantKey(variant)}`)),
+                    });
+                } else {
+                    fixed.stackFlakes.push(e);
+                }
+            }
         } else if (type === "FlakeCombo") {
-            // Preserve the ORIGINAL index within _combo_flakes (the array queue.js
-            // iterates) so the overlay combo key aligns with the queued key (#268).
             const allFlakes = node.properties?._combo_flakes || [];
-            const flakes = Array.isArray(allFlakes)
-                ? allFlakes.map((e, i) => ({ e, i })).filter(({ e }) => !e.inline && !e.bypassed && e.name)
-                : [];
+            const flakes = Array.isArray(allFlakes) ? allFlakes.filter(e => !e.inline && !e.bypassed && e.name) : [];
             if (flakes.length === 0) continue;
             const items = [];
-            for (const { e, i } of flakes) {
-                if (e._all_variants) {
-                    // One card per variant combination (#345), mirroring the
-                    // queue.js expansion so keys (id:idx.variantSub) align.
-                    let combos = [];
-                    try { combos = variantCombos(await fetchFlakeMeta(e.name)); } catch { combos = []; }
-                    if (combos.length > 1) {
-                        combos.forEach((variant, vi) => items.push(makeFlakeCard({ ...e, variant }, i, vi)));
-                        continue;
-                    }
+            for (const e of flakes) {
+                // One card per variant combination (#345), like the queue.js
+                // expansion.
+                const combos = e._all_variants ? await flakeVariantCombos(e.name) : [];
+                if (combos.length) {
+                    for (const variant of combos) items.push(makeFlakeCard({ ...e, variant }, `${e._uid}.${variantKey(variant)}`));
+                } else {
+                    // Loads the default variant choices the card shows (#388).
+                    await fetchFlakeMeta(e.name).catch(() => {});
+                    items.push(makeFlakeCard(e, e._uid));
                 }
-                // Loads the default variant choices the card shows (#388).
-                await fetchFlakeMeta(e.name).catch(() => {});
-                items.push(makeFlakeCard(e, i, null));
             }
             axes.push({ node, kind: "flake", label: "Flake Combo", items });
         }
@@ -403,18 +407,11 @@ async function combinationData(model, selection) {
 }
 
 // Stable, order-independent identity for a combination: each axis's node id
-// paired with the selected item index, sorted by node id. Must match the key
+// paired with the selected item's key, sorted by node id. Must match the key
 // queue.js stamps onto FlakeGenerate at queue time.
 export function combinationKeyFor(model, selIdx) {
     return model.axes
-        .map((axis, i) => {
-            const item = axis.items[selIdx[i]];
-            const idx = item?.originalIndex ?? selIdx[i];
-            // All-variants cards carry a sub-index so the key matches the queued
-            // comboKey "<id>:<idx>.<variantSub>" (#345).
-            const vk = (item && item.variantSub != null) ? `${idx}.${item.variantSub}` : `${idx}`;
-            return [axis.node.id, vk];
-        })
+        .map((axis, i) => [axis.node.id, axis.items[selIdx[i]].itemKey])
         .sort((a, b) => a[0] - b[0])
         .map(([id, vk]) => `${id}:${vk}`)
         .join("|");
@@ -502,12 +499,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             axis.items.forEach((item, ii) => {
                 const card = document.createElement("div");
                 card.dataset.nodeId = String(axis.node.id);
-                // Use the original index (plus the all-variants sub-index, #345)
-                // so progress-bar matching against the queued comboKey aligns (#268).
-                {
-                    const baseIdx = item.originalIndex ?? ii;
-                    card.dataset.itemIdx = item.variantSub != null ? `${baseIdx}.${item.variantSub}` : String(baseIdx);
-                }
+                card.dataset.itemKey = item.itemKey;
                 css(card, `position:relative;flex:0 0 auto;width:72px;height:80px;border-radius:4px;cursor:pointer;background:#2a2a2a;background-size:cover;background-position:center;border:2px solid ${ii === selIdx[ai] ? ACCENT : "transparent"};box-sizing:border-box;`);
                 // #237: probe-load variant image and fall back to base cover if 404,
                 // matching the flake-combo node grid behavior. Without this the
@@ -527,7 +519,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                     card.style.backgroundImage = `url(${item.coverUrl})`;
                 }
                 // Progress bar (above the caption) — shown while the active
-                // batch's running prompt includes this (nodeId, itemIdx) pair.
+                // batch's running prompt includes this (nodeId, itemKey) pair.
                 const progressTrack = document.createElement("div");
                 css(progressTrack, "position:absolute;left:2px;right:2px;bottom:14px;height:3px;background:rgba(0,0,0,0.55);border-radius:2px;overflow:hidden;display:none;");
                 const progressFill = document.createElement("div");
@@ -572,11 +564,10 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             const key = batch.comboKeys[idx];
             const pairs = parseComboKey(key);
             const out = [];
-            for (const [nodeId, itemIdx] of pairs) {
+            for (const [nodeId, itemKey] of pairs) {
                 for (const axisCards of cards) {
                     for (const c of axisCards) {
-                        // itemIdx is a string ("0" or "0.1") to support variant sub-keys (#345).
-                        if (Number(c.dataset.nodeId) === nodeId && String(c.dataset.itemIdx) === String(itemIdx)) {
+                        if (Number(c.dataset.nodeId) === nodeId && c.dataset.itemKey === itemKey) {
                             out.push(c);
                         }
                     }

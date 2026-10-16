@@ -6,7 +6,7 @@ import {
 import { openPresetPicker } from "../pickers.js";
 import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
 import { fetchPreset } from "../api.js";
-import { getGeneratingIndex } from "../queue.js";
+import { getGeneratingUid, newItemUid } from "../queue.js";
 
 export function makeModelComboBlock({ preset, display_name, idx, isActive, isBypassed, isGenerating, overrides, onOverrideChange, onActivate, onToggleBypass, onSingleOut, onDuplicate, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const block = document.createElement("div");
@@ -175,6 +175,14 @@ export function setupFlakeModelComboWidget(node) {
         if (!Array.isArray(node.properties._combo_overrides)) node.properties._combo_overrides = [];
         return node.properties._combo_overrides;
     }
+    // Per-item uids, aligned by index with _combo_presets (#383). Presets
+    // saved without one get one here.
+    function uidsArr() {
+        if (!Array.isArray(node.properties._combo_uids)) node.properties._combo_uids = [];
+        const uids = node.properties._combo_uids;
+        while (uids.length < readPresets().length) uids.push(newItemUid());
+        return uids;
+    }
     function getOverridesAt(i) {
         const arr = overridesArr();
         while (arr.length <= i) arr.push({});
@@ -245,7 +253,8 @@ export function setupFlakeModelComboWidget(node) {
     function render() {
         const presets = readPresets();
         const activeIdx = node.properties._combo_active_index || 0;
-        const generatingIdx = getGeneratingIndex(node);
+        const uids = uidsArr();
+        const generatingUid = getGeneratingUid(node);
         grid.replaceChildren();
 
         for (let i = 0; i < presets.length; i++) {
@@ -256,7 +265,7 @@ export function setupFlakeModelComboWidget(node) {
                 idx: i,
                 isActive: i === activeIdx,
                 isBypassed: isPresetBypassed(presets[i]),
-                isGenerating: generatingIdx != null && i === generatingIdx,
+                isGenerating: generatingUid != null && uids[i] === generatingUid,
                 overrides: getOverridesAt(i),
                 onOverrideChange: () => updateActivePreset(),
                 onActivate: (idx) => {
@@ -284,6 +293,7 @@ export function setupFlakeModelComboWidget(node) {
                 onDuplicate: (idx) => {
                     const arr = readPresets();
                     if (arr[idx] == null) return;
+                    uidsArr().splice(idx + 1, 0, newItemUid());
                     arr.splice(idx + 1, 0, arr[idx]);
                     overridesArr().splice(idx + 1, 0, JSON.parse(JSON.stringify(getOverridesAt(idx))));
                     writePresets(arr);
@@ -291,6 +301,7 @@ export function setupFlakeModelComboWidget(node) {
                 },
                 onRemove: (idx) => {
                     const arr = readPresets();
+                    uidsArr().splice(idx, 1);
                     arr.splice(idx, 1);
                     overridesArr().splice(idx, 1);
                     if (node.properties._combo_active_index >= arr.length) {
@@ -340,10 +351,12 @@ export function setupFlakeModelComboWidget(node) {
                     _hideDropIndicator(el);
                     if (dragSrcIdx === null || idx === dragSrcIdx) return;
                     const arr = readPresets();
+                    const uids = uidsArr();
                     const [moved] = arr.splice(dragSrcIdx, 1);
                     let insertIdx = idx;
                     if (dragSrcIdx < idx) insertIdx--;
                     arr.splice(insertIdx, 0, moved);
+                    uids.splice(insertIdx, 0, uids.splice(dragSrcIdx, 1)[0]);
                     // Keep per-instance overrides aligned with the reordered presets.
                     const ov = overridesArr();
                     while (ov.length < arr.length) ov.push({});
@@ -383,6 +396,7 @@ export function setupFlakeModelComboWidget(node) {
         // block): create a brand-new model preset, or add an existing one (#278).
         async function pushPreset(name) {
             const arr = readPresets();
+            uidsArr().push(newItemUid());
             arr.push(name);
             overridesArr().push({});
             node.properties._combo_display_names[name] = await fetchDisplayName(name);
@@ -427,8 +441,10 @@ export function setupFlakeModelComboWidget(node) {
             _hideDropIndicator(addBtn);
             if (dragSrcIdx === null) return;
             const arr = readPresets();
+            const uids = uidsArr();
             const [moved] = arr.splice(dragSrcIdx, 1);
             arr.push(moved);
+            uids.push(uids.splice(dragSrcIdx, 1)[0]);
             const ov = overridesArr();
             while (ov.length < arr.length) ov.push({});
             const [movedOv] = ov.splice(dragSrcIdx, 1);

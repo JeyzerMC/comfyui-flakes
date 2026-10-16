@@ -33,6 +33,18 @@ export function getComboPresets(node) {
     return node.properties?._combo_presets || [];
 }
 
+// Persistent id of a combo grid item (#383): Flake Combo entries carry it as
+// `_uid`, Flake Model Combo keeps `_combo_uids` parallel to `_combo_presets`.
+// Combo keys use it, so results, previews and highlights survive reordering.
+export function newItemUid() {
+    return Math.random().toString(36).slice(2, 10);
+}
+
+// Sub-key of an "All Variants" item: its selection as sorted group=choice pairs.
+export function variantKey(variant) {
+    return Object.keys(variant).sort().map(g => `${g}=${variant[g]}`).join(",");
+}
+
 // Active (non-bypassed) flakes for a FlakeCombo node.
 function activeComboFlakes(node) {
     return getComboFlakes(node).filter(f => !f.bypassed);
@@ -113,8 +125,8 @@ function activeState() {
     return _batchStates.get(activeWorkflow());
 }
 
-// Running item index of a FlakeCombo / FlakeModelCombo node, if any.
-export function getGeneratingIndex(node) {
+// Uid of the running item of a FlakeCombo / FlakeModelCombo node, if any.
+export function getGeneratingUid(node) {
     return activeState()?.generating[node.id];
 }
 
@@ -340,7 +352,7 @@ function setupBatchTracking(state, combinations, comboKeys) {
         state.generating = {};
         for (const item of combinations[comboIndexByPrompt[idx]]) {
             // stack_variant items have no node-level highlight (#343).
-            if (item.type === "combo" || item.type === "model_combo") state.generating[item.node.id] = item.index;
+            if (item.type === "combo" || item.type === "model_combo") state.generating[item.node.id] = item.uid;
         }
         renderHighlights(state);
     }
@@ -478,8 +490,8 @@ app.queuePrompt = async function(number, batchCount = 1) {
             const meta = await fetchFlakeMeta(flake.name);
             const combos = enumerateVariantCombos(meta);
             if (combos.length <= 1) continue;
-            stackAxes.push(combos.map((variant, vi) => ({
-                node, type: "stack_variant", flakeIndex: index, value: variant, index, vkey: `s${index}.${vi}`,
+            stackAxes.push(combos.map((variant) => ({
+                node, type: "stack_variant", flakeIndex: index, value: variant, vkey: `s${index}.${variantKey(variant)}`,
             })));
         }
     }
@@ -500,9 +512,7 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 window.alert("FlakeCombo node has no flakes selected.");
                 return;
             }
-            const activeFlakes = flakes
-                .map((flake, i) => ({ flake, i }))
-                .filter(({ flake }) => !flake.bypassed);
+            const activeFlakes = flakes.filter(flake => !flake.bypassed);
             if (activeFlakes.length === 0) {
                 window.alert("FlakeCombo node has no active (non-bypassed) flakes.");
                 return;
@@ -511,14 +521,15 @@ app.queuePrompt = async function(number, batchCount = 1) {
             // ordinary flakes stay a single item. vkey keeps each combo's
             // comboKey unique (#343).
             const comboItems = [];
-            for (const { flake, i } of activeFlakes) {
+            for (const flake of activeFlakes) {
+                const uid = flake._uid;
                 if (flake._all_variants) {
                     const meta = await fetchFlakeMeta(flake.name);
-                    enumerateVariantCombos(meta).forEach((variant, vi) => {
-                        comboItems.push({ node, type: "combo", value: { ...flake, variant }, index: i, vkey: `${i}.${vi}` });
-                    });
+                    for (const variant of enumerateVariantCombos(meta)) {
+                        comboItems.push({ node, type: "combo", value: { ...flake, variant }, uid, vkey: `${uid}.${variantKey(variant)}` });
+                    }
                 } else {
-                    comboItems.push({ node, type: "combo", value: flake, index: i, vkey: `${i}` });
+                    comboItems.push({ node, type: "combo", value: flake, uid, vkey: uid });
                 }
             }
             optionsArrays.push(comboItems);
@@ -536,13 +547,15 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 window.alert("FlakeModelCombo node has no active (non-bypassed) presets.");
                 return;
             }
-            // Keep the original preset index so combo highlighting maps correctly.
+            // index picks the preset's overrides when its combination is queued.
+            const uids = node.properties._combo_uids;
             optionsArrays.push(activePresets.map(({ preset, i }) => ({
                 node,
                 type: "model_combo",
                 value: preset,
                 index: i,
-                vkey: String(i),
+                uid: uids[i],
+                vkey: uids[i],
             })));
         }
     }
@@ -636,7 +649,7 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 }
             }
             const comboKey = combination
-                .map(it => [it.node.id, it.vkey ?? String(it.index)])
+                .map(it => [it.node.id, it.vkey])
                 .sort((a, b) => a[0] - b[0])
                 .map(([id, vk]) => `${id}:${vk}`)
                 .join("|");

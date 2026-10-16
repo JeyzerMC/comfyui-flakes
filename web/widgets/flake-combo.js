@@ -7,7 +7,7 @@ import {
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
-import { getGeneratingIndex } from "../queue.js";
+import { getGeneratingUid, newItemUid } from "../queue.js";
 
 function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, onReplace, onToggleBypass, onSingleOut, onDuplicate, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const hasCover = !!entry.name;
@@ -512,6 +512,7 @@ export function setupFlakeComboWidget(node) {
                 delete entry.option;
             }
             if (!entry.variant) entry.variant = {};
+            if (!entry._uid) entry._uid = newItemUid();
         }
         return flakes;
     }
@@ -557,7 +558,7 @@ export function setupFlakeComboWidget(node) {
     function render() {
         const flakes = readAllFlakes();
         const activeIdx = node.properties._combo_active_index || 0;
-        const generatingIdx = getGeneratingIndex(node);
+        const generatingUid = getGeneratingUid(node);
         grid.replaceChildren();
 
         for (let i = 0; i < flakes.length; i++) {
@@ -565,7 +566,7 @@ export function setupFlakeComboWidget(node) {
                 entry: flakes[i],
                 idx: i,
                 isActive: i === activeIdx,
-                isGenerating: generatingIdx != null && i === generatingIdx,
+                isGenerating: generatingUid != null && flakes[i]._uid === generatingUid,
                 onEdit: handleEdit,
                 onRemove: handleRemove,
                 onReplace: handleReplace,
@@ -689,6 +690,7 @@ export function setupFlakeComboWidget(node) {
     function handleDuplicate(idx) {
         const arr = readAllFlakes();
         const copy = JSON.parse(JSON.stringify(arr[idx]));
+        copy._uid = newItemUid();
         arr.splice(idx + 1, 0, copy);
         writeAllFlakes(arr);
         render();
