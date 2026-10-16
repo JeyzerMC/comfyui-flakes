@@ -170,14 +170,57 @@ export function getLivePreview(node) {
     return { url: _preview.url, comboKey: idx >= 0 ? _activeBatch.comboKeys[idx] : "" };
 }
 
+// FlakeGenerate shows its sampling previews itself; keep core from also drawing
+// them on the node (#380). Registered at module load, i.e. before core's own
+// listener (extensions load before the app adds its api handlers), so stopping
+// propagation here hides the event from it.
+_resolveComfyApi()?.addEventListener("b_preview_with_metadata", (e) => {
+    const { blob, displayNodeId, jobId } = e.detail;
+    if (app.graph?.getNodeById(displayNodeId)?.type !== "FlakeGenerate") return;
+    e.stopImmediatePropagation();
+    setPreview({ url: URL.createObjectURL(blob), nodeId: String(displayNodeId), promptId: jobId });
+});
+
+// ComfyUI sends no sampling previews when the Live preview setting is
+// "default" and the server runs without --preview-method (#380).
+let _serverPreviewDefault = null;
+function serverPreviewDefault() {
+    _serverPreviewDefault ??= fetch("/flakes/preview_default").then(r => r.json()).then(d => d.method).catch(() => null);
+    return _serverPreviewDefault;
+}
+
+// Set by setupBatchTracking while a batch runs; called with each prompt the
+// batch loop queues.
+let _onBatchPromptQueued = null;
+
+// api.queuePrompt stays wrapped for the session: prompts with a FlakeGenerate
+// get previews unless the user or the server chose a method, and batch prompts
+// report their prompt_id (app.queuePrompt in current frontends returns void;
+// api.queuePrompt returns the {prompt_id, number, node_errors} REST response).
+function installQueuePromptWrapper(comfyApi) {
+    const origQueuePrompt = comfyApi.queuePrompt.bind(comfyApi);
+    comfyApi.queuePrompt = async function(number, data, opts) {
+        // Snapshot the combo key/index now — they may already be cleared by
+        // the time the awaits below resolve.
+        const comboKey = _currentBatchComboKey;
+        const comboIndex = _currentComboIndex;
+        if ((!opts?.previewMethod || opts.previewMethod === "default")
+            && Object.values(data?.output || {}).some(n => n?.class_type === "FlakeGenerate")
+            && await serverPreviewDefault() === "none") {
+            opts = { ...opts, previewMethod: "auto" };
+        }
+        const result = await origQueuePrompt(number, data, opts);
+        if (result?.prompt_id && comboKey !== null) _onBatchPromptQueued?.(result.prompt_id, comboKey, comboIndex);
+        return result;
+    };
+}
+
 app.registerExtension({
     name: "comfyui-flakes.BatchState",
     setup() {
         const comfyApi = _resolveComfyApi();
         if (!comfyApi) return;
-        comfyApi.addEventListener("b_preview_with_metadata", ({ detail }) => {
-            setPreview({ url: URL.createObjectURL(detail.blob), nodeId: String(detail.displayNodeId), promptId: detail.jobId });
-        });
+        installQueuePromptWrapper(comfyApi);
         // The node's result replaces its preview; a finished, interrupted or
         // superseded prompt drops it.
         comfyApi.addEventListener("executed", ({ detail }) => {
@@ -279,30 +322,16 @@ function setupBatchTracking(state, combinations, comboKeys) {
         for (const { type, e } of arr) applyEventForKnownPid(type, e, pid);
     }
 
-    // Patch api.queuePrompt for the duration of this batch so we capture the
-    // returned prompt_id. (app.queuePrompt in current frontend versions
-    // returns void; the low-level api.queuePrompt still returns the
-    // {prompt_id, number, node_errors} REST response.)
-    const _origApiQueuePrompt = comfyApi.queuePrompt?.bind(comfyApi);
-    if (_origApiQueuePrompt) {
-        comfyApi.queuePrompt = async function(...args) {
-            // Snapshot the combo key/index now — they may already be cleared by
-            // the time the await below resolves.
-            const comboKeyForThisCall = _currentBatchComboKey;
-            const comboIndexForThisCall = _currentComboIndex;
-            const result = await _origApiQueuePrompt(...args);
-            if (result?.prompt_id && comboKeyForThisCall !== null) {
-                promptIds.push(result.prompt_id);
-                comboIndexByPrompt.push(comboIndexForThisCall ?? 0);
-                comboKeys.push(comboKeyForThisCall);
-                _activeBatch.promptIds.push(result.prompt_id);
-                _activeBatch.comboKeys.push(comboKeyForThisCall);
-                // Replay any websocket events that arrived before this push.
-                flushPendingFor(result.prompt_id);
-            }
-            return result;
-        };
-    }
+    // The api.queuePrompt wrapper reports each prompt_id the batch loop queues.
+    _onBatchPromptQueued = (pid, comboKey, comboIndex) => {
+        promptIds.push(pid);
+        comboIndexByPrompt.push(comboIndex ?? 0);
+        comboKeys.push(comboKey);
+        _activeBatch.promptIds.push(pid);
+        _activeBatch.comboKeys.push(comboKey);
+        // Replay any websocket events that arrived before this push.
+        flushPendingFor(pid);
+    };
 
     function setRunning(pid) {
         const idx = promptIds.indexOf(pid);
@@ -389,9 +418,7 @@ function setupBatchTracking(state, combinations, comboKeys) {
         comfyApi.removeEventListener("executed", onExecuted);
         comfyApi.removeEventListener("reconnected", backfill);
         document.removeEventListener("visibilitychange", onVisibility);
-        if (_origApiQueuePrompt) {
-            comfyApi.queuePrompt = _origApiQueuePrompt;
-        }
+        _onBatchPromptQueued = null;
         _currentBatchComboKey = null;
         _activeBatch.promptIds = [];
         _activeBatch.comboKeys = [];

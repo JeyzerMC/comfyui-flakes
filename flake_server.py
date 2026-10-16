@@ -7,6 +7,7 @@ from aiohttp import web
 from server import PromptServer
 
 import folder_paths
+import latent_preview
 from . import flake_families, flake_io
 from .flake_compose import anima_cn_files
 
@@ -66,6 +67,13 @@ async def _list_samplers(request: web.Request) -> web.Response:
         logging.exception("[flakes] failed to list samplers/schedulers")
         return _server_error(str(exc))
     return web.json_response({"samplers": samplers, "schedulers": schedulers})
+
+
+@routes.get("/flakes/preview_default")
+async def _preview_default(request: web.Request) -> web.Response:
+    """The server's --preview-method, used when the frontend Live preview
+    setting is left at "default" (#380)."""
+    return web.json_response({"method": latent_preview.default_preview_method.value})
 
 
 @routes.get("/flakes/meta")
