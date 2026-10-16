@@ -2,9 +2,9 @@ import {
     css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
-    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut,
+    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut, effectiveVariant, variantDropdownOptions,
 } from "../utils.js";
-import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta } from "../api.js";
+import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker } from "../pickers.js";
 import { getGeneratingIndex } from "../queue.js";
@@ -24,13 +24,12 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
         hasCover ? "background-size:cover;background-position:center;" : ""
     }${isGenerating ? "box-shadow:0 0 8px 1px rgba(74,158,255,0.7);" : ""}${isBypassed ? "opacity:0.45;" : ""}`);
 
-    // Cover image — swap to a selected variant choice's image when it has one,
+    // Cover image — swap to an effective variant choice's image when it has one,
     // otherwise fall back to the flake's base cover.
     function refreshCover() {
         if (!hasCover) return;
         const baseUrl = getCoverUrl(entry.name);
-        const variant = entry.variant || {};
-        const sel = Object.entries(variant).find(([, c]) => c != null && c !== "");
+        const sel = Object.entries(effectiveVariant(entry.variant, cachedVariantDefaults(entry.name)))[0];
         if (!sel) {
             block.style.backgroundImage = `url(${baseUrl})`;
             return;
@@ -104,7 +103,7 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
     function refreshName() {
         const { name, tags } = splitNameAndTags(baseName, entry.tags);
         const base = name.includes("/") ? name.split("/").pop() : name;
-        renderFlakeLabel(nameEl, { name: base, tags, variantText: variantInitials(entry) });
+        renderFlakeLabel(nameEl, { name: base, tags, variantText: variantInitials(entry, cachedVariantDefaults(entry.name)) });
     }
     refreshName();
     block.appendChild(nameEl);
@@ -131,6 +130,8 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
     block.addEventListener("drop", (e) => onDrop(e, idx, block));
 
     function refreshVisuals() { refreshName(); refreshCover(); }
+    // Default variant choices show once the flake's meta is loaded (#388).
+    if (hasCover && !cachedVariantDefaults(entry.name)) fetchFlakeMeta(entry.name).then(refreshVisuals, () => {});
 
     return { block, triangleBtn, refreshName, refreshVisuals };
 }
@@ -254,10 +255,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                 css(gLabel, "font-size:9px;opacity:0.7;text-align:center;");
                 row.appendChild(gLabel);
 
-                const ddOptions = [{ value: "", label: "-" }];
-                for (const ch of hasOptions[group]) {
-                    ddOptions.push({ value: ch, label: ch });
-                }
+                const ddOptions = variantDropdownOptions(hasOptions[group], (cachedVariantDefaults(entry.name) || {})[group]);
                 const dd = makePanelDropdown(ddOptions, (entry.variant || {})[group] || "");
                 dd.element.addEventListener("change", () => {
                     if (dd.element.value) {

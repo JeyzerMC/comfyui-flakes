@@ -1,6 +1,6 @@
-import { css } from "../utils.js";
+import { css, effectiveVariant } from "../utils.js";
 import { openOverlay } from "../modal.js";
-import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl, fetchFlakeMeta } from "../api.js";
+import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults } from "../api.js";
 import { getActiveBatch, subscribeBatch } from "../queue.js";
 
 // Cartesian product of a flake's variant groups ({group:[choices]}) -> one
@@ -20,10 +20,11 @@ function variantCombos(meta) {
 function makeFlakeCard(e, i, variantSub) {
     // #237: fall back to the flake's main cover image when no variant is selected
     // (or when the variant image 404s — see card render's probe-load).
-    const variantSel = Object.entries(e.variant || {}).find(([, c]) => c);
+    const variant = effectiveVariant(e.variant, cachedVariantDefaults(e.name));
+    const variantSel = Object.entries(variant)[0];
     const baseCover = getCoverUrl(e.name);
     const variantCover = variantSel ? getVariantImageUrl(e.name, variantSel[0], variantSel[1]) : null;
-    const choices = Object.values(e.variant || {}).filter(Boolean);
+    const choices = Object.values(variant);
     const base = e.display_name || e.name.split("/").pop() || e.name;
     return {
         label: base + (choices.length ? ` (${choices.join(", ")})` : ""),
@@ -156,6 +157,8 @@ export async function buildModel(startNode) {
                         continue;
                     }
                 }
+                // Loads the default variant choices the card shows (#388).
+                await fetchFlakeMeta(e.name).catch(() => {});
                 items.push(makeFlakeCard(e, i, null));
             }
             axes.push({ node, kind: "flake", label: "Flake Combo", items });
@@ -258,7 +261,9 @@ async function flakeEntryRows(entry) {
         const d = await fetchFlake(entry.name);
         hostData = d;
         const label = entry.display_name || d.name || entry.name.split("/").pop() || entry.name;
-        const choices = Object.values(entry.variant || {}).filter(Boolean);
+        await fetchFlakeMeta(entry.name);
+        const variant = effectiveVariant(entry.variant, cachedVariantDefaults(entry.name));
+        const choices = Object.values(variant);
         const vLabel = label + (choices.length ? ` (${choices.join(", ")})` : "");
         if (Array.isArray(d.loras)) {
             d.loras.forEach((lr, idx) => {
@@ -274,7 +279,7 @@ async function flakeEntryRows(entry) {
             if (pos) promptRows.push([`${vLabel} · Positive`, pos]);
             if (neg) promptRows.push([`${vLabel} · Negative`, neg]);
         }
-        for (const [g, c] of Object.entries(entry.variant || {})) {
+        for (const [g, c] of Object.entries(variant)) {
             const v = d.variants?.[g]?.[c];
             if (v?.positive) promptRows.push([`${vLabel} · ${g} · Positive`, v.positive]);
             if (v?.negative) promptRows.push([`${vLabel} · ${g} · Negative`, v.negative]);
@@ -291,9 +296,10 @@ async function flakeEntryRows(entry) {
             const hostLabel = entry.display_name || hostData.name || entry.name.split("/").pop() || entry.name;
             const linkLabel = (linked.name || linkTarget).split("/").pop();
             const groupLabel = `${hostLabel} · linked: ${linkLabel}`;
-            // Effective variant choices = grid override > yaml default.
-            const effectiveVariant = { ...(link.variant || {}), ...(ovr.variant || {}) };
-            const effChoices = Object.values(effectiveVariant).filter(Boolean);
+            // Effective variant choices = grid override > yaml link variant > linked flake's default.
+            await fetchFlakeMeta(linkTarget);
+            const linkVariant = effectiveVariant({ ...(link.variant || {}), ...(ovr.variant || {}) }, cachedVariantDefaults(linkTarget));
+            const effChoices = Object.values(linkVariant);
             const linkChoiceSuffix = effChoices.length ? ` (${effChoices.join(", ")})` : "";
             // Linked LoRA rows with effective strengths.
             if (Array.isArray(linked.loras)) {
@@ -313,8 +319,7 @@ async function flakeEntryRows(entry) {
                 if (linkPos) promptRows.push([`${groupLabel}${linkChoiceSuffix} · Positive`, linkPos]);
                 if (linkNeg) promptRows.push([`${groupLabel}${linkChoiceSuffix} · Negative`, linkNeg]);
             }
-            for (const [g, c] of Object.entries(effectiveVariant)) {
-                if (!c) continue;
+            for (const [g, c] of Object.entries(linkVariant)) {
                 const v = linked.variants?.[g]?.[c];
                 if (v?.positive) promptRows.push([`${groupLabel} · ${g} · Positive`, v.positive]);
                 if (v?.negative) promptRows.push([`${groupLabel} · ${g} · Negative`, v.negative]);

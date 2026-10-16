@@ -45,6 +45,8 @@ export async function saveFlakeApi(name, data, family = "", baseRootIndex = null
         throw new Error(err.error || `HTTP ${r.status}`);
     }
     invalidateList();
+    delete META_CACHE[name];
+    delete DEFAULTS_CACHE[name];
     const result = await r.json().catch(() => ({}));
     return result.name || name;
 }
@@ -196,13 +198,21 @@ export async function uploadCover(name, file) {
 // --- Flake meta ---
 
 const META_CACHE = {};
+const DEFAULTS_CACHE = {};
 export async function fetchFlakeMeta(name) {
     if (META_CACHE[name]) return META_CACHE[name];
     const r = await fetch(`/flakes/meta?name=${encodeURIComponent(name)}`);
     if (!r.ok) return {};
     const d = await r.json();
     META_CACHE[name] = d.variants || d.options || {};
+    DEFAULTS_CACHE[name] = d.defaults || {};
     return META_CACHE[name];
+}
+
+// A flake's {group: default choice} map (#388), or undefined until
+// fetchFlakeMeta has loaded it.
+export function cachedVariantDefaults(name) {
+    return DEFAULTS_CACHE[name];
 }
 
 // Synchronous best-effort count of a flake's full variant-combination set

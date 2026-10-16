@@ -1119,13 +1119,30 @@ export function renderFlakeLabel(nameEl, { name, tags = [], variantText = "" } =
     }
 }
 
-// Initials of a flake's selected variant choices, formatted "[P, C]" (#298).
+// Effective variant choices of a flake entry: its selections over the flake's
+// default choices, without explicit "__none__" opt-outs (#388).
+export function effectiveVariant(variant, defaults) {
+    const out = {};
+    for (const g of new Set([...Object.keys(defaults || {}), ...Object.keys(variant || {})])) {
+        const ch = (variant || {})[g] || (defaults || {})[g];
+        if (ch && ch !== "__none__") out[g] = ch;
+    }
+    return out;
+}
+
+// Variant group dropdown options: "-" is no selection, shown as the group's
+// default choice when it has one, with "None" to opt out of it (#388).
+export function variantDropdownOptions(choices, defaultChoice) {
+    const opts = [{ value: "", label: defaultChoice ? `Default (${defaultChoice})` : "-" }];
+    if (defaultChoice) opts.push({ value: "__none__", label: "None" });
+    for (const ch of choices) opts.push({ value: ch, label: ch });
+    return opts;
+}
+
+// Initials of a flake's effective variant choices, formatted "[P, C]" (#298).
 // Returns "" when nothing is selected.
-export function variantInitials(entry) {
-    const variant = entry?.variant;
-    if (!variant || typeof variant !== "object") return "";
-    const initials = Object.values(variant)
-        .filter(v => v != null && v !== "")
+export function variantInitials(entry, defaults) {
+    const initials = Object.values(effectiveVariant(entry?.variant, defaults))
         .map(v => String(v).trim()[0])
         .filter(Boolean)
         .map(c => c.toUpperCase());

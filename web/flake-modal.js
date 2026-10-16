@@ -1606,6 +1606,13 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     keys.splice(dstIdx, 0, dragChoiceName);
                                     const newObj = {};
                                     for (const k of keys) newObj[k] = fieldState.variants[groupName][k];
+                                    // "Applies by default" stays on the first choice (#388).
+                                    const oldFirst = choiceNames[0];
+                                    if (keys[0] !== oldFirst && newObj[oldFirst]?.default) {
+                                        delete newObj[oldFirst].default;
+                                        newObj[keys[0]] = newObj[keys[0]] || {};
+                                        newObj[keys[0]].default = true;
+                                    }
                                     fieldState.variants[groupName] = newObj;
                                     dragChoiceName = null;
                                     renderOpts();
@@ -2060,6 +2067,25 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 }
                                 renderChoiceExtras();
 
+                                // The group's first choice can apply when a flake
+                                // instance selects nothing in this group (#388).
+                                if (choiceName === choiceNames[0]) {
+                                    const defWrap = document.createElement("label");
+                                    css(defWrap, "clear:both;display:flex;align-items:center;gap:6px;font-size:11px;color:#aaa;cursor:pointer;margin-top:4px;");
+                                    const defChk = document.createElement("input");
+                                    defChk.type = "checkbox";
+                                    defChk.checked = !!choice.default;
+                                    css(defChk, "width:14px;height:14px;cursor:pointer;margin:0;");
+                                    defChk.addEventListener("change", () => {
+                                        const co = fieldState.variants[groupName][choiceName] || (fieldState.variants[groupName][choiceName] = {});
+                                        if (defChk.checked) co.default = true;
+                                        else delete co.default;
+                                    });
+                                    defWrap.appendChild(defChk);
+                                    defWrap.appendChild(document.createTextNode("Applies by default"));
+                                    choiceCard.appendChild(defWrap);
+                                }
+
                                 groupCard.appendChild(choiceCard);
                             }
 
@@ -2501,6 +2527,10 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     // (#299): drop rows missing their key field and remove now-empty
                     // arrays so the yaml stays clean.
                     for (const group of Object.values(fieldState.variants)) {
+                        // Only the group's first choice applies by default (#388).
+                        for (const choice of Object.values(group || {}).slice(1)) {
+                            if (choice) delete choice.default;
+                        }
                         for (const choice of Object.values(group || {})) {
                             if (!choice) continue;
                             if (Array.isArray(choice.loras)) {
