@@ -187,11 +187,28 @@ class ControlNetEntry:
 
 
 @dataclass
+class ScheduleKeyframe:
+    """Hook keyframe: ``strength`` multiplies from ``start`` (fraction of
+    denoising) until the next keyframe; 1.0 before the first one, as in core
+    ``comfy.hooks.HookKeyframeGroup``."""
+    start: float
+    strength: float
+
+
+@dataclass
 class LoraEntry:
     name: str = ""
     url: str = ""
     path: str = ""
     strength: float = 1.0
+    schedule: list[ScheduleKeyframe] = field(default_factory=list)
+
+
+@dataclass
+class PromptEntry:
+    positive: str = ""
+    negative: str = ""
+    schedule: list[ScheduleKeyframe] = field(default_factory=list)
 
 
 @dataclass
@@ -207,13 +224,17 @@ class FlakeLink:
     target: str
     variant: dict[str, str] = field(default_factory=dict)
     lora_strengths: list[float | None] = field(default_factory=list)
+    # Multiplies into every LoRA and prompt the linked flake contributes.
+    schedule: list[ScheduleKeyframe] = field(default_factory=list)
 
 
 @dataclass
 class Flake:
     name: str
+    # Joined text of the unscheduled prompts; scheduled ones are kept apart.
     positive: str = ""
     negative: str = ""
+    scheduled_prompts: list[PromptEntry] = field(default_factory=list)
     loras: list[LoraEntry] = field(default_factory=list)
     lora_path: str | None = None  # legacy single LoRA
     strength: float = 1.0  # legacy single LoRA strength
@@ -575,6 +596,54 @@ def delete_flake(name: str) -> None:
     _delete_cover(name)
 
 
+def _parse_schedule(raw: Any) -> list[ScheduleKeyframe]:
+    """Parse a `schedule:` keyframe list, sorted by start with start clamped to
+    [0, 1]. A repeated start keeps the last keyframe."""
+    by_start: dict[float, float] = {}
+    if isinstance(raw, list):
+        for kf in raw:
+            if isinstance(kf, dict):
+                start = min(max(float(kf.get("start", 0.0)), 0.0), 1.0)
+                by_start[start] = float(kf.get("strength", 1.0))
+    return [ScheduleKeyframe(start, by_start[start]) for start in sorted(by_start)]
+
+
+def schedule_strength(schedule: list[ScheduleKeyframe], t: float) -> float:
+    strength = 1.0
+    for kf in schedule:
+        if kf.start > t:
+            break
+        strength = kf.strength
+    return strength
+
+
+def multiply_schedules(a: list[ScheduleKeyframe], b: list[ScheduleKeyframe]) -> list[ScheduleKeyframe]:
+    """Piecewise product of two schedules; an empty schedule is the identity."""
+    if not a or not b:
+        return list(a or b)
+    starts = sorted({kf.start for kf in a} | {kf.start for kf in b})
+    return [ScheduleKeyframe(t, schedule_strength(a, t) * schedule_strength(b, t)) for t in starts]
+
+
+def _join_prompt_text(parts) -> str:
+    return ", ".join(p for p in parts if p)
+
+
+def _parse_prompt_list(raw: dict[str, Any]) -> list["PromptEntry"]:
+    """Parse `prompts:` (list) or legacy `prompt:` (dict) from a flake body."""
+    raw_prompts = raw.get("prompts")
+    if not isinstance(raw_prompts, list):
+        raw_prompts = [raw.get("prompt") or {}]
+    return [
+        PromptEntry(
+            positive=str(p.get("positive", "") or ""),
+            negative=str(p.get("negative", "") or ""),
+            schedule=_parse_schedule(p.get("schedule")),
+        )
+        for p in raw_prompts if isinstance(p, dict)
+    ]
+
+
 def _parse_lora_list(raw_loras: Any) -> list["LoraEntry"]:
     """Parse a `loras:` list into LoraEntry objects. Shared by the flake body and
     by variant-choice contributions (#299)."""
@@ -588,6 +657,7 @@ def _parse_lora_list(raw_loras: Any) -> list["LoraEntry"]:
                 url=str(lr.get("url", "")),
                 path=str(lr.get("path", "")),
                 strength=float(lr.get("strength", 1.0)),
+                schedule=_parse_schedule(lr.get("schedule")),
             ))
     return out
 
@@ -630,6 +700,7 @@ def _parse_link_list(raw: dict[str, Any]) -> list["FlakeLink"]:
                 (float(s) if isinstance(s, (int, float)) else None)
                 for s in (d.get("lora_strengths") or [])
             ],
+            schedule=_parse_schedule(d.get("schedule")),
         )
 
     out: list[FlakeLink] = []
@@ -646,7 +717,8 @@ def _parse_link_list(raw: dict[str, Any]) -> list["FlakeLink"]:
 
 
 def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
-    prompt = raw.get("prompt") or {}
+    prompts = _parse_prompt_list(raw)
+    unscheduled = [p for p in prompts if not p.schedule]
     resolution = raw.get("resolution")
     if resolution is not None:
         resolution = (int(resolution[0]), int(resolution[1]))
@@ -666,8 +738,9 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
 
     return Flake(
         name=name,
-        positive=str(prompt.get("positive", "") or ""),
-        negative=str(prompt.get("negative", "") or ""),
+        positive=_join_prompt_text(p.positive for p in unscheduled),
+        negative=_join_prompt_text(p.negative for p in unscheduled),
+        scheduled_prompts=[p for p in prompts if p.schedule],
         loras=loras,
         lora_path=raw.get("path") or None,
         strength=float(raw.get("strength", 1.0)),
@@ -820,15 +893,22 @@ def _apply_single_link(host: "Flake", link: "FlakeLink", grid_override: dict[str
         print(f"[flakes] flake_link target not found: {link.target} (host: {host.name})")
         return
 
-    # Append linked flake's loras to host's list.
+    # Append linked flake's loras to host's list, under the link's schedule.
     for lr in linked.loras:
+        lr.schedule = multiply_schedules(link.schedule, lr.schedule)
         host.loras.append(lr)
 
-    # Append prompts (after host's, comma-joined like the existing variant logic).
-    if linked.positive:
-        host.positive = f"{host.positive}, {linked.positive}" if host.positive else linked.positive
-    if linked.negative:
-        host.negative = f"{host.negative}, {linked.negative}" if host.negative else linked.negative
+    # A scheduled link turns the linked unscheduled text into a scheduled
+    # prompt; otherwise it is appended after the host's, comma-joined.
+    if link.schedule:
+        if linked.positive or linked.negative:
+            linked.scheduled_prompts.insert(0, PromptEntry(linked.positive, linked.negative))
+        for p in linked.scheduled_prompts:
+            p.schedule = multiply_schedules(link.schedule, p.schedule)
+    else:
+        host.positive = _join_prompt_text([host.positive, linked.positive])
+        host.negative = _join_prompt_text([host.negative, linked.negative])
+    host.scheduled_prompts.extend(linked.scheduled_prompts)
 
 
 def flake_variants(name: str) -> dict[str, list[str]]:
