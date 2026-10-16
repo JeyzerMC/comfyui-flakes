@@ -9,13 +9,14 @@ import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchVaes, fetchEm
 import { openFileBrowser } from "./pickers.js";
 import { app } from "../../scripts/app.js";
 
-export function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) {
+export async function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) {
     // Seed a brand-new preset from the family's defaults (#360) — 8 steps at
     // cfg 1 with res_multistep for Z-Image, 30 at cfg 4 for Anima base, etc.
     // Done before the widgets are built because the sliders are write-once.
     // Only fills blanks, so an explicitly supplied value always wins, and an
     // existing preset being edited is never touched.
     if (mode === "create") {
+        await ensureFamilies();
         const spec = familySpec(family);
         if (spec) {
             data = data || {};
@@ -875,17 +876,12 @@ export async function handlePresetButton(e) {
     if (isPlaceholder) {
         const result = await openPresetEditModal({
             mode: "create",
+            family: currentFamily,
             data: {
                 checkpoint: "",
                 checkpoint_url: "",
                 clip_skip: -2,
                 vae: "",
-                steps: 31,
-                cfg: 4.7,
-                sampler: "dpmpp_2m",
-                scheduler: "karras",
-                width: 853,
-                height: 1440,
                 prompt: { positive: "", negative: "" },
                 embeddings: [],
             },

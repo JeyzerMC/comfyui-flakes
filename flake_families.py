@@ -83,12 +83,12 @@ class FamilySpec:
 
     # Defaults seeded into a newly created preset. Existing presets keep
     # whatever is on disk; these only fill the editor's blank form.
-    steps: int = 20
-    cfg: float = 4.0
-    sampler: str = "euler_ancestral"
-    scheduler: str = "normal"
-    width: int = 832
-    height: int = 1216
+    steps: int = 31
+    cfg: float = 4.7
+    sampler: str = "dpmpp_2m"
+    scheduler: str = "karras"
+    width: int = 853
+    height: int = 1440
 
     # ``clip.clip_layer()`` is a CLIP-ism. On the Qwen3 / Qwen3-VL encoders the
     # newer families use it is meaningless and can raise, so it must be skipped.
@@ -141,15 +141,15 @@ FAMILIES: tuple[FamilySpec, ...] = (
                clip_type="LUMINA2", steps=8, cfg=1.0, sampler="res_multistep",
                scheduler="simple", width=1024, height=1024,
                supports_clip_skip=False, default_shift=3.0),
-    # Anima: Qwen3-0.6B encoder loaded as a plain stable_diffusion CLIP, qwen
+    # Anima: Qwen3-0.6B encoder loaded as QWEN_IMAGE (core picks the model by file contents), qwen
     # image VAE. Base is undistilled — 30 steps at cfg 4 with a real negative.
     # ControlNets are kohya's ControlNet-LLLite (anima-lllite-<type>-1).
     FamilySpec("Anima/Base", "anima", cn_suffix="anima", cn_subfolder="anima",
                cn_kind="anima_lllite",
                cn_names=(("openpose", "anima-lllite-pose"), ("depth", "anima-lllite-depth"),
                          ("lineart", "anima-lllite-lineart"), ("scribble", "anima-lllite-scribble")),
-               clip_type="STABLE_DIFFUSION", steps=30, cfg=4.0, sampler="euler",
-               scheduler="simple", width=1024, height=1024,
+               clip_type="QWEN_IMAGE", steps=30, cfg=4.0, sampler="euler_ancestral",
+               scheduler="normal", width=1024, height=1024,
                supports_clip_skip=False, default_shift=3.0),
     # Krea2: Qwen3-VL-4B encoder (CLIPType.KREA2), qwen image VAE. The public
     # weights are the distilled turbo variant — 8 steps at cfg 1.

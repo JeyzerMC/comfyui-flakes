@@ -398,8 +398,6 @@ export function setupFlakeModelComboWidget(node) {
                     family: getFamily(),
                     data: {
                         checkpoint: "", checkpoint_url: "", clip_skip: -2, vae: "",
-                        steps: 31, cfg: 4.7, sampler: "dpmpp_2m", scheduler: "karras",
-                        width: 853, height: 1440,
                         prompt: { positive: "", negative: "" }, embeddings: [],
                     },
                 });

@@ -196,9 +196,9 @@ def test_sdxl_generation_defaults_unchanged():
     for label in ("SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "Flux/Klein", "Common"):
         spec = F.BY_LABEL[label]
         assert spec.clip_type == "STABLE_DIFFUSION"
-        assert (spec.steps, spec.cfg) == (20, 4.0)
-        assert (spec.sampler, spec.scheduler) == ("euler_ancestral", "normal")
-        assert (spec.width, spec.height) == (832, 1216)
+        assert (spec.steps, spec.cfg) == (31, 4.7)
+        assert (spec.sampler, spec.scheduler) == ("dpmpp_2m", "karras")
+        assert (spec.width, spec.height) == (853, 1440)
         assert spec.supports_clip_skip is True
         assert spec.default_shift is None
 
@@ -210,7 +210,7 @@ def test_new_families_match_shipped_templates():
         "ZImage/Turbo": ("LUMINA2", 8, 1.0, "res_multistep", "simple", 3.0),
         "ZImage/Base": ("LUMINA2", 8, 1.0, "res_multistep", "simple", 3.0),
         "Krea2/Turbo": ("KREA2", 8, 1.0, "euler", "simple", 1.15),
-        "Anima/Base": ("STABLE_DIFFUSION", 30, 4.0, "euler", "simple", 3.0),
+        "Anima/Base": ("QWEN_IMAGE", 30, 4.0, "euler_ancestral", "normal", 3.0),
     }
     for label, want in expected.items():
         spec = F.BY_LABEL[label]
