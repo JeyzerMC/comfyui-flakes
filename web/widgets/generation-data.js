@@ -222,6 +222,11 @@ function buildComposite(urls, width, height, longEdge = Math.round(1024 * Math.m
     });
 }
 
+// A flake's prompts: the `prompts:` list or the legacy single `prompt:` (#371).
+function flakePrompts(d) {
+    return Array.isArray(d.prompts) ? d.prompts : (d.prompt ? [d.prompt] : []);
+}
+
 // Convert a single flake entry into label/lora/prompt rows.
 // If the host flake has a flake_link, also append the linked flake's effective
 // rows (post-override) — #236. The effective variant/strength is derived
@@ -244,10 +249,12 @@ async function flakeEntryRows(entry) {
                 loraRows.push([`${name} [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`, path]);
             });
         }
-        const pos = ((d.prompt && d.prompt.positive) || "").trim();
-        const neg = ((d.prompt && d.prompt.negative) || "").trim();
-        if (pos) promptRows.push([`${vLabel} · Positive`, pos]);
-        if (neg) promptRows.push([`${vLabel} · Negative`, neg]);
+        for (const p of flakePrompts(d)) {
+            const pos = (p?.positive || "").trim();
+            const neg = (p?.negative || "").trim();
+            if (pos) promptRows.push([`${vLabel} · Positive`, pos]);
+            if (neg) promptRows.push([`${vLabel} · Negative`, neg]);
+        }
         for (const [g, c] of Object.entries(entry.variant || {})) {
             const v = d.variants?.[g]?.[c];
             if (v?.positive) promptRows.push([`${vLabel} · ${g} · Positive`, v.positive]);
@@ -281,10 +288,12 @@ async function flakeEntryRows(entry) {
                 });
             }
             // Linked prompts
-            const linkPos = ((linked.prompt && linked.prompt.positive) || "").trim();
-            const linkNeg = ((linked.prompt && linked.prompt.negative) || "").trim();
-            if (linkPos) promptRows.push([`${groupLabel}${linkChoiceSuffix} · Positive`, linkPos]);
-            if (linkNeg) promptRows.push([`${groupLabel}${linkChoiceSuffix} · Negative`, linkNeg]);
+            for (const p of flakePrompts(linked)) {
+                const linkPos = (p?.positive || "").trim();
+                const linkNeg = (p?.negative || "").trim();
+                if (linkPos) promptRows.push([`${groupLabel}${linkChoiceSuffix} · Positive`, linkPos]);
+                if (linkNeg) promptRows.push([`${groupLabel}${linkChoiceSuffix} · Negative`, linkNeg]);
+            }
             for (const [g, c] of Object.entries(effectiveVariant)) {
                 if (!c) continue;
                 const v = linked.variants?.[g]?.[c];
