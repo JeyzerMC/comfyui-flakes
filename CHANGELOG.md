@@ -27,8 +27,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and applied to the model rather than the conditioning; the flake ControlNet
   editor is unchanged and only lists the types the family supports
   (#363, #364, #365, #366).
+- Hook schedules (`schedule:` keyframes) for LoRAs, prompts and flake links,
+  added from the card's ☰ menu in the flake editor (#369, #370, #372).
+- Multiple prompts per flake (`prompts:` list; `prompt:` still read) (#369, #371).
+- Live sampling previews in the Flake Generate node and overlay (#374).
+- Anima VACE-Depth ControlNet through the ComfyUI-Advanced-ControlNet-Anima
+  fork (#378).
+
+### Changed
+
+- Ungenerated combinations in the Generation Data overlay show scattered cover
+  cards instead of a split mosaic (#375).
+- New Anima presets default to Euler Ancestral, Normal and the `QWEN_IMAGE`
+  encoder type; family defaults now actually seed new presets (#376).
 
 ### Fixed
+
+- Combo highlights and overlay results no longer get lost when switching
+  workflow or browser tabs mid-batch; missed results are recovered from history
+  after a reconnect (#373).
+- New model presets default to the extra model path root instead of the
+  ComfyUI install folder (#377).
 
 - Z-Image flake ControlNets failed to load: the Fun ControlNet Union is a model
   patch, not a regular ControlNet (#365).

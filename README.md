@@ -53,6 +53,9 @@ loras:
     url: "https://civitai.com/models/..."   # optional, shown as link icon
     path: "<lora_path>/musashi"                # under models/loras/
     strength: 0.9                           # default 1.0
+    schedule:                               # optional hook schedule, see below
+      - {start: 0.0, strength: 1.0}
+      - {start: 0.6, strength: 0.0}
 
 # Default resolution for the generation. The first flake in the stack that
 # declares a `resolution` wins; otherwise it falls back to 1024 × 1024.
@@ -104,6 +107,22 @@ flake_links:
   - target: "poses/standing"
 ```
 
+A flake can hold several prompts with `prompts:` instead of `prompt:` (a list of
+`{positive, negative, schedule}` entries). Unscheduled prompts of one flake are
+joined with `, `.
+
+### Hook schedules
+
+LoRAs, prompts and flake links take an optional `schedule`: keyframes that set
+a strength multiplier from `start` (fraction of the denoising, 0–1) until the
+next keyframe. Before the first keyframe the strength is 1. In the flake editor,
+use **Add Hook Scheduler** from the card's ☰ menu.
+
+- **LoRA**: scales the LoRA's model weights over time (core hook keyframes). Its
+  text-encoder part stays on for the whole generation so trigger words encode.
+- **Prompt**: encoded on its own and applied only where the strength is above 0.
+- **Flake link**: multiplies into every LoRA and prompt the linked flake brings in.
+
 Prompts are joined with `BREAK` between flakes so each flake acts as an independent CLIP region. LoRA strengths and variant choices can be overridden per-instance from the grid item's option panel without modifying the file on disk.
 
 ![Flake Edit](assets/img/flake_fields.png)
@@ -126,7 +145,7 @@ is loaded and sampled.
 | Family | Folder | Model file | Text encoder | Encoder type | VAE |
 |---|---|---|---|---|---|
 | `SDXL/Base`, `SDXL/Illustrious`, `SDXL/Pony` | `sdxl`, `illustrious`, `pony` | all-in-one checkpoint | baked in | `STABLE_DIFFUSION` | baked in |
-| `Anima/Base` | `anima` | `anima-base-v1.0` | `qwen_3_06b_base` | `STABLE_DIFFUSION` | `qwen_image_vae` |
+| `Anima/Base` | `anima` | `anima-base-v1.0` | `qwen_3_06b_base` | `QWEN_IMAGE` | `qwen_image_vae` |
 | `Krea2/Turbo` | `krea2` | `krea2_turbo_fp8_scaled` | `qwen3vl_4b_fp8_scaled` | `KREA2` | `qwen_image_vae` |
 | `ZImage/Base`, `ZImage/Turbo` | `zib`, `zit` | `z_image_turbo_bf16` | `qwen_3_4b` | `LUMINA2` | `ae.safetensors` |
 
@@ -137,7 +156,7 @@ Model** — a UNET-only file that happens to live in `models/checkpoints/` is
 detected automatically, so you don't have to move it.
 
 Presets seed their sampler defaults from the family (Z-Image and Krea2 Turbo: 8
-steps at CFG 1; Anima base: 30 steps at CFG 4). At CFG ≤ 1 the negative prompt is
+steps at CFG 1; Anima base: 30 steps at CFG 4 with Euler Ancestral / Normal). At CFG ≤ 1 the negative prompt is
 zeroed out, matching how distilled models are sampled. **Clip Skip** is hidden
 for the Qwen-based families, where it does not apply.
 
@@ -162,6 +181,11 @@ diffusion model, so the files go in `models/model_patches/`, not
 - The Anima LLLite weights are Preview3 releases and lose some quality on Anima
   Base v1.0.
 - Z-Image's Fun ControlNet has no start/end: it applies to every step.
+- [TaihoC/Anima-ControlNet-VACE-Depth](https://huggingface.co/TaihoC/Anima-ControlNet-VACE-Depth)
+  is not supported by core ComfyUI. Install the
+  [ComfyUI-Advanced-ControlNet-Anima](https://github.com/TaihoC/ComfyUI-Advanced-ControlNet-Anima)
+  fork (branch `feat/anima-vace-controlnet`), put the file in
+  `models/controlnet/anima/` and select it as the ControlNet entry's model.
 - The base model is not reloaded when switching flakes. Each patch is a hook on
   a clone that shares its weights, and recently used patch files stay cached.
 
@@ -197,7 +221,10 @@ TODO
 
 ### Flake Generate
 
-TODO
+Samples, decodes and saves the stack. While a combination is sampling, the node
+and its Generation Data overlay show the live step preview (needs a ComfyUI
+preview method other than none). Combinations that are not generated yet show
+their flakes' covers as scattered cards.
 
 ### Flake Data Split
 
