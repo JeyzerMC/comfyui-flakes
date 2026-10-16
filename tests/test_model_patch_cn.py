@@ -1,4 +1,5 @@
-"""Tests for model-patch ControlNets: Anima LLLite and Z-Image Fun (#365).
+"""Tests for model-patch ControlNets: Anima LLLite and Z-Image Fun (#365), and
+Anima VACE routed to the ComfyUI-Advanced-ControlNet-Anima fork (#378).
 
 Stubs the ComfyUI runtime (including ``comfy_extras.nodes_model_patch``) and
 loads the sources under a synthetic package, matching test_preset_loader.py.
@@ -7,7 +8,9 @@ ControlNet / model-patch nodes.
 
 Run directly (``python tests/test_model_patch_cn.py``) or via pytest.
 """
+import importlib.machinery
 import importlib.util
+import json
 import os
 import sys
 import types
@@ -17,7 +20,42 @@ PKG = "flakes_under_test_patch_cn"
 
 FILES = {"controlnet": [], "model_patches": []}
 MTIMES = {}
-CALLS = {"patch_load": [], "lllite": [], "zimage": [], "cn_load": [], "cn_apply": []}
+HEADERS = {}
+NODE_MAPPINGS = {}
+CALLS = {"patch_load": [], "lllite": [], "zimage": [], "cn_load": [], "cn_apply": [],
+         "acn_load": [], "acn_apply": []}
+
+ACN_PKG = "fake_acn.adv_control"
+
+
+class ACNLoader:
+    def load_controlnet(self, cnet, _tk_opt=None):
+        CALLS["acn_load"].append(cnet)
+        return (f"ACN({cnet})",)
+
+
+class ACNApply:
+    def apply_controlnet(self, positive, negative, control_net, image, strength, start_percent, end_percent,
+                         mask_optional=None, vae_optional=None):
+        CALLS["acn_apply"].append((control_net, image, strength, start_percent, end_percent, vae_optional))
+        return (positive + [["VACE", {}]], negative)
+
+
+ACNLoader.__module__ = ACNApply.__module__ = f"{ACN_PKG}.nodes_main"
+
+
+def _install_acn(with_vace):
+    for name in ("fake_acn", ACN_PKG):
+        mod = types.ModuleType(name)
+        mod.__path__ = []
+        sys.modules[name] = mod
+    sys.modules.pop(f"{ACN_PKG}.control_anima_vace", None)
+    if with_vace:
+        vace = types.ModuleType(f"{ACN_PKG}.control_anima_vace")
+        vace.__spec__ = importlib.machinery.ModuleSpec(vace.__name__, None)
+        sys.modules[vace.__name__] = vace
+    NODE_MAPPINGS["ACN_ControlNetLoaderAdvanced"] = ACNLoader
+    NODE_MAPPINGS["ACN_AdvancedControlNetApply_v2"] = ACNApply
 
 
 def _stub_externals():
@@ -45,6 +83,7 @@ def _stub_externals():
     sys.modules["comfy"] = comfy
     sys.modules["comfy.sd"] = comfy.sd
     sys.modules["comfy.utils"] = comfy.utils
+    comfy.utils.safetensors_header = lambda path: HEADERS.get(path)
     # No scheduled LoRAs here, so carry_schedules sees no hooks.
     comfy.hooks = types.ModuleType("comfy.hooks")
     comfy.hooks.HookGroup = types.SimpleNamespace(combine_all_hooks=lambda groups: None)
@@ -76,6 +115,7 @@ def _stub_externals():
     nodes.ControlNetLoader = ControlNetLoader
     nodes.ControlNetApplyAdvanced = ControlNetApplyAdvanced
     nodes.LoraLoader = type("LoraLoader", (), {})
+    nodes.NODE_CLASS_MAPPINGS = NODE_MAPPINGS
     sys.modules["nodes"] = nodes
 
     class ModelPatchLoader:
@@ -138,6 +178,8 @@ def _reset():
     for v in FILES.values():
         v.clear()
     MTIMES.clear()
+    HEADERS.clear()
+    NODE_MAPPINGS.clear()
     flake_compose._CN_PATCH_CACHE.clear()
 
 
@@ -240,6 +282,71 @@ def test_patch_cache_is_bounded_lru():
     # Touching the oldest survivor makes it most recent.
     flake_compose.load_cn_patch(names[1])
     assert list(flake_compose._CN_PATCH_CACHE)[-1] == names[1]
+
+
+VACE_FILE = "anima/Anima-ControlNet-VACE-Depth.safetensors"
+
+
+def _add_vace_file(keys=("control_blocks.0.after_proj.weight", "control_blocks.0.attn.weight")):
+    FILES["controlnet"].append(VACE_FILE)
+    HEADERS[f"/fake/controlnet/{VACE_FILE}"] = json.dumps({k: {} for k in keys}).encode()
+
+
+def test_anima_vace_routes_to_fork_with_vae():
+    _reset()
+    _install_acn(with_vace=True)
+    _add_vace_file()
+    FILES["model_patches"].append("anima/anima-lllite-depth-1.safetensors")
+    out = _run("Anima/Base", [_cn("depth", model_name="Anima-ControlNet-VACE-Depth")])
+    (model, _clip, _vae), gen, _ = out
+    assert CALLS["acn_load"] == [VACE_FILE]
+    assert CALLS["acn_apply"] == [(f"ACN({VACE_FILE})", "IMG(pose_a)@1024x1024", 0.8, 0.1, 0.9, "VAE")]
+    assert gen[0][-1] == ["VACE", {}]
+    # Conditioning-level control: the model is not patched.
+    assert model == "BASE_MODEL"
+    assert not CALLS["patch_load"] and not CALLS["lllite"]
+
+
+def test_anima_lllite_stays_default_when_vace_file_present():
+    _reset()
+    _install_acn(with_vace=True)
+    _add_vace_file()
+    FILES["model_patches"].append("anima/anima-lllite-depth-1.safetensors")
+    out = _run("Anima/Base", [_cn("depth")])
+    assert out[0][0] == "BASE_MODEL+lllite"
+    assert not CALLS["acn_load"]
+
+
+def test_anima_controlnet_file_without_vace_keys_uses_lllite():
+    _reset()
+    _install_acn(with_vace=True)
+    _add_vace_file(keys=("lllite_unet.weight",))
+    FILES["model_patches"].append("anima/anima-lllite-depth-1.safetensors")
+    out = _run("Anima/Base", [_cn("depth", model_name="Anima-ControlNet-VACE-Depth")])
+    assert out[0][0] == "BASE_MODEL+lllite"
+    assert not CALLS["acn_load"]
+
+
+def _vace_error():
+    try:
+        _run("Anima/Base", [_cn("depth", model_name="Anima-ControlNet-VACE-Depth")])
+    except RuntimeError as exc:
+        return str(exc)
+    return None
+
+
+def test_anima_vace_without_fork_errors():
+    _reset()
+    _add_vace_file()
+    assert "ComfyUI-Advanced-ControlNet-Anima" in (_vace_error() or "")
+
+
+def test_anima_vace_with_upstream_acn_errors():
+    _reset()
+    _install_acn(with_vace=False)
+    _add_vace_file()
+    assert "ComfyUI-Advanced-ControlNet-Anima" in (_vace_error() or "")
+    assert not CALLS["acn_load"]
 
 
 if __name__ == "__main__":

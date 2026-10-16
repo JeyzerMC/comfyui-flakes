@@ -153,6 +153,7 @@ def _stub_externals():
     for extra in ("ControlNetApplyAdvanced", "ControlNetLoader", "LoraLoader",
                   "KSampler", "VAEDecode", "SaveImage"):
         setattr(nodes, extra, type(extra, (), {}))
+    nodes.NODE_CLASS_MAPPINGS = {}
     sys.modules["nodes"] = nodes
 
     return files, sd, _Clip

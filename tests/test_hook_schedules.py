@@ -142,6 +142,7 @@ def _stub_externals():
     nodes.LoraLoader = LoraLoader
     nodes.ControlNetLoader = ControlNetLoader
     nodes.ControlNetApplyAdvanced = ControlNetApplyAdvanced
+    nodes.NODE_CLASS_MAPPINGS = {}
     sys.modules["nodes"] = nodes
 
 

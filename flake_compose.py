@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib.util
+import json
 import logging
 import os
 from typing import Any
@@ -18,6 +20,7 @@ from nodes import (
     ControlNetLoader,
     EmptyLatentImage,
     LoraLoader,
+    NODE_CLASS_MAPPINGS,
 )
 
 from . import flake_io
@@ -122,6 +125,36 @@ def apply_model_patch_cn(cn_kind: str, model: Any, vae: Any, model_patch: Any, i
     if (start_percent, end_percent) != (0.0, 1.0):
         logging.warning("[flakes] Z-Image Fun ControlNet has no start/end; applying it to every step")
     return ZImageFunControlnet().diffsynth_controlnet(model, model_patch, vae, image=image, strength=strength)[0]
+
+
+def anima_vace_name(model_name: str) -> str | None:
+    """The models/controlnet/anima/ file ``model_name`` resolves to when it is
+    an Anima VACE ControlNet (``control_blocks.*.after_proj`` keys), else None (#378)."""
+    name = flake_io.resolve_cn_model_name(model_name, "anima", "controlnet")
+    if not name.replace("\\", "/").lower().startswith("anima/") or name not in folder_paths.get_filename_list("controlnet"):
+        return None
+    header = comfy.utils.safetensors_header(folder_paths.get_full_path_or_raise("controlnet", name))
+    if header and any("control_blocks" in k and "after_proj" in k for k in json.loads(header)):
+        return name
+    return None
+
+
+def apply_anima_vace(positive: Any, negative: Any, name: str, vae: Any, image: torch.Tensor,
+                     strength: float, start_percent: float, end_percent: float) -> tuple[Any, Any]:
+    """Apply an Anima VACE ControlNet through the nodes of the
+    ComfyUI-Advanced-ControlNet-Anima fork (#378); core ComfyUI can't load it."""
+    loader = NODE_CLASS_MAPPINGS.get("ACN_ControlNetLoaderAdvanced")
+    apply = NODE_CLASS_MAPPINGS.get("ACN_AdvancedControlNetApply_v2")
+    # Upstream Advanced-ControlNet registers the same nodes without VACE support.
+    if loader is None or apply is None or importlib.util.find_spec(
+            loader.__module__.rsplit(".", 1)[0] + ".control_anima_vace") is None:
+        raise RuntimeError(
+            f"Anima VACE ControlNet '{name}' needs the ComfyUI-Advanced-ControlNet-Anima custom nodes "
+            f"(github.com/TaihoC/ComfyUI-Advanced-ControlNet-Anima, branch feat/anima-vace-controlnet)."
+        )
+    control_net = loader().load_controlnet(name)[0]
+    return apply().apply_controlnet(positive, negative, control_net, image, strength, start_percent, end_percent,
+                                    vae_optional=vae)
 
 
 def maybe_zero_out_negative(negative: Any, cfg: float) -> Any:

@@ -476,8 +476,8 @@ class FlakeStack:
         flakes = [flake_io.resolve(e) for e in active_entries]
 
         from .flake_compose import (
-            _load_cn_image, _fit_cn_image, apply_model_patch_cn, carry_schedules, encode_scheduled,
-            load_cn_patch, schedule_segments, scheduled_lora_hooks,
+            _load_cn_image, _fit_cn_image, anima_vace_name, apply_anima_vace, apply_model_patch_cn,
+            carry_schedules, encode_scheduled, load_cn_patch, schedule_segments, scheduled_lora_hooks,
         )
 
         # --- Apply LoRAs --------------------------------------------------------
@@ -590,8 +590,12 @@ class FlakeStack:
             for cn in f.controlnets:
                 if cn.strength == 0:
                     continue
+                # An Anima entry whose model names a VACE file in
+                # models/controlnet/anima/ takes the fork's route (#378);
+                # LLLite stays the default.
+                vace_name = anima_vace_name(cn.model_name) if cn_kind == "anima_lllite" else None
                 model_name = cn.model_name
-                if cn.type:
+                if cn.type and not vace_name:
                     inferred = flake_io.infer_cn_model(cn.type, family_folder)
                     if inferred:
                         model_name = inferred
@@ -601,10 +605,15 @@ class FlakeStack:
                 if not cn.image_name.strip():
                     print(f"[flakes] skipping controlnet entry with empty image_name (type={cn.type})")
                     continue
-                cn_resolved = flake_io.resolve_cn_model_name(model_name, family_folder, cn_category)
+                cn_resolved = vace_name or flake_io.resolve_cn_model_name(model_name, family_folder, cn_category)
                 image = _load_cn_image(cn.image_name)
                 image = _fit_cn_image(image, new_width, new_height)
-                if cn_kind == "controlnet":
+                if vace_name:
+                    positive_cond, negative_cond = apply_anima_vace(
+                        positive_cond, negative_cond, vace_name, vae, image,
+                        cn.strength, cn.start_percent, cn.end_percent,
+                    )
+                elif cn_kind == "controlnet":
                     if cn_resolved not in cn_model_cache:
                         cn_model_cache[cn_resolved] = cn_loader.load_controlnet(cn_resolved)[0]
                     positive_cond, negative_cond = cn_apply.apply_controlnet(

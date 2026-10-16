@@ -143,7 +143,9 @@ FAMILIES: tuple[FamilySpec, ...] = (
                supports_clip_skip=False, default_shift=3.0),
     # Anima: Qwen3-0.6B encoder loaded as QWEN_IMAGE (core picks the model by file contents), qwen
     # image VAE. Base is undistilled — 30 steps at cfg 4 with a real negative.
-    # ControlNets are kohya's ControlNet-LLLite (anima-lllite-<type>-1).
+    # ControlNets are kohya's ControlNet-LLLite (anima-lllite-<type>-1). An entry
+    # whose model names a VACE file in models/controlnet/anima/ goes through the
+    # ComfyUI-Advanced-ControlNet-Anima fork instead (#378).
     FamilySpec("Anima/Base", "anima", cn_suffix="anima", cn_subfolder="anima",
                cn_kind="anima_lllite",
                cn_names=(("openpose", "anima-lllite-pose"), ("depth", "anima-lllite-depth"),
