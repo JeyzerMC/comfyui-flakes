@@ -68,9 +68,13 @@ cover_image: "<lora_path>/musashi.png"
 
 # Variant groups — the UI lets you pick one choice per group. Each choice
 # can contribute extra positive/negative text and an optional preview image.
+# `default: true` on a group's first choice ("Applies by default" in the
+# editor) applies it when the node leaves the group on "-"; pick "None" in the
+# node's option panel to opt out.
 variants:
   outfit:
     ronin:
+      default: true
       positive: "tattered kimono, frayed hakama"
       negative: "armor"
       image: "<lora_path>/musashi_outfit_ronin.png"    # optional preview thumbnail
@@ -160,6 +164,10 @@ steps at CFG 1; Anima base: 30 steps at CFG 4 with Euler Ancestral / Normal). At
 zeroed out, matching how distilled models are sampled. **Clip Skip** is hidden
 for the Qwen-based families, where it does not apply.
 
+A preset can also carry **LoRAs** and **Flake Links** (sections at the bottom of
+the preset editor, same format as in a flake). They apply whenever the preset is
+used, before any flake LoRAs.
+
 > Anima, Krea2 and Z-Image require **ComfyUI v0.34 or newer**. Their
 > architectures and the `KREA2` encoder type do not exist in older releases.
 
@@ -231,9 +239,13 @@ TODO
 ### Flake Generate
 
 Samples, decodes and saves the stack. While a combination is sampling, the node
-and its Generation Data overlay show the live step preview (needs a ComfyUI
-preview method other than none). Combinations that are not generated yet show
-their flakes' covers as scattered cards.
+and its Generation Data overlay show the live step preview, including the
+ADetailer pass (upscaling has no steps to preview). When ComfyUI's **Live preview
+method** setting is `default` and the server runs without `--preview-method`,
+Flakes requests `auto` (latent2rgb) previews for its prompts; pick `taesd` for
+sharper previews or `none` to turn them off. Combinations that are not generated
+yet show their flakes' covers as scattered cards. Results stay matched to their
+grid item when items are moved or duplicated.
 
 ### Flake Data Split
 

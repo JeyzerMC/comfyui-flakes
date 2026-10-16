@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- LoRAs and Flake Links on model presets (#385, #386).
+- "Applies by default" variant choices, with a "None" opt-out in the node
+  option panel (#387, #388).
+- Anima ControlNet Model dropdown: any LLLite file or the VACE depth file
+  (#381), and console lines showing the patches applied (#382).
 - Generation support for the **Anima**, **Krea2** and **Z-Image** model families,
   which ship as a bare diffusion model plus a separate text encoder and VAE
   rather than an all-in-one checkpoint (#356, #357, #358).
@@ -36,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The Generation Data placeholder is a compact box with cards spread on both
+  axes (#384).
 - Ungenerated combinations in the Generation Data overlay show scattered cover
   cards instead of a split mosaic (#375).
 - New Anima presets default to Euler Ancestral, Normal and the `QWEN_IMAGE`
@@ -43,6 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Live previews never showed: ComfyUI sends none unless a preview method is set.
+  Flake Generate prompts now request `auto` previews when the setting is
+  `default` and the server has none (#380).
+- Anima ControlNets took the SDXL path (no effect) when Flake Stack's family
+  widget went stale behind a reroute or subgraph; the family now comes from the
+  loaded preset (#382).
+- Overlay results, previews and highlights broke when Flake Combo grid items
+  were moved (#383).
 - Combo highlights and overlay results no longer get lost when switching
   workflow or browser tabs mid-batch; missed results are recovered from history
   after a reconnect (#373).
