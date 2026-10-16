@@ -199,18 +199,20 @@ function flakePrompts(d) {
     return Array.isArray(d.prompts) ? d.prompts : (d.prompt ? [d.prompt] : []);
 }
 
+// The placeholder box: the same compact landscape size whatever the output
+// aspect, so it never needs scrolling (#384).
+const STACK_ASPECT = 16 / 10;
+const STACK_STYLE = { aspectRatio: String(STACK_ASPECT), maxHeight: "40vh" };
+
 // Placeholder for a combination with no output yet (#375): one card per selected
-// cover, at the cover's own aspect ratio, scattered along the long axis of the
-// output-aspect canvas with a rotation (±15°) and offset seeded by `seedKey`.
-// A missing cover is drawn as a plain card. The long edge is DPR-aware (~1024
-// logical px × devicePixelRatio, capped at 2×) so it isn't upscaled and blurred
-// when shown large in the overlay (#354).
-async function buildCardStack(urls, width, height, seedKey, longEdge = Math.round(1024 * Math.min(window.devicePixelRatio || 1, 2))) {
-    let cw = longEdge, ch = longEdge;
-    if (width && height) {
-        if (width >= height) ch = Math.max(1, Math.round((longEdge * height) / width));
-        else cw = Math.max(1, Math.round((longEdge * width) / height));
-    }
+// cover, at the cover's own aspect ratio, scattered over a jittered grid that
+// fills both axes of the canvas, with a rotation (±15°) and offset seeded by
+// `seedKey` (#384). A missing cover is drawn as a plain card. The width is
+// DPR-aware (~1024 logical px × devicePixelRatio, capped at 2×) so it isn't
+// blurred in the overlay (#354).
+async function buildCardStack(urls, seedKey) {
+    const cw = Math.round(1024 * Math.min(window.devicePixelRatio || 1, 2));
+    const ch = Math.round(cw / STACK_ASPECT);
     const canvas = document.createElement("canvas");
     canvas.width = cw;
     canvas.height = ch;
@@ -220,22 +222,27 @@ async function buildCardStack(urls, width, height, seedKey, longEdge = Math.roun
     const images = await Promise.all(urls.map(loadImage));
     const rand = seededRandom(seedKey);
     const n = images.length;
-    const cardEdge = Math.min(cw, ch) * (n === 1 ? 0.7 : n <= 3 ? 0.55 : 0.42);
+    const cols = Math.max(1, Math.min(n, Math.ceil(Math.sqrt(n * STACK_ASPECT))));
+    const rows = Math.max(1, Math.ceil(n / cols));
+    const cellW = cw / cols, cellH = ch / rows;
+    const cardEdge = Math.min(cellW, cellH, ch * 0.7) * 0.8;
     const border = Math.max(2, Math.round(cardEdge * 0.035));
-    const wide = cw >= ch;
     images.forEach((img, i) => {
         const ar = img ? img.width / img.height : 3 / 4;
         const w = (ar >= 1 ? cardEdge : cardEdge * ar) + 2 * border;
         const h = (ar >= 1 ? cardEdge / ar : cardEdge) + 2 * border;
         const angle = (rand() * 2 - 1) * Math.PI / 12;
-        const along = (i + 1) / (n + 1) + (rand() * 2 - 1) * 0.05;
-        const across = 0.5 + (rand() * 2 - 1) * 0.1;
+        const row = Math.floor(i / cols);
+        // Center a partial last row.
+        const inRow = Math.min(cols, n - row * cols);
+        const x = ((cols - inRow) / 2 + (i % cols) + 0.5 + (rand() * 2 - 1) * 0.2) * cellW;
+        const y = (row + 0.5 + (rand() * 2 - 1) * 0.2) * cellH;
         // Keep the rotated card inside the canvas when it fits.
         const ex = (w * Math.abs(Math.cos(angle)) + h * Math.abs(Math.sin(angle))) / 2;
         const ey = (w * Math.abs(Math.sin(angle)) + h * Math.abs(Math.cos(angle))) / 2;
         const clamp = (v, e, size) => (2 * e < size ? Math.min(Math.max(v, e), size - e) : size / 2);
-        const cx = clamp((wide ? along : across) * cw, ex, cw);
-        const cy = clamp((wide ? across : along) * ch, ey, ch);
+        const cx = clamp(x, ex, cw);
+        const cy = clamp(y, ey, ch);
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(angle);
@@ -689,6 +696,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         });
 
         function applyAspectRatio(w, h) {
+            compositeImg.style.maxHeight = "";
             if (!w || !h) return;
             // Full-width image (#339): the panel sets the width; height follows the
             // output aspect ratio.
@@ -764,11 +772,8 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
-                // Match the element AR to the card-stack canvas so it fills the
-                // field with no letterbox; buildCardStack uses the same dims
-                // (square fallback when unknown) (#354).
-                compositeImg.style.aspectRatio = (data.width && data.height) ? `${data.width} / ${data.height}` : "1 / 1";
-                const src = await buildCardStack(urls, data.width, data.height, key);
+                Object.assign(compositeImg.style, STACK_STYLE);
+                const src = await buildCardStack(urls, key);
                 if (token !== imageToken) return;
                 compositeImg.src = src;
                 compositeDimensions.textContent = data.dimensions || "";
@@ -898,6 +903,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         });
 
         function applyAspectRatioSingle(w, h) {
+            compositeImg.style.maxHeight = "";
             if (!w || !h) return;
             // Full-width image (#339): the panel sets the width; height follows the
             // output aspect ratio.
@@ -1010,11 +1016,8 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
-                // Match the element AR to the card-stack canvas so it fills the
-                // field with no letterbox; buildCardStack uses the same dims
-                // (square fallback when unknown) (#354).
-                compositeImg.style.aspectRatio = (data.width && data.height) ? `${data.width} / ${data.height}` : "1 / 1";
-                const src = await buildCardStack(urls, data.width, data.height, key);
+                Object.assign(compositeImg.style, STACK_STYLE);
+                const src = await buildCardStack(urls, key);
                 if (token !== imageToken) return;
                 compositeImg.src = src;
                 compositeDimensions.textContent = data.dimensions || "";
