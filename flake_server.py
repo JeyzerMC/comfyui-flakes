@@ -788,7 +788,7 @@ async def _browse(_request: web.Request) -> web.Response:
     if not roots:
         return _server_error(f"no roots configured for {browse_type!r}")
 
-    seen: set[str] = set()
+    seen: set[str] = set()  # normcase'd names: one entry per folder on Windows, whatever the case
     entries: list[dict[str, str]] = []
     valid_target_found = False
 
@@ -801,8 +801,8 @@ async def _browse(_request: web.Request) -> web.Response:
             targets += [(p, rest) for p in folder_paths.get_folder_paths(category)]
         elif not category:
             for name in folder_paths.folder_names_and_paths:
-                if name != "custom_nodes" and name not in seen and any(os.path.isdir(p) for p in folder_paths.get_folder_paths(name)):
-                    seen.add(name)
+                if name != "custom_nodes" and os.path.normcase(name) not in seen and any(os.path.isdir(p) for p in folder_paths.get_folder_paths(name)):
+                    seen.add(os.path.normcase(name))
                     entries.append({"name": name, "type": "dir"})
 
     for base, rel in targets:
@@ -823,9 +823,9 @@ async def _browse(_request: web.Request) -> web.Response:
         valid_target_found = True
         try:
             for item in sorted(os.listdir(target)):
-                if item in seen:
+                if os.path.normcase(item) in seen:
                     continue
-                seen.add(item)
+                seen.add(os.path.normcase(item))
                 full = os.path.join(target, item)
                 if os.path.isdir(full):
                     entries.append({"name": item, "type": "dir"})
