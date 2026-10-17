@@ -61,9 +61,9 @@ loras:
 # declares a `resolution` wins; otherwise it falls back to 1024 × 1024.
 resolution: [832, 1216]
 
-# Cover image shown on the flake's grid block and in the picker. Path is
-# resolved under `models/loras/` (or, for legacy flakes, the sibling image
-# of a .safetensors file).
+# Cover image shown on the flake's grid block and in the picker. A reference
+# (under `models/loras/` or an absolute path) is moved to `musashi/musashi.png`
+# on save — see Portable flakes below.
 cover_image: "<lora_path>/musashi.png"
 
 # Variant groups — the UI lets you pick one choice per group. Each choice
@@ -128,6 +128,33 @@ use **Add Hook Scheduler** from the card's ☰ menu.
 - **Flake link**: multiplies into every LoRA and prompt the linked flake brings in.
 
 Prompts are joined with `BREAK` between flakes so each flake acts as an independent CLIP region. LoRA strengths and variant choices can be overridden per-instance from the grid item's option panel without modifying the file on disk.
+
+### Portable flakes
+
+A flake owns the files it uses in a folder named after it, next to its yaml.
+Saving `poses/jojo.yaml` moves its external data into `poses/jojo/` and points
+the yaml at it with paths starting with `./` (relative to the yaml):
+
+| Data | Stored as |
+|---|---|
+| Cover | `jojo/jojo.png` |
+| LoRA (+ preview / `.civitai.info` sidecars) | `jojo/jojo_<display name>.safetensors` (`jojo.safetensors` when unnamed) |
+| Variant choice image | `jojo/jojo_<group>_<choice>.png` |
+| ControlNet image | `jojo/cnets/<image>.png` |
+
+A ControlNet image brings its whole batch: picking
+`001_pose_3_depthanythingv2.png` also moves every `001_pose_<n>_<token>` image
+beside it. ControlNet and variant images are taken from ComfyUI `input/`, where
+the editor uploads them.
+
+- Files are moved, or copied when the flake folder is on another disk. A file
+  another flake uses is moved too, so that flake has to be re-pointed.
+- Flake links are references and never move.
+- Renaming or moving a flake in the editor takes its folder along.
+- Deleting a flake keeps its folder.
+- Existing flakes convert the next time they are saved.
+
+Move the yaml and its folder together to share or relocate a flake.
 
 ![Flake Edit](assets/img/flake_fields.png)
 
@@ -245,7 +272,8 @@ method** setting is `default` and the server runs without `--preview-method`,
 Flakes requests `auto` (latent2rgb) previews for its prompts; pick `taesd` for
 sharper previews or `none` to turn them off. Combinations that are not generated
 yet show their flakes' covers as scattered cards. Results stay matched to their
-grid item when items are moved or duplicated.
+grid item when items are moved or duplicated. **Fit Output Image in View** (top
+right of the overlay) shrinks the image to fit without scrolling.
 
 ### Flake Data Split
 
