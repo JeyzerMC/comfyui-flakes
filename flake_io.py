@@ -671,7 +671,10 @@ def _external_image(value: Any, moved: dict[str, str]) -> str | None:
     input_dir = folder_paths.get_input_directory()
     roots = picker_roots()
     direct = os.path.join(input_dir, value)
-    for path in (direct, *(direct + e for e in (".png", ".jpg", ".jpeg", ".webp")), folder_paths.get_full_path("loras", value)):
+    # get_full_path takes names only: an absolute path on another drive than
+    # the current one makes it raise (os.path.relpath across mounts).
+    lora_tree = None if os.path.isabs(value) else folder_paths.get_full_path("loras", value)
+    for path in (direct, *(direct + e for e in (".png", ".jpg", ".jpeg", ".webp")), lora_tree):
         if not path or os.path.splitext(path)[1].lower() not in _COVER_MIME_MAP:
             continue
         path = os.path.abspath(path)

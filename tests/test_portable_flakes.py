@@ -159,13 +159,23 @@ def test_list_dirs_skips_owned_folders():
         assert fio.list_dirs() == ["chars", "chars/loose"]
 
 
+def _get_full_path(loras):
+    def get_full_path(category, name):
+        # Like ComfyUI: names only; an absolute path on another drive raises.
+        if os.path.isabs(name):
+            raise ValueError("path is on mount 'D:', start on mount 'C:'")
+        full = os.path.join(loras, name)
+        return full if category == "loras" and os.path.isfile(full) else None
+    return get_full_path
+
+
 @contextlib.contextmanager
 def _save_env():
     """Flakes root plus temp `input/` and LoRA dirs for the ownership pass (#392)."""
     with _flakes_root() as root, tempfile.TemporaryDirectory() as ext:
         inp, loras = os.path.join(ext, "input"), os.path.join(ext, "loras")
         fp.get_input_directory = lambda: inp
-        fp.get_full_path = lambda c, n: os.path.join(loras, n) if c == "loras" and os.path.isfile(os.path.join(loras, n)) else None
+        fp.get_full_path = _get_full_path(loras)
         fp.get_output_directory = lambda: os.path.join(ext, "output")
         fp.models_dir = os.path.join(ext, "models")
         fp.folder_names_and_paths["loras"] = ([loras], set())
