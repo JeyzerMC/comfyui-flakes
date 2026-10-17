@@ -581,19 +581,12 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
 
             const origClose = close;
             close = async (value) => {
-                if (value && (value.created || value.saved)) {
-                    if (coverFile) {
-                        try {
-                            await uploadCover(value.name, coverFile);
-                        } catch { /* ignore */ }
-                    } else if (coverSourcePath) {
-                        // A cover_image reference supersedes any previously-copied
-                        // cover sitting beside the yaml; remove it so the
-                        // reference isn't shadowed on reload (#259).
-                        try {
-                            await fetch(`/flakes/cover?name=${encodeURIComponent(value.name)}`, { method: "DELETE" });
-                        } catch { /* ignore */ }
-                    }
+                // A cover_image reference is moved into the flake's folder by the
+                // save itself (#392); only a picked file still needs uploading.
+                if (value && (value.created || value.saved) && coverFile) {
+                    try {
+                        await uploadCover(value.name, coverFile);
+                    } catch { /* ignore */ }
                 }
                 origClose(value);
             };
