@@ -492,9 +492,19 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
         content.appendChild(title);
 
         let currentType = type;
+        // Root tabs on the left; drive tabs (C:, D:, ...) on the right when the
+        // root has folders on several drives — drives are never merged.
+        let currentDrive = "";
+        const tabsRow = document.createElement("div");
+        css(tabsRow, "display:flex;gap:4px;margin-bottom:8px;");
         const tabs = document.createElement("div");
-        css(tabs, "display:flex;gap:4px;margin-bottom:8px;");
-        if (roots.length > 1) content.appendChild(tabs);
+        css(tabs, "display:flex;gap:4px;");
+        const driveTabs = document.createElement("div");
+        css(driveTabs, "display:flex;gap:4px;margin-left:auto;");
+        tabsRow.appendChild(tabs);
+        tabsRow.appendChild(driveTabs);
+        content.appendChild(tabsRow);
+        if (roots.length < 2) tabs.style.display = "none";
 
         const pathBar = document.createElement("div");
         css(pathBar, "font-size:11px;color:#888;margin-bottom:8px;word-break:break-all;");
@@ -618,15 +628,31 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
 
         function fmtPath(rel) {
             const r = (rel || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-            const baseLabel = BROWSE_TYPE_LABELS[currentType] || currentType;
+            const baseLabel = (currentDrive && driveTabs.childElementCount ? `${currentDrive} ` : "") + (BROWSE_TYPE_LABELS[currentType] || currentType);
             return r ? `${baseLabel}/${r}/` : `${baseLabel}/`;
+        }
+
+        function renderDriveTabs(drives) {
+            driveTabs.replaceChildren();
+            if (drives.length < 2) return;
+            for (const d of drives) {
+                const tab = makeButton(d);
+                tab.style.borderColor = d === currentDrive ? "#2a6acf" : "#444";
+                tab.addEventListener("click", () => {
+                    currentDrive = d;
+                    loadDir(currentPath);
+                });
+                driveTabs.appendChild(tab);
+            }
         }
 
         async function loadDir(path) {
             pathBar.textContent = fmtPath(path);
             searchInput.value = "";
             try {
-                const data = await fetchBrowse(currentType, path);
+                const data = await fetchBrowse(currentType, path, currentDrive);
+                currentDrive = data.drive || "";
+                renderDriveTabs(data.drives || []);
                 currentPath = data.path || "";
                 pathBar.textContent = fmtPath(currentPath);
                 // Folders first, then natural case-insensitive name order (Explorer).

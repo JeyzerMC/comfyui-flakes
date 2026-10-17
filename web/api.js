@@ -96,11 +96,11 @@ export function fetchCheckpoints() {
     return CKPTS_PROMISE;
 }
 
-export async function fetchBrowse(type, path = "") {
+export async function fetchBrowse(type, path = "", drive = "") {
     const r = await fetch("/flakes/browse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, path }),
+        body: JSON.stringify({ type, path, drive }),
     });
     if (!r.ok) {
         const err = await r.json().catch(() => ({}));

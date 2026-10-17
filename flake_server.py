@@ -767,6 +767,10 @@ async def _get_image(request: web.Request) -> web.Response:
     return web.FileResponse(path)
 
 
+def _drive(path: str) -> str:
+    return os.path.splitdrive(os.path.abspath(path))[0].upper()
+
+
 @routes.post("/flakes/browse")
 async def _browse(_request: web.Request) -> web.Response:
     try:
@@ -778,6 +782,7 @@ async def _browse(_request: web.Request) -> web.Response:
 
     browse_type = (body.get("type") or "").strip()
     rel_path = (body.get("path") or "").strip()
+    drive = (body.get("drive") or "").strip()
 
     if browse_type not in _BROWSE_TYPES:
         return _bad_request(f"invalid browse type: {browse_type!r}")
@@ -795,15 +800,25 @@ async def _browse(_request: web.Request) -> web.Response:
     # (base, path under base) pairs to list. models/<category>/ also lists the
     # category's extra model paths, like ComfyUI resolves them.
     targets = [(base, rel_path) for base in roots]
-    if browse_type == "models":
-        category, _, rest = rel_path.replace("\\", "/").partition("/")
-        if category and category in folder_paths.folder_names_and_paths and category != "custom_nodes":
-            targets += [(p, rest) for p in folder_paths.get_folder_paths(category)]
-        elif not category:
-            for name in folder_paths.folder_names_and_paths:
-                if name != "custom_nodes" and os.path.normcase(name) not in seen and any(os.path.isdir(p) for p in folder_paths.get_folder_paths(name)):
-                    seen.add(os.path.normcase(name))
-                    entries.append({"name": name, "type": "dir"})
+    categories = {
+        name: [p for p in folder_paths.get_folder_paths(name) if os.path.isdir(p)]
+        for name in folder_paths.folder_names_and_paths if name != "custom_nodes"
+    } if browse_type == "models" else {}
+    category, _, rest = rel_path.replace("\\", "/").partition("/")
+    if category in categories:
+        targets += [(p, rest) for p in categories[category]]
+
+    # Folders on different drives are never merged: the picker shows one drive
+    # at a time and switches between them (C:, D:, ...).
+    drives = sorted({_drive(b) for b in roots} | {_drive(p) for paths in categories.values() for p in paths})
+    if drive not in drives:
+        drive = _drive(roots[0])
+    targets = [(b, r) for b, r in targets if _drive(b) == drive]
+    if browse_type == "models" and not category:
+        for name, paths in categories.items():
+            if os.path.normcase(name) not in seen and any(_drive(p) == drive for p in paths):
+                seen.add(os.path.normcase(name))
+                entries.append({"name": name, "type": "dir"})
 
     for base, rel in targets:
         target = os.path.normpath(os.path.join(base, rel)) if rel else base
@@ -839,7 +854,7 @@ async def _browse(_request: web.Request) -> web.Response:
     if not valid_target_found and not entries:
         return _not_found(f"directory not found: {rel_path}")
 
-    return web.json_response({"path": rel_path, "entries": entries})
+    return web.json_response({"path": rel_path, "entries": entries, "drive": drive, "drives": drives})
 
 
 # ---------------------------------------------------------------------------
