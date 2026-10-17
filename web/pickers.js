@@ -1,12 +1,15 @@
 import { openOverlay } from "./modal.js";
 import { css, makeButton, makeComfyInput, familyFolder, renderFlakeLabel } from "./utils.js";
-import { getCoverUrl, fetchBrowse, fetchLoras, fetchCheckpoints, inputImageUrl } from "./api.js";
+import { getCoverUrl, fetchBrowse, fetchLoras, fetchCheckpoints } from "./api.js";
 
 const BROWSE_TYPE_LABELS = {
     checkpoints: "models/checkpoints",
     loras: "models/loras",
     flakes: "models/flakes",
     inputs: "input",
+    output: "output",
+    flake_images: "flakes",
+    models: "models",
 };
 
 export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {}, tagNames = {} }) {
@@ -23,7 +26,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
     return new Promise((resolve) => {
         const { content, footer, close, handlers } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
-        css(content.parentElement, content.parentElement.style.cssText + "min-width:420px;max-width:640px;");
+        css(content.parentElement, content.parentElement.style.cssText + "width:min(1100px,94vw);max-width:94vw;");
 
         const title = document.createElement("h3");
         css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
@@ -43,7 +46,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
         content.appendChild(searchRow);
 
         const grid = document.createElement("div");
-        css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(80px, 1fr));gap:4px;max-height:360px;overflow:auto;");
+        css(grid, "display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;max-height:65vh;overflow:auto;align-content:start;");
         content.appendChild(grid);
 
         const initialFolder = (() => {
@@ -68,7 +71,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
                 if (!rest || rest.includes("/")) continue;
                 subs.add(rest);
             }
-            return [...subs].sort();
+            return [...subs].sort(naturalOrder);
         }
 
         function getFlakesInFolder(folder) {
@@ -78,7 +81,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
                 if (!prefix) return !n.includes("/");
                 if (!n.startsWith(prefix)) return false;
                 return !n.slice(prefix.length).includes("/");
-            }).sort();
+            }).sort((x, y) => naturalOrder(x.split("/").pop(), y.split("/").pop()));
         }
 
         function renderBreadcrumb() {
@@ -120,7 +123,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
             if (currentFolder) {
                 // Up folder item
                 const upItem = document.createElement("div");
-                css(upItem, "height:80px;background:#252525;border:1px solid #444;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
+                css(upItem, "aspect-ratio:1/1;background:#252525;border:1px solid #444;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
                 const upIcon = document.createElement("div");
                 upIcon.textContent = "\u2191";
                 css(upIcon, "font-size:24px;color:#888;");
@@ -141,7 +144,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
 
             for (const sub of subfolders) {
                 const folderItem = document.createElement("div");
-                css(folderItem, "height:80px;background:#252525;border:1px solid #444;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
+                css(folderItem, "aspect-ratio:1/1;background:#252525;border:1px solid #444;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
                 const fIcon = document.createElement("div");
                 fIcon.textContent = "\uD83D\uDCC1";
                 css(fIcon, "font-size:32px;");
@@ -175,7 +178,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
 
         function makeFlakeThumb(name) {
             const thumb = document.createElement("div");
-            css(thumb, `position:relative;height:80px;background:#2a2a2a;border:1px solid #444;border-radius:4px;cursor:pointer;font-size:10px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(${getCoverUrl(name)});background-size:cover;background-position:center;`);
+            css(thumb, `position:relative;aspect-ratio:1/1;background:#2a2a2a;border:1px solid #444;border-radius:4px;cursor:pointer;font-size:10px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(${getCoverUrl(name)});background-size:cover;background-position:center;`);
 
             const overlay = document.createElement("div");
             css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;");
@@ -461,16 +464,31 @@ export async function openPresetPicker({ selected = "", family = "" } = {}) {
     });
 }
 
-export function openFileBrowser({ type, defaultPath = "" }) {
+const BROWSE_TITLES = { checkpoints: "Select Checkpoint", loras: "Select LoRA", flakes: "Select Flake" };
+// Image picks can switch between these ComfyUI folders.
+export const IMAGE_ROOTS = ["inputs", "output", "flake_images", "models"];
+
+const naturalOrder = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+
+// Grid picker in the style of Explorer's thumbnail view: folders first, natural
+// case-insensitive order, 7 tiles per row. `roots` lists the browse types the
+// user can switch between. Resolves to {file, path, type} — `file` relative to
+// the root, `path` absolute (absent for LoRA/checkpoint search hits) — or null.
+export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
     return new Promise((resolve) => {
         const { content, footer, close, handlers } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
-        css(content.parentElement, content.parentElement.style.cssText + (type === "inputs" ? "width:min(1100px,94vw);max-width:94vw;" : "min-width:420px;max-width:560px;"));
+        css(content.parentElement, content.parentElement.style.cssText + "width:min(1100px,94vw);max-width:94vw;");
 
         const title = document.createElement("h3");
         css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
-        title.textContent = type === "checkpoints" ? "Select Checkpoint" : type === "loras" ? "Select LoRA" : type === "inputs" ? "Select Input Image" : "Select Flake";
+        title.textContent = BROWSE_TITLES[type] || "Select Image";
         content.appendChild(title);
+
+        let currentType = type;
+        const tabs = document.createElement("div");
+        css(tabs, "display:flex;gap:4px;margin-bottom:8px;");
+        if (roots.length > 1) content.appendChild(tabs);
 
         const pathBar = document.createElement("div");
         css(pathBar, "font-size:11px;color:#888;margin-bottom:8px;word-break:break-all;");
@@ -482,57 +500,92 @@ export function openFileBrowser({ type, defaultPath = "" }) {
         searchRow.appendChild(searchInput);
         content.appendChild(searchRow);
 
-        const listBox = document.createElement("div");
-        css(listBox, `display:flex;flex-direction:column;gap:2px;max-height:${type === "inputs" ? "65vh" : "320px"};overflow:auto;`);
-        content.appendChild(listBox);
+        const grid = document.createElement("div");
+        css(grid, "display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;max-height:65vh;overflow:auto;align-content:start;");
+        content.appendChild(grid);
 
         let currentPath = defaultPath;
-        let selectedFile = null;
+        let selected = null;
+        let selectedTile = null;
         let dirEntries = [];
         let allFlatItems = []; // full flat list for search (loras/checkpoints only)
 
-        // Pre-fetch the full flat list so search works across all subdirectories
-        if (type === "loras") {
-            fetchLoras().then(list => { allFlatItems = list || []; }).catch(() => {});
-        } else if (type === "checkpoints") {
-            fetchCheckpoints().then(list => { allFlatItems = list || []; }).catch(() => {});
+        const joinPath = (name) => currentPath ? currentPath.replace(/\\/g, "/") + "/" + name : name;
+
+        function iconFace(icon) {
+            const face = document.createElement("div");
+            face.textContent = icon;
+            css(face, "display:flex;align-items:center;justify-content:center;font-size:44px;");
+            return face;
+        }
+
+        // Images show themselves; LoRAs and checkpoints show their sibling
+        // preview image, falling back to a file icon.
+        function fileFace(file, path) {
+            let src = null;
+            if (IMAGE_ROOTS.includes(currentType)) src = `/flakes/image?path=${encodeURIComponent(path)}`;
+            else if (currentType === "loras") src = `/flakes/lora_sibling_image?path=${encodeURIComponent(file)}`;
+            else if (currentType === "checkpoints") src = `/flakes/checkpoint_sibling_image?path=${encodeURIComponent(file)}`;
+            if (!src) return iconFace("📄");
+            const img = document.createElement("img");
+            img.loading = "lazy";
+            img.src = src;
+            img.addEventListener("error", () => {
+                const icon = iconFace("📄");
+                css(icon, icon.style.cssText + "width:100%;aspect-ratio:1/1;background:#1a1a1a;border-radius:3px;pointer-events:none;");
+                img.replaceWith(icon);
+            });
+            css(img, "object-fit:contain;");
+            return img;
+        }
+
+        function makeTile(label, face, onClick, onDblClick) {
+            const tile = document.createElement("div");
+            tile.title = label;
+            css(tile, "display:flex;flex-direction:column;gap:4px;padding:4px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;cursor:pointer;min-width:0;user-select:none;");
+            css(face, face.style.cssText + "width:100%;aspect-ratio:1/1;background:#1a1a1a;border-radius:3px;pointer-events:none;");
+            const cap = document.createElement("span");
+            cap.textContent = label;
+            css(cap, "font-size:10px;color:#aaa;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;");
+            tile.appendChild(face);
+            tile.appendChild(cap);
+            tile.addEventListener("mouseenter", () => { tile.style.background = "#333"; });
+            tile.addEventListener("mouseleave", () => { tile.style.background = "#2a2a2a"; });
+            tile.addEventListener("click", () => onClick(tile));
+            if (onDblClick) tile.addEventListener("dblclick", onDblClick);
+            return tile;
+        }
+
+        function fileTile(label, file, path) {
+            const pick = { file, path, type: currentType };
+            return makeTile(label, fileFace(file, path), (tile) => {
+                if (selectedTile) selectedTile.style.borderColor = "#444";
+                selected = pick;
+                selectedTile = tile;
+                tile.style.borderColor = "#2a6acf";
+            }, () => close(pick));
+        }
+
+        function showEmpty(text) {
+            const empty = document.createElement("div");
+            empty.textContent = text;
+            css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;font-size:12px;grid-column:1 / -1;");
+            grid.appendChild(empty);
         }
 
         function renderEntries(filter = "") {
-            listBox.replaceChildren();
+            grid.replaceChildren();
+            selected = null;
+            selectedTile = null;
             const term = String(filter || "").toLowerCase().trim();
 
             // When searching, use the full flat list if available
             if (term && allFlatItems.length > 0) {
-                const filtered = allFlatItems.filter(p => String(p).toLowerCase().includes(term));
-                if (filtered.length === 0) {
-                    const empty = document.createElement("div");
-                    empty.textContent = "No matches";
-                    css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;font-size:12px;");
-                    listBox.appendChild(empty);
-                    return;
-                }
+                const filtered = allFlatItems.filter(p => String(p).toLowerCase().includes(term)).sort(naturalOrder);
                 for (const filePath of filtered) {
-                    const parts = filePath.replace(/\\/g, "/").split("/");
-                    const fileName = parts.pop();
-                    const dir = parts.join("/");
-                    const row = document.createElement("button");
-                    row.textContent = fileName + (dir ? `  (${dir})` : "");
-                    row.title = filePath;
-                    css(row, "text-align:left;padding:6px 10px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
-                    row.addEventListener("mouseenter", () => { row.style.background = "#333"; });
-                    row.addEventListener("mouseleave", () => { row.style.background = "#2a2a2a"; });
-                    row.addEventListener("click", () => {
-                        selectedFile = filePath;
-                        for (const b of listBox.querySelectorAll("button")) b.style.borderColor = "#444";
-                        row.style.borderColor = "#2a6acf";
-                    });
-                    row.addEventListener("dblclick", () => {
-                        selectedFile = filePath;
-                        close({ file: selectedFile });
-                    });
-                    listBox.appendChild(row);
+                    grid.appendChild(fileTile(filePath.replace(/\\/g, "/").split("/").pop(), filePath));
                 }
+                if (filtered.length === 0) showEmpty("No matches");
                 return;
             }
 
@@ -541,99 +594,38 @@ export function openFileBrowser({ type, defaultPath = "" }) {
                 : dirEntries;
 
             if (currentPath) {
-                const upBtn = document.createElement("button");
-                upBtn.textContent = "\u2191 ..";
-                css(upBtn, "text-align:left;padding:6px 10px;background:#252525;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
-                upBtn.addEventListener("mouseenter", () => { upBtn.style.background = "#333"; });
-                upBtn.addEventListener("mouseleave", () => { upBtn.style.background = "#252525"; });
-                upBtn.addEventListener("click", () => {
+                grid.appendChild(makeTile("..", iconFace("⬆"), () => {
                     const parts = currentPath.replace(/\\/g, "/").split("/").filter(Boolean);
                     parts.pop();
                     loadDir(parts.join("/"));
-                });
-                listBox.appendChild(upBtn);
+                }));
             }
-
-            // Input images are picked by eye: folders and images are thumbnail
-            // tiles, like Explorer's thumbnail view.
-            const grid = type === "inputs" ? document.createElement("div") : null;
-            if (grid) css(grid, "display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;");
             for (const entry of entries) {
-                const row = document.createElement("button");
-                if (grid) {
-                    row.title = entry.name;
-                    css(row, "display:flex;flex-direction:column;gap:4px;padding:4px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;cursor:pointer;min-width:0;");
-                    let face;
-                    if (entry.type === "dir") {
-                        face = document.createElement("div");
-                        face.textContent = "📁";
-                        css(face, "display:flex;align-items:center;justify-content:center;font-size:48px;");
-                    } else {
-                        face = document.createElement("img");
-                        face.loading = "lazy";
-                        face.src = inputImageUrl(currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name);
-                        css(face, "object-fit:contain;");
-                    }
-                    css(face, face.style.cssText + "width:100%;aspect-ratio:1/1;background:#1a1a1a;border-radius:3px;pointer-events:none;");
-                    const cap = document.createElement("span");
-                    cap.textContent = entry.name;
-                    css(cap, "font-size:10px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;");
-                    row.appendChild(face);
-                    row.appendChild(cap);
-                } else {
-                    row.textContent = entry.type === "dir" ? "\uD83D\uDCC1 " + entry.name : entry.name;
-                    css(row, "text-align:left;padding:6px 10px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;");
-                }
-                row.addEventListener("mouseenter", () => { row.style.background = "#333"; });
-                row.addEventListener("mouseleave", () => { row.style.background = "#2a2a2a"; });
                 if (entry.type === "dir") {
-                    row.addEventListener("click", () => {
-                        const next = currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name;
-                        loadDir(next);
-                    });
+                    grid.appendChild(makeTile(entry.name, iconFace("📁"), () => loadDir(joinPath(entry.name))));
                 } else {
-                    row.addEventListener("click", () => {
-                        selectedFile = currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name;
-                        for (const b of listBox.querySelectorAll("button")) {
-                            b.style.borderColor = "#444";
-                        }
-                        row.style.borderColor = "#2a6acf";
-                    });
-                    row.addEventListener("dblclick", () => {
-                        selectedFile = currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name;
-                        close({ file: selectedFile });
-                    });
+                    grid.appendChild(fileTile(entry.name, joinPath(entry.name), entry.path));
                 }
-                (grid || listBox).appendChild(row);
             }
-            if (grid?.childElementCount) listBox.appendChild(grid);
-
-            if (entries.length === 0) {
-                const empty = document.createElement("div");
-                empty.textContent = term ? "No matches" : "Empty folder";
-                css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;font-size:12px;");
-                listBox.appendChild(empty);
-            }
+            if (entries.length === 0) showEmpty(term ? "No matches" : "Empty folder");
         }
-
-        const baseLabel = BROWSE_TYPE_LABELS[type] || type;
 
         function fmtPath(rel) {
             const r = (rel || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+            const baseLabel = BROWSE_TYPE_LABELS[currentType] || currentType;
             return r ? `${baseLabel}/${r}/` : `${baseLabel}/`;
         }
 
         async function loadDir(path) {
             pathBar.textContent = fmtPath(path);
-            selectedFile = null;
             searchInput.value = "";
             try {
-                const data = await fetchBrowse(type, path);
+                const data = await fetchBrowse(currentType, path);
                 currentPath = data.path || "";
                 pathBar.textContent = fmtPath(currentPath);
                 // Folders first, then natural case-insensitive name order (Explorer).
                 dirEntries = (data.entries || []).sort((a, b) => (a.type === "dir" ? 0 : 1) - (b.type === "dir" ? 0 : 1)
-                    || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+                    || naturalOrder(a.name, b.name));
                 renderEntries();
             } catch (err) {
                 if (path) {
@@ -641,26 +633,37 @@ export function openFileBrowser({ type, defaultPath = "" }) {
                     return loadDir("");
                 }
                 dirEntries = [];
-                listBox.replaceChildren();
-                const errEl = document.createElement("div");
-                css(errEl, "color:#f88;padding:12px;text-align:center;font-size:12px;");
-                errEl.textContent = err.message || "failed to load";
-                listBox.appendChild(errEl);
+                grid.replaceChildren();
+                showEmpty(err.message || "failed to load");
             }
+        }
+
+        function switchRoot(root, path = "") {
+            currentType = root;
+            for (const b of tabs.children) b.style.borderColor = b.dataset.root === root ? "#2a6acf" : "#444";
+            allFlatItems = [];
+            // Pre-fetch the full flat list so search works across all subdirectories
+            if (root === "loras") fetchLoras().then(list => { allFlatItems = list || []; }).catch(() => {});
+            else if (root === "checkpoints") fetchCheckpoints().then(list => { allFlatItems = list || []; }).catch(() => {});
+            loadDir(path);
+        }
+
+        for (const root of roots) {
+            const tab = makeButton(`${BROWSE_TYPE_LABELS[root] || root}/`);
+            tab.dataset.root = root;
+            tab.addEventListener("click", () => switchRoot(root));
+            tabs.appendChild(tab);
         }
 
         searchInput.addEventListener("input", () => renderEntries(searchInput.value));
         searchInput.addEventListener("keydown", (e) => {
             if (e.key === "Enter") {
                 const term = searchInput.value.toLowerCase().trim();
-                const matches = dirEntries.filter(e => e.type === "file" && e.name.toLowerCase().includes(term));
-                if (matches.length > 0) {
-                    selectedFile = currentPath ? currentPath.replace(/\\/g, "/") + "/" + matches[0].name : matches[0].name;
-                    close({ file: selectedFile });
-                }
+                const match = dirEntries.find(e => e.type === "file" && e.name.toLowerCase().includes(term));
+                if (match) close({ file: joinPath(match.name), path: match.path, type: currentType });
             }
         });
-        loadDir(defaultPath);
+        switchRoot(type, defaultPath);
         searchInput.focus();
 
         const cancelBtn = makeButton("Cancel");
@@ -669,11 +672,11 @@ export function openFileBrowser({ type, defaultPath = "" }) {
 
         const selectBtn = makeButton("Select", true);
         selectBtn.addEventListener("click", () => {
-            if (!selectedFile) {
+            if (!selected) {
                 window.alert("Select a file first.");
                 return;
             }
-            close({ file: selectedFile });
+            close(selected);
         });
         footer.appendChild(selectBtn);
     });

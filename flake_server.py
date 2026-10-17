@@ -789,30 +789,57 @@ async def _upload_preset_cover(request: web.Request) -> web.Response:
 # File browser (custom directory picker backed by Python)
 # ---------------------------------------------------------------------------
 
-_BROWSE_TYPES = ("checkpoints", "loras", "flakes", "inputs")
+_MODEL_EXTS = (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".sft")
+_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
 
 _BROWSE_FILTERS = {
-    "checkpoints": (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".sft"),
-    "loras": (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".sft"),
+    "checkpoints": _MODEL_EXTS,
+    "loras": _MODEL_EXTS,
     "flakes": (".yaml", ".yml"),
-    "inputs": (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"),
+    "inputs": _IMAGE_EXTS,
+    "output": _IMAGE_EXTS,
+    "flake_images": _IMAGE_EXTS,
+    "models": _IMAGE_EXTS,
 }
+_BROWSE_TYPES = tuple(_BROWSE_FILTERS)
 
 
 def _get_browse_roots(browse_type: str) -> list[str]:
     """Resolve folder roots dynamically at request time."""
     if browse_type == "inputs":
-        input_dir = folder_paths.get_input_directory()
-        return [input_dir] if input_dir and os.path.isdir(input_dir) else []
-    try:
-        paths = folder_paths.get_folder_paths(browse_type)
-    except Exception:
-        paths = []
-    # get_folder_paths returns a list of str on modern ComfyUI,
-    # but defensively wrap a single string.
-    if isinstance(paths, str):
-        return [paths]
-    return [p for p in paths if p and isinstance(p, str)]
+        roots = [folder_paths.get_input_directory()]
+    elif browse_type == "output":
+        roots = [folder_paths.get_output_directory()]
+    elif browse_type == "models":
+        roots = [folder_paths.models_dir]
+    elif browse_type == "flake_images":
+        roots = folder_paths.get_folder_paths("flakes")
+    else:
+        roots = folder_paths.get_folder_paths(browse_type)
+    return [r for r in roots if r and os.path.isdir(r)]
+
+
+def _image_roots() -> list[str]:
+    """Folders whose images /flakes/image may serve."""
+    return [
+        folder_paths.get_input_directory(), folder_paths.get_output_directory(), folder_paths.models_dir,
+        *folder_paths.get_folder_paths("flakes"), *folder_paths.get_folder_paths("loras"),
+        *folder_paths.get_folder_paths("checkpoints"),
+    ]
+
+
+@routes.get("/flakes/image")
+async def _get_image(request: web.Request) -> web.Response:
+    """Serve an image by absolute path for the file picker and editor previews,
+    confined to the ComfyUI folders the picker browses."""
+    path = request.query.get("path", "").strip()
+    if not path or os.path.splitext(path)[1].lower() not in _IMAGE_EXTS:
+        return _bad_request("'path' must be an image file")
+    if not any(flake_io._is_inside(path, root) for root in _image_roots()):
+        return _bad_request("path is outside the browsable folders")
+    if not os.path.isfile(path):
+        return _not_found(f"image not found: {path}")
+    return web.FileResponse(path)
 
 
 @routes.post("/flakes/browse")
@@ -867,7 +894,7 @@ async def _browse(_request: web.Request) -> web.Response:
                 elif os.path.isfile(full):
                     if exts and not item.lower().endswith(exts):
                         continue
-                    entries.append({"name": item, "type": "file"})
+                    entries.append({"name": item, "type": "file", "path": full})
         except Exception:
             continue
 
