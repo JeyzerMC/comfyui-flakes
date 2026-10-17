@@ -13,6 +13,11 @@ if "flakes" in folder_paths.folder_names_and_paths:
 else:
     folder_paths.folder_names_and_paths["flakes"] = ([FLAKES_DIR], {".yaml", ".yml"})
 
+# Flakes own their LoRAs in a folder next to the yaml (`./x` paths resolve to
+# flakes-root-relative names), so the flakes roots double as LoRA folders.
+for _root in folder_paths.folder_names_and_paths["flakes"][0]:
+    folder_paths.add_model_folder_path("loras", _root)
+
 PRESETS_DIR = os.path.join(FLAKES_DIR, "model_presets")
 os.makedirs(PRESETS_DIR, exist_ok=True)
 

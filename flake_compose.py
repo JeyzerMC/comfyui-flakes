@@ -42,17 +42,18 @@ def _load_cn_image(image_name: str) -> torch.Tensor:
 
     `image_name` may be a stem ('standing_openpose') or a filename with extension.
     Subdirectories under input/ are allowed ('cnet/standing_openpose').
+    Absolute paths (a flake's resolved `./` images) are loaded directly.
     """
     input_dir = folder_paths.get_input_directory()
     norm = image_name.replace("\\", "/")
 
     candidates: list[str] = []
-    direct = os.path.join(input_dir, norm)
+    direct = image_name if os.path.isabs(image_name) else os.path.join(input_dir, norm)
     if os.path.isfile(direct):
         candidates.append(direct)
     else:
         for ext in (".png", ".jpg", ".jpeg", ".webp"):
-            alt = os.path.join(input_dir, f"{norm}{ext}")
+            alt = f"{direct}{ext}"
             if os.path.isfile(alt):
                 candidates.append(alt)
                 break

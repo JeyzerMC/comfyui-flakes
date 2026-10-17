@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import posixpath
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -455,7 +456,9 @@ def list_dirs(family: str | None = None) -> list[str]:
     for root in _flakes_roots():
         if not os.path.isdir(root):
             continue
-        for dirpath, dirnames, _ in os.walk(root):
+        for dirpath, dirnames, filenames in os.walk(root):
+            # Skip folders owned by a sibling flake yaml (`X/` next to `X.yaml`).
+            dirnames[:] = [d for d in dirnames if f"{d}.yaml" not in filenames and f"{d}.yml" not in filenames]
             for d in dirnames:
                 full = os.path.join(dirpath, d)
                 rel = os.path.relpath(full, root).replace(os.sep, "/")
@@ -578,7 +581,7 @@ def save_flake(
                 os.remove(old_yaml)
             except OSError:
                 pass
-            old_cover = _cover_path(old_name)
+            old_cover = _cover_path(old_name, legacy_only=True)
             if old_cover:
                 cover_ext = os.path.splitext(old_cover)[1].lower()
                 new_cover_dir = os.path.dirname(target)
@@ -596,7 +599,8 @@ def save_flake(
 def delete_flake(name: str) -> None:
     path = _resolve_file(name)
     os.remove(path)
-    _delete_cover(name)
+    # The owned `<name>/` folder (and the cover inside it) is kept.
+    _delete_cover(name, legacy_only=True)
 
 
 def _parse_schedule(raw: Any) -> list[ScheduleKeyframe]:
@@ -647,7 +651,24 @@ def _parse_prompt_list(raw: dict[str, Any]) -> list["PromptEntry"]:
     ]
 
 
-def _parse_lora_list(raw_loras: Any) -> list["LoraEntry"]:
+def _owned_lora_path(path: str, name: str | None) -> str:
+    """A ``./x`` LoRA path of flake *name* → the flakes-root-relative LoRA name
+    ``<dirname(name)>/x`` (the flakes roots are registered as a ``loras``
+    folder). Other paths, presets (no name) and inline flakes are unchanged."""
+    if not name or name == "__inline__" or not path.startswith("./"):
+        return path
+    return posixpath.normpath(posixpath.join(posixpath.dirname(name), path[2:].replace("\\", "/")))
+
+
+def _owned_file_path(value: str, name: str) -> str:
+    """A ``./x`` value of flake *name* → absolute path under the yaml's
+    directory. Other values and inline flakes are unchanged."""
+    if name == "__inline__" or not value.startswith("./"):
+        return value
+    return os.path.normpath(os.path.join(os.path.dirname(_resolve_file(name)), value[2:]))
+
+
+def _parse_lora_list(raw_loras: Any, name: str | None = None) -> list["LoraEntry"]:
     """Parse a `loras:` list into LoraEntry objects. Shared by the flake body and
     by variant-choice contributions (#299)."""
     out: list[LoraEntry] = []
@@ -658,7 +679,7 @@ def _parse_lora_list(raw_loras: Any) -> list["LoraEntry"]:
             out.append(LoraEntry(
                 name=str(lr.get("name", "")),
                 url=str(lr.get("url", "")),
-                path=str(lr.get("path", "")),
+                path=_owned_lora_path(str(lr.get("path", "")), name),
                 strength=float(lr.get("strength", 1.0)),
                 schedule=_parse_schedule(lr.get("schedule")),
             ))
@@ -683,7 +704,7 @@ def _parse_cn_list(raw_cns: Any, name: str) -> list["ControlNetEntry"]:
         out.append(ControlNetEntry(
             type=cn_type,
             model_name=model_name,
-            image_name=str(cn.get("image", "")),
+            image_name=_owned_file_path(str(cn.get("image", "")), name),
             strength=float(cn.get("strength", 1.0)),
             start_percent=float(cn.get("start_percent", 0.0)),
             end_percent=float(cn.get("end_percent", 1.0)),
@@ -730,10 +751,10 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
 
     # Parse LoRAs: new multi-LoRA format takes precedence; fall back to a legacy
     # single LoRA stored as `path`/`strength`.
-    loras = _parse_lora_list(raw.get("loras"))
+    loras = _parse_lora_list(raw.get("loras"), name)
     if not loras and raw.get("path"):
         loras.append(LoraEntry(
-            name="", url="", path=str(raw["path"]), strength=float(raw.get("strength", 1.0)),
+            name="", url="", path=_owned_lora_path(str(raw["path"]), name), strength=float(raw.get("strength", 1.0)),
         ))
 
     # Parse flake links (#232/#234) — defaults stored on the host yaml. Optional.
@@ -822,7 +843,7 @@ def resolve(entry: dict[str, Any]) -> Flake:
         # (#299) — merged on top of the flake's base. Choice links are appended to
         # flake_links so the shared _apply_flake_link below resolves them (with its
         # cycle guard) alongside any host links.
-        flake.loras.extend(_parse_lora_list(variant.get("loras")))
+        flake.loras.extend(_parse_lora_list(variant.get("loras"), flake.name))
         flake.controlnets.extend(_parse_cn_list(variant.get("controlnets"), flake.name))
         flake.flake_links.extend(_parse_link_list(variant))
 
@@ -979,21 +1000,19 @@ def _resolve_cover_source(cover_source: str) -> tuple[bytes, str] | None:
     return None
 
 
-def _cover_path(name: str, ext: str | None = None) -> str | None:
-    """Find the cover file for a given flake name. If *ext* is given, return
-    the exact path for that extension; otherwise scan for any supported ext."""
-    for root in _flakes_roots():
-        if ext:
-            candidate = os.path.join(root, f"{name}{ext}")
-            try:
-                _ensure_inside(candidate, root)
-            except ValueError:
-                continue
-            if os.path.isfile(candidate):
-                return candidate
-        else:
+def _owned_cover_stem(name: str) -> str:
+    """``<name>/<base>``: the cover stem inside the flake's owned folder."""
+    return f"{name}/{name.rsplit('/', 1)[-1]}"
+
+
+def _cover_path(name: str, legacy_only: bool = False) -> str | None:
+    """Find the cover file for a given flake name: the owned
+    ``<name>/<base><ext>`` first, then the legacy sibling ``<name><ext>``."""
+    stems = (name,) if legacy_only else (_owned_cover_stem(name), name)
+    for stem in stems:
+        for root in _flakes_roots():
             for e in _COVER_EXTENSIONS:
-                candidate = os.path.join(root, f"{name}{e}")
+                candidate = os.path.join(root, f"{stem}{e}")
                 try:
                     _ensure_inside(candidate, root)
                 except ValueError:
@@ -1003,25 +1022,24 @@ def _cover_path(name: str, ext: str | None = None) -> str | None:
     return None
 
 
-def _delete_cover(name: str) -> None:
-    path = _cover_path(name)
-    if path:
+def _delete_cover(name: str, legacy_only: bool = False) -> None:
+    while path := _cover_path(name, legacy_only):
         os.remove(path)
 
 
 def save_cover(name: str, ext: str, data: bytes) -> None:
-    """Save a cover image alongside the flake YAML."""
+    """Save a cover image in the flake's owned folder (``<name>/<base><ext>``)."""
     _validate_name(name)
     ext_lower = ext.lower()
     if ext_lower not in _COVER_EXTENSIONS:
         raise ValueError(f"unsupported cover extension: {ext}")
 
-    # Remove any existing cover with a different extension
+    # Remove existing covers (other extension or the legacy sibling)
     _delete_cover(name)
 
     # Place in primary root
     root = _primary_root()
-    path = os.path.join(root, f"{name}{ext_lower}")
+    path = os.path.join(root, f"{_owned_cover_stem(name)}{ext_lower}")
     _ensure_inside(path, root)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
@@ -1088,7 +1106,20 @@ def read_variant_image(name: str, group: str, choice: str) -> tuple[bytes, str] 
     image_source = choice_data.get("image")
     if not image_source:
         return None
+    if image_source.startswith("./"):
+        return read_flake_asset(name, image_source)
     return _resolve_input_image(image_source) or _resolve_cover_source(image_source)
+
+
+def read_flake_asset(name: str, path: str) -> tuple[bytes, str] | None:
+    """Return (data, mime_type) for a ``./`` image path relative to the flake
+    yaml's directory, or None when it is missing or not an image."""
+    if not path.startswith("./"):
+        raise ValueError("asset path must start with './'")
+    flake_dir = os.path.dirname(_resolve_file(name))
+    full = os.path.normpath(os.path.join(flake_dir, path[2:]))
+    _ensure_inside(full, flake_dir)
+    return _resolve_cover_source(full)
 
 
 # ---------------------------------------------------------------------------

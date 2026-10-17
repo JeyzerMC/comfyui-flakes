@@ -404,6 +404,28 @@ async def _get_variant_image(request: web.Request) -> web.Response:
     return web.Response(body=data, content_type=mime)
 
 
+@routes.get("/flakes/asset")
+async def _get_asset(request: web.Request) -> web.Response:
+    """Serve a `./` image owned by a flake (relative to its yaml directory)."""
+    name = request.query.get("name", "").strip()
+    path = request.query.get("path", "").strip()
+    if not name or not path:
+        return _bad_request("missing 'name' or 'path' query param")
+    try:
+        result = flake_io.read_flake_asset(name, path)
+    except FileNotFoundError as exc:
+        return _not_found(str(exc))
+    except ValueError as exc:
+        return _bad_request(str(exc))
+    except Exception as exc:
+        logging.exception("[flakes] failed to read asset %s for %s", path, name)
+        return _server_error(str(exc))
+    if result is None:
+        return _not_found(f"no image '{path}' for '{name}'")
+    data, mime = result
+    return web.Response(body=data, content_type=mime)
+
+
 @routes.delete("/flakes/cover")
 async def _delete_cover_route(request: web.Request) -> web.Response:
     """Delete the cover image file alongside a flake's yaml. Used by the
