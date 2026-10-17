@@ -62,8 +62,8 @@ loras:
 resolution: [832, 1216]
 
 # Cover image shown on the flake's grid block and in the picker. A reference
-# (under `models/loras/` or an absolute path) is moved to `musashi/musashi.png`
-# on save — see Portable flakes below.
+# under `models/loras/` or `ComfyUI/input/` is moved to `musashi/musashi.png`
+# on save — see Portable flakes below. Images elsewhere stay referenced.
 cover_image: "<lora_path>/musashi.png"
 
 # Variant groups — the UI lets you pick one choice per group. Each choice
