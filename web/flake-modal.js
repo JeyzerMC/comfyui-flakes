@@ -459,6 +459,14 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             return out;
         }
 
+        // New ControlNet entry. Anima defaults to depth through its VACE model at
+        // 0.7 strength until 30% of the steps (#398).
+        async function newCn() {
+            if (familyFolder(currentFamily) !== "anima") return { type: "", image: "", strength: 1.0, start_percent: 0, end_percent: 1 };
+            const vace = (await fetchCnModels(currentFamily).catch(() => [])).find(f => f.kind === "vace");
+            return { type: "depth", image: "", strength: 0.7, start_percent: 0, end_percent: 0.3, ...(vace ? { model: vace.name } : {}) };
+        }
+
         // Families that list pickable files (Anima: LLLite patches + VACE, #381)
         // swap the read-only model label for a "Model" dropdown. Empty = Auto:
         // the type picks the file.
@@ -1109,8 +1117,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         }
 
                         const addBtn = makeSmallButton("+ controlnet");
-                        addBtn.addEventListener("click", () => {
-                            arr.push({ type: "", image: "", strength: 1.0, start_percent: 0, end_percent: 1 });
+                        addBtn.addEventListener("click", async () => {
+                            arr.push(await newCn());
                             renderCNs();
                         });
                         cnsBox.appendChild(addBtn);
@@ -1493,7 +1501,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         renderChoiceExtras();
                                     } else if (key === "controlnets") {
                                         if (!Array.isArray(co.controlnets)) co.controlnets = [];
-                                        co.controlnets.push({ type: "", image: "", strength: 1.0 });
+                                        co.controlnets.push(await newCn());
                                         renderChoiceExtras();
                                     } else if (key === "flake_link") {
                                         const t = await pickChoiceTarget();
@@ -1877,7 +1885,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                 if (ft.key === "lora") fieldState.loras = [{ name: "", url: "", path: "", strength: 1.0, _editing: true }];
                 if (ft.key === "prompt") fieldState.prompts = [{}];
                 if (ft.key === "resolution") fieldState.resolution = [1024, 1024];
-                if (ft.key === "controlnets") fieldState.controlnets._ = [{ type: "", image: "", strength: 1.0 }];
+                if (ft.key === "controlnets") fieldState.controlnets._ = [await newCn()];
                 if (ft.key === "variants") fieldState.variants = { Default: { Default: {} } };
                 if (ft.key === "flake_link") fieldState.flake_links = [];
                 renderFields();
