@@ -13,6 +13,7 @@ def _load_flake_io():
     fp = types.ModuleType("folder_paths")
     fp.get_filename_list = lambda category: []
     fp.get_full_path = lambda category, name: None
+    fp.get_folder_paths = lambda category: []
     fp.base_path = os.getcwd()
     fp.folder_names_and_paths = {}
     sys.modules["folder_paths"] = fp
@@ -175,6 +176,7 @@ def _save_env():
         inp, loras = os.path.join(ext, "input"), os.path.join(ext, "loras")
         fp.get_input_directory = lambda: inp
         fp.get_full_path = lambda c, n: os.path.join(loras, n) if c == "loras" and os.path.isfile(os.path.join(loras, n)) else None
+        fp.get_folder_paths = lambda c: [loras] if c == "loras" else []
         try:
             yield root, inp, loras, ext
         finally:
@@ -258,7 +260,7 @@ def test_save_moves_cn_batches_and_variant_images():
 
 def test_save_moves_external_cover():
     with _save_env() as (root, _, _l, ext):
-        source = os.path.join(ext, "pics", "c.JPG")
+        source = os.path.join(_l, "pics", "c.JPG")
         _write(source, b"jpg")
         _write(os.path.join(root, "chars", "musashi.png"), PNG)
         fio.save_flake("chars/musashi", {"cover_image": source})
@@ -266,6 +268,16 @@ def test_save_moves_external_cover():
         assert not os.path.exists(source)
         assert not _exists(root, "chars", "musashi.png")
         assert fio.read_cover("chars/musashi") == (b"jpg", "image/jpeg")
+
+
+def test_save_leaves_cover_outside_input_and_loras():
+    with _save_env() as (root, _, _l, ext):
+        source = os.path.join(ext, "elsewhere", "c.png")
+        _write(source, PNG)
+        fio.save_flake("chars/musashi", {"cover_image": source})
+        assert fio.read_flake_raw("chars/musashi")["cover_image"] == source
+        assert os.path.isfile(source)
+        assert not os.path.isdir(os.path.join(root, "chars", "musashi"))
 
 
 def test_save_copies_cover_already_owned():

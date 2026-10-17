@@ -662,17 +662,31 @@ def _cn_batch(path: str) -> list[str]:
 def _external_image(value: Any, moved: dict[str, str]) -> str | None:
     """Absolute path of the image a non-``./`` *value* refers to: input-relative
     (extension optional, like ``_load_cn_image``), absolute, or under the LoRA
-    tree. Files already in *moved* count as existing."""
+    tree. Files already in *moved* count as existing. Only files inside the
+    input directory or a LoRA folder qualify, since *value* comes from the
+    client and the file gets moved."""
     if not isinstance(value, str) or not value or value.startswith("./"):
         return None
-    direct = os.path.join(folder_paths.get_input_directory(), value)
+    input_dir = folder_paths.get_input_directory()
+    roots = [input_dir, *folder_paths.get_folder_paths("loras")]
+    direct = os.path.join(input_dir, value)
     for path in (direct, *(direct + e for e in (".png", ".jpg", ".jpeg", ".webp")), folder_paths.get_full_path("loras", value)):
         if not path or os.path.splitext(path)[1].lower() not in _COVER_MIME_MAP:
             continue
         path = os.path.abspath(path)
+        if not any(_is_inside(path, root) for root in roots):
+            continue
         if os.path.isfile(path) or os.path.normcase(path) in moved:
             return path
     return None
+
+
+def _is_inside(path: str, root: str) -> bool:
+    try:
+        _ensure_inside(path, root)
+    except ValueError:  # outside, or on another drive
+        return False
+    return True
 
 
 def _take_ownership(data: dict[str, Any], target: str) -> None:
