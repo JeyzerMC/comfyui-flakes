@@ -670,10 +670,7 @@ def _external_image(value: Any, moved: dict[str, str]) -> str | None:
     if not isinstance(value, str) or not value or value.startswith("./"):
         return None
     input_dir = folder_paths.get_input_directory()
-    roots = [
-        input_dir, folder_paths.get_output_directory(), folder_paths.models_dir,
-        *folder_paths.get_folder_paths("flakes"), *folder_paths.get_folder_paths("loras"),
-    ]
+    roots = picker_roots()
     direct = os.path.join(input_dir, value)
     for path in (direct, *(direct + e for e in (".png", ".jpg", ".jpeg", ".webp")), folder_paths.get_full_path("loras", value)):
         if not path or os.path.splitext(path)[1].lower() not in _COVER_MIME_MAP:
@@ -684,6 +681,16 @@ def _external_image(value: Any, moved: dict[str, str]) -> str | None:
         if os.path.isfile(path) or os.path.normcase(path) in moved:
             return path
     return None
+
+
+def picker_roots() -> list[str]:
+    """Folders the editor's file picker browses: input, output and every model
+    folder, extra model paths included."""
+    roots = [folder_paths.get_input_directory(), folder_paths.get_output_directory(), folder_paths.models_dir]
+    for category in folder_paths.folder_names_and_paths:
+        if category != "custom_nodes":
+            roots += folder_paths.get_folder_paths(category)
+    return roots
 
 
 def _is_inside(path: str, root: str) -> bool:

@@ -168,11 +168,13 @@ def _save_env():
         fp.get_full_path = lambda c, n: os.path.join(loras, n) if c == "loras" and os.path.isfile(os.path.join(loras, n)) else None
         fp.get_output_directory = lambda: os.path.join(ext, "output")
         fp.models_dir = os.path.join(ext, "models")
-        fp.get_folder_paths = lambda c: {"loras": [loras], "flakes": [root]}.get(c, [])
+        fp.folder_names_and_paths["loras"] = ([loras], set())
+        fp.get_folder_paths = lambda c: fp.folder_names_and_paths.get(c, ([],))[0]
         try:
             yield root, inp, loras, ext
         finally:
             fp.get_full_path = lambda category, name: None
+            fp.folder_names_and_paths.pop("loras", None)
 
 
 def _exists(*parts):
@@ -313,6 +315,19 @@ def test_save_keeps_owned_images_in_place():
         assert raw["cover_image"] == "./musashi/cnets/000_p_0_cover.png"
         assert sorted(os.listdir(cnets)) == ["000_p_0_cover.png", "000_p_3_dwpose.png", "000_p_3_hed.png"]
         assert sorted(os.listdir(os.path.join(root, "chars", "musashi"))) == ["cnets"]
+
+
+def test_save_moves_image_from_extra_model_path():
+    with _save_env() as (root, _, _l, ext):
+        source = os.path.join(ext, "extra_drive", "upscale_models", "sample.png")
+        _write(source, PNG)
+        fp.folder_names_and_paths["upscale_models"] = ([os.path.dirname(source)], set())
+        try:
+            fio.save_flake("chars/musashi", {"cover_image": source})
+        finally:
+            fp.folder_names_and_paths.pop("upscale_models")
+        assert not os.path.exists(source)
+        assert fio.read_cover("chars/musashi") == (PNG, "image/png")
 
 
 def test_save_moves_image_from_output():

@@ -753,15 +753,6 @@ def _get_browse_roots(browse_type: str) -> list[str]:
     return [r for r in roots if r and os.path.isdir(r)]
 
 
-def _image_roots() -> list[str]:
-    """Folders whose images /flakes/image may serve."""
-    return [
-        folder_paths.get_input_directory(), folder_paths.get_output_directory(), folder_paths.models_dir,
-        *folder_paths.get_folder_paths("flakes"), *folder_paths.get_folder_paths("loras"),
-        *folder_paths.get_folder_paths("checkpoints"),
-    ]
-
-
 @routes.get("/flakes/image")
 async def _get_image(request: web.Request) -> web.Response:
     """Serve an image by absolute path for the file picker and editor previews,
@@ -769,7 +760,7 @@ async def _get_image(request: web.Request) -> web.Response:
     path = request.query.get("path", "").strip()
     if not path or os.path.splitext(path)[1].lower() not in _IMAGE_EXTS:
         return _bad_request("'path' must be an image file")
-    if not any(flake_io._is_inside(path, root) for root in _image_roots()):
+    if not any(flake_io._is_inside(path, root) for root in flake_io.picker_roots()):
         return _bad_request("path is outside the browsable folders")
     if not os.path.isfile(path):
         return _not_found(f"image not found: {path}")
@@ -801,8 +792,21 @@ async def _browse(_request: web.Request) -> web.Response:
     entries: list[dict[str, str]] = []
     valid_target_found = False
 
-    for base in roots:
-        target = os.path.normpath(os.path.join(base, rel_path)) if rel_path else base
+    # (base, path under base) pairs to list. models/<category>/ also lists the
+    # category's extra model paths, like ComfyUI resolves them.
+    targets = [(base, rel_path) for base in roots]
+    if browse_type == "models":
+        category, _, rest = rel_path.replace("\\", "/").partition("/")
+        if category and category in folder_paths.folder_names_and_paths and category != "custom_nodes":
+            targets += [(p, rest) for p in folder_paths.get_folder_paths(category)]
+        elif not category:
+            for name in folder_paths.folder_names_and_paths:
+                if name != "custom_nodes" and name not in seen and any(os.path.isdir(p) for p in folder_paths.get_folder_paths(name)):
+                    seen.add(name)
+                    entries.append({"name": name, "type": "dir"})
+
+    for base, rel in targets:
+        target = os.path.normpath(os.path.join(base, rel)) if rel else base
 
         # Security: ensure target is inside base
         real_target = os.path.realpath(target)
