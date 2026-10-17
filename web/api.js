@@ -158,6 +158,10 @@ export function getVariantImageUrl(name, group, choice) {
     return `/flakes/variant_image?name=${encodeURIComponent(name)}&group=${encodeURIComponent(group)}&choice=${encodeURIComponent(choice)}`;
 }
 
+export function flakeAssetUrl(name, path) {
+    return `/flakes/asset?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`;
+}
+
 export function loraSiblingImageUrl(path) {
     return `/flakes/lora_sibling_image?path=${encodeURIComponent(path)}`;
 }

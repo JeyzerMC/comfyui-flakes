@@ -7,7 +7,7 @@ import {
     familyFolder, familyFromFolder, makeHoverRemoveWrapper, CN_MODEL_MAP,
 } from "./utils.js";
 import {
-    getCoverUrl, getVariantImageUrl, uploadCover, fetchCnTypes, fetchInputs,
+    getCoverUrl, getVariantImageUrl, flakeAssetUrl, uploadCover, fetchCnTypes, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
     fetchLoraVariantSiblingImagePath, invalidateList,
@@ -85,6 +85,9 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
     return new Promise((resolve) => {
         let { content, footer, close, handlers, panel } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
+        const cnImageUrl = (v) => v.startsWith("./")
+            ? flakeAssetUrl(name, v)
+            : `/view?filename=${encodeURIComponent(v)}&type=input`;
 
         // Dirty-state tracking — flipped on the first interaction inside the
         // modal so a stray outside-click can't silently lose progress.
@@ -1007,7 +1010,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             }
 
                             if (cnImagePath) {
-                                updateCnImgPreview(`/view?filename=${encodeURIComponent(cnImagePath)}&type=input`);
+                                updateCnImgPreview(cnImageUrl(cnImagePath));
                             }
 
                             imgBox.addEventListener("click", async () => {
@@ -1627,7 +1630,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                             }
                                         });
                                         const showImg = () => {
-                                            if (cn.image) { imgPrev.src = `/view?filename=${encodeURIComponent(cn.image)}&type=input`; imgPrev.style.display = "block"; imgPlaceholder.style.display = "none"; }
+                                            if (cn.image) { imgPrev.src = cnImageUrl(cn.image); imgPrev.style.display = "block"; imgPlaceholder.style.display = "none"; }
                                             else { imgPrev.style.display = "none"; imgPlaceholder.style.display = "block"; dimCap.textContent = ""; dimCap.style.display = "none"; }
                                         };
                                         showImg();
