@@ -468,7 +468,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
     }
 
     // Fit Output Image in View (#390): caps the output image to the visible height.
-    let fitOn = localStorage.getItem("flakes.overlayFitImage") === "1";
+    let fitOn = localStorage.getItem("flakes.overlayFitImage") !== "0";
     let onFitChange = () => {};
     const fitToggle = document.createElement("label");
     css(fitToggle, "display:flex;align-items:center;gap:6px;cursor:pointer;margin-left:auto;font-size:12px;color:#ddd;");
