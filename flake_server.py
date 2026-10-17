@@ -244,18 +244,6 @@ async def _list_checkpoints(_request: web.Request) -> web.Response:
     return web.json_response({"checkpoints": _shorten_filenames(ckpts)})
 
 
-@routes.get("/flakes/diffusion_models")
-async def _list_diffusion_models(_request: web.Request) -> web.Response:
-    """Anima, Krea2 and Z-Image ship as bare diffusion models rather than
-    all-in-one checkpoints, so the preset editor needs to browse them (#360)."""
-    try:
-        models = folder_paths.get_filename_list("diffusion_models")
-    except Exception as exc:
-        logging.exception("[flakes] failed to list diffusion models")
-        return _server_error(str(exc))
-    return web.json_response({"diffusion_models": _shorten_filenames(models)})
-
-
 @routes.get("/flakes/families")
 async def _list_families(_request: web.Request) -> web.Response:
     """Serve the model-family registry so the web layer stops duplicating it
@@ -299,40 +287,6 @@ async def _list_clip_types(_request: web.Request) -> web.Response:
     except Exception:
         types = ["STABLE_DIFFUSION"]
     return web.json_response({"clip_types": types})
-
-
-@routes.get("/flakes/vaes")
-async def _list_vaes(_request: web.Request) -> web.Response:
-    try:
-        vaes = folder_paths.get_filename_list("vae")
-    except Exception as exc:
-        logging.exception("[flakes] failed to list VAEs")
-        return _server_error(str(exc))
-    return web.json_response({"vaes": _shorten_filenames(vaes)})
-
-
-@routes.get("/flakes/text_encoders")
-async def _list_text_encoders(_request: web.Request) -> web.Response:
-    try:
-        te_paths = folder_paths.get_filename_paths("text_encoders") if hasattr(folder_paths, "get_filename_paths") and folder_paths.get_filename_paths("text_encoders") else []
-        tes = folder_paths.get_filename_list("text_encoders") if os.environ.get("FLAKES_TEXT_ENCODER_FOLDER") or True else []
-    except Exception:
-        tes = []
-    try:
-        if not tes:
-            te_dir = folder_paths.get_folder_paths("text_encoders") if hasattr(folder_paths, "get_folder_paths") else []
-            if isinstance(te_dir, str):
-                te_dir = [te_dir]
-            for d in te_dir:
-                if os.path.isdir(d):
-                    for dirpath, _, filenames in os.walk(d):
-                        for fn in filenames:
-                            if fn.lower().endswith((".safetensors", ".bin", ".pt", ".ckpt")):
-                                rel = os.path.relpath(os.path.join(dirpath, fn), d).replace(os.sep, "/")
-                                tes.append(rel)
-    except Exception:
-        pass
-    return web.json_response({"text_encoders": _shorten_filenames(tes)})
 
 
 @routes.get("/flakes/inputs")
@@ -772,6 +726,9 @@ _IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
 _BROWSE_FILTERS = {
     "checkpoints": _MODEL_EXTS,
     "loras": _MODEL_EXTS,
+    "vae": _MODEL_EXTS,
+    "text_encoders": (*_MODEL_EXTS, ".gguf"),
+    "diffusion_models": (*_MODEL_EXTS, ".gguf"),
     "flakes": (".yaml", ".yml"),
     "inputs": _IMAGE_EXTS,
     "output": _IMAGE_EXTS,

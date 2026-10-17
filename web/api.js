@@ -96,12 +96,6 @@ export function fetchCheckpoints() {
     return CKPTS_PROMISE;
 }
 
-let VAES_PROMISE = null;
-export function fetchVaes() {
-    if (!VAES_PROMISE) VAES_PROMISE = fetch("/flakes/vaes").then(r => r.json()).then(d => d.vaes || []);
-    return VAES_PROMISE;
-}
-
 export async function fetchBrowse(type, path = "") {
     const r = await fetch("/flakes/browse", {
         method: "POST",

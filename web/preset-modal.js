@@ -5,7 +5,7 @@ import {
     makeTextarea, makeHoverRemoveWrapper, attachAutoGrow,
     familyFolder, familyFromFolder, familySpec, ensureFamilies,
 } from "./utils.js";
-import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchVaes, fetchEmbeddings, inputImageUrl } from "./api.js";
+import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchEmbeddings, inputImageUrl } from "./api.js";
 import { openFileBrowser, IMAGE_ROOTS } from "./pickers.js";
 import { pickFlakeTarget, renderLoraList, serializeLoras, normalizeLinks, renderLinkList, serializeLinks } from "./list-editors.js";
 import { app } from "../../scripts/app.js";
@@ -367,6 +367,38 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         ckptUrlInput.addEventListener("input", updateCkptUrlVisibility);
         updateCkptUrlVisibility();
 
+        // VAE / text encoder / diffusion model are picked with the grid picker,
+        // like the checkpoint; the hidden dropdown input keeps the value.
+        function attachModelPicker(wrap, type, placeholder) {
+            const box = document.createElement("div");
+            css(box, "position:relative;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 26px 6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;");
+            const clear = document.createElement("span");
+            clear.textContent = "✕";
+            clear.title = "Clear";
+            css(clear, "position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#888;");
+            const show = () => {
+                const val = wrap.element.value;
+                box.textContent = val ? val.replace(/\.(safetensors|sft|ckpt|pt|pth|bin|gguf)$/i, "").split(/[\\/]/).pop() : placeholder;
+                box.title = val;
+                if (val) box.appendChild(clear);
+            };
+            box.addEventListener("click", async (e) => {
+                if (e.target === clear) {
+                    wrap.element.value = "";
+                    show();
+                    return;
+                }
+                const result = await openFileBrowser({ type });
+                if (result?.file) {
+                    wrap.element.value = result.file;
+                    show();
+                }
+            });
+            wrap.container.style.display = "none";
+            wrap.container.before(box);
+            show();
+        }
+
         const vaeSampRow = document.createElement("div");
         css(vaeSampRow, "display:flex;gap:8px;align-items:flex-start;");
         const vaeColWrap = document.createElement("div");
@@ -374,6 +406,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         vaeColWrap.appendChild(makeComfyLabel("VAE (optional)"));
         const vaeWrap = makeSearchableDropdown([], data.vae || "", "Select VAE...");
         vaeColWrap.appendChild(vaeWrap.container);
+        attachModelPicker(vaeWrap, "vae", "Select VAE");
         vaeSampRow.appendChild(vaeColWrap);
         const sampColWrap = document.createElement("div");
         css(sampColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
@@ -390,6 +423,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         teColWrap.appendChild(makeComfyLabel("Text Encoder (optional)"));
         const teWrap = makeSearchableDropdown([], data.text_encoder || "", "Select text encoder...");
         teColWrap.appendChild(teWrap.container);
+        attachModelPicker(teWrap, "text_encoders", "Select Text Encoder");
         teSchedRow.appendChild(teColWrap);
         const schedColWrap = document.createElement("div");
         css(schedColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
@@ -409,8 +443,9 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         css(dmColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
         dmColWrap.appendChild(makeComfyLabel("Diffusion Model (optional)"));
         const dmWrap = makeSearchableDropdown([], data.diffusion_model || "", "Select diffusion model...");
-        dmWrap.element.title = "Use instead of Checkpoint for models shipped as a bare UNET. Requires a Text Encoder and VAE.";
         dmColWrap.appendChild(dmWrap.container);
+        attachModelPicker(dmWrap, "diffusion_models", "Select Diffusion Model");
+        dmWrap.container.previousSibling.title = "Use instead of Checkpoint for models shipped as a bare UNET. Requires a Text Encoder and VAE.";
         dmRow.appendChild(dmColWrap);
         const ctColWrap = document.createElement("div");
         css(ctColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
@@ -421,13 +456,6 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         ckptCol.appendChild(dmRow);
 
         (async () => {
-            try {
-                const r = await fetch("/flakes/diffusion_models");
-                const d = await r.json();
-                for (const m of (d.diffusion_models || [])) {
-                    dmWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: m }));
-                }
-            } catch { /* ignore — the field stays free-text */ }
             try {
                 const r = await fetch("/flakes/clip_types");
                 const d = await r.json();
@@ -467,18 +495,6 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                 fill(samplerDD, d.samplers, data.sampler);
                 fill(schedDD, d.schedulers, data.scheduler);
             } catch { /* keep hardcoded fallback */ }
-        })();
-        (async () => {
-            try {
-                const vaes = await fetchVaes();
-                for (const v of vaes) vaeWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: v }));
-            } catch { /* ignore */ }
-            try {
-                const r = await fetch("/flakes/text_encoders");
-                const d = await r.json();
-                const tes = d.text_encoders || [];
-                for (const t of tes) teWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: t }));
-            } catch { /* ignore */ }
         })();
 
         const numRow = document.createElement("div");

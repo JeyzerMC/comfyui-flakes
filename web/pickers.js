@@ -5,6 +5,9 @@ import { getCoverUrl, fetchBrowse, fetchLoras, fetchCheckpoints } from "./api.js
 const BROWSE_TYPE_LABELS = {
     checkpoints: "models/checkpoints",
     loras: "models/loras",
+    vae: "models/vae",
+    text_encoders: "models/text_encoders",
+    diffusion_models: "models/diffusion_models",
     flakes: "models/flakes",
     inputs: "input",
     output: "output",
@@ -464,7 +467,10 @@ export async function openPresetPicker({ selected = "", family = "" } = {}) {
     });
 }
 
-const BROWSE_TITLES = { checkpoints: "Select Checkpoint", loras: "Select LoRA", flakes: "Select Flake" };
+const BROWSE_TITLES = {
+    checkpoints: "Select Checkpoint", loras: "Select LoRA", flakes: "Select Flake",
+    vae: "Select VAE", text_encoders: "Select Text Encoder", diffusion_models: "Select Diffusion Model",
+};
 // Image picks can switch between these ComfyUI folders.
 export const IMAGE_ROOTS = ["inputs", "output", "flake_images", "models"];
 
