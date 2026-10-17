@@ -106,6 +106,30 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             : inputImageUrl(v);
         const pickFlakeImage = () => pickImage(mode !== "create" ? name : "");
 
+        // Cover candidates for a picked ControlNet image: its batch's `_0_cover`
+        // (`001_name_3_depth.png` → `001_name_0_cover.png`, #397), then the
+        // older sibling names from inferCnFromImage (#353).
+        function cnCoverCandidates(value, siblings = []) {
+            const cut = Math.max(value.lastIndexOf("/"), value.lastIndexOf("\\")) + 1;
+            const m = value.slice(cut).match(/^(.+)_\d+_[^_]+(\.[^.]+)$/);
+            const batch = m ? [`${value.slice(0, cut)}${m[1]}_0_cover${m[2]}`, `${value.slice(0, cut)}${m[1]}_0_cover.png`] : [];
+            return [...new Set([...batch, ...siblings])];
+        }
+
+        // First candidate that loads as an image, or null.
+        async function firstExistingImage(candidates) {
+            for (const cand of candidates) {
+                const ok = await new Promise((res) => {
+                    const probe = new Image();
+                    probe.onload = () => res(true);
+                    probe.onerror = () => res(false);
+                    probe.src = imageUrl(cand);
+                });
+                if (ok) return cand;
+            }
+            return null;
+        }
+
         // Dirty-state tracking — flipped on the first interaction inside the
         // modal so a stray outside-click can't silently lose progress.
         let dirty = false;
@@ -407,8 +431,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         let coverSourcePath = data?.cover_image || null;
         let coverImg = null;
         let setCoverFromLora = null;
-        let setCoverFromCnImage = null;
-        let trySiblingCover = null;
+        let setCoverFromCn = null;
 
         let currentFamily = family;
 
@@ -515,6 +538,9 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     coverRemoveBtn.style.opacity = "0";
                 }
             }
+            // A flake without a cover answers 404: show the empty box, so an
+            // automatic cover (#397) knows there is none.
+            coverImg.addEventListener("error", () => updateCoverPreview(null));
 
             // Default cover for edit mode
             if (mode === "edit" && name) {
@@ -547,30 +573,13 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 }
             };
 
-            // Auto-cover from a controlnet input image when no cover has been chosen
-            setCoverFromCnImage = (imagePath) => {
-                if (coverSourcePath || !imagePath) return false;
+            // A ControlNet's batch cover becomes the flake cover when the flake
+            // has none yet, neither picked nor saved (#353, #397). The save moves
+            // it into <flake>/cnets/ with the batch.
+            setCoverFromCn = (imagePath) => {
+                if (!imagePath || coverSourcePath || coverImg.style.display === "block") return;
                 coverSourcePath = imagePath;
                 updateCoverPreview(imageUrl(imagePath));
-                return true;
-            };
-
-            // Probe candidate sibling cover filenames (input dir) in order and set
-            // the first that actually loads as the flake cover, when no cover is
-            // set yet (#353). Shared by the top-level and variant-choice CN images.
-            trySiblingCover = (candidates) => {
-                if (!Array.isArray(candidates) || !candidates.length) return;
-                if (coverSourcePath || !setCoverFromCnImage) return;
-                let idx = 0;
-                const tryNext = () => {
-                    if (idx >= candidates.length || coverSourcePath) return;
-                    const cand = candidates[idx++];
-                    const probe = new Image();
-                    probe.onload = () => { if (!coverSourcePath) setCoverFromCnImage(cand); };
-                    probe.onerror = tryNext;
-                    probe.src = imageUrl(cand);
-                };
-                tryNext();
             };
 
             coverWrap.appendChild(coverBox);
@@ -1015,9 +1024,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     siblingCandidates = res.siblings || [];
                                 } catch { /* ignore */ }
                                 if (inferredType && !arr[i].type) arr[i].type = inferredType;
-                                // Prefer a sibling "_cover" image as the cover; probe candidates.
-                                if (trySiblingCover) trySiblingCover(siblingCandidates);
                                 renderCNs();
+                                setCoverFromCn?.(await firstExistingImage(cnCoverCandidates(fileName, siblingCandidates)));
                             });
 
                             imageCol.appendChild(imgBox);
@@ -1570,15 +1578,23 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                             const fileName = await pickFlakeImage();
                                             if (!fileName) return;
                                             cn.image = fileName;
-                                            // Infer the type and seed the flake cover from the CN's
-                                            // sibling cover when none is set yet (#353).
+                                            let siblings = [];
                                             try {
                                                 const types = await familyCnTypes();
                                                 const r = inferCnFromImage(cn.image, types);
                                                 if (r.inferredType && !cn.type) cn.type = r.inferredType;
-                                                if (trySiblingCover) trySiblingCover(r.siblings || []);
+                                                siblings = r.siblings || [];
                                             } catch { /* ignore */ }
                                             renderChoiceExtras();
+                                            // The batch cover becomes this choice's image, replacing
+                                            // the previous one, and the flake cover if unset (#397).
+                                            const cover = await firstExistingImage(cnCoverCandidates(fileName, siblings));
+                                            if (cover) {
+                                                co.image = cover;
+                                                co._uploaded = true;
+                                                refreshChoiceImage();
+                                            }
+                                            setCoverFromCn?.(cover);
                                         });
                                         const imageCol = document.createElement("div");
                                         css(imageCol, "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;");

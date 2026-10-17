@@ -358,6 +358,27 @@ def test_save_in_place_through_junctioned_flakes_root():
         assert fio.read_flake_raw("chars/musashi")["cover_image"] == "./musashi/cnets/000_p_0_cover.png"
 
 
+def test_save_variant_cover_from_its_cn_batch():
+    # #397: picking a CN in a choice sets the choice image (and the flake cover)
+    # to the batch's _0_cover; both end up referencing the moved cnets/ file.
+    with _save_env() as (root, inp, _l, _ext):
+        for fn in ("001_x_0_cover.png", "001_x_3_depthanythingv2.png", "001_x_3_hed.png"):
+            _write(os.path.join(inp, "poses", fn), PNG)
+        data = {
+            "cover_image": "poses/001_x_0_cover.png",
+            "variants": {"pose": {"stand": {
+                "image": "poses/001_x_0_cover.png",
+                "controlnets": [{"type": "depth", "image": "poses/001_x_3_depthanythingv2.png"}],
+            }}},
+        }
+        fio.save_flake("chars/musashi", data)
+        raw = fio.read_flake_raw("chars/musashi")
+        assert raw["variants"]["pose"]["stand"]["image"] == "./musashi/cnets/001_x_0_cover.png"
+        assert raw["cover_image"] == "./musashi/cnets/001_x_0_cover.png"
+        assert sorted(os.listdir(os.path.join(root, "chars", "musashi"))) == ["cnets"]
+        assert os.listdir(os.path.join(inp, "poses")) == []
+
+
 def test_save_moves_image_from_output():
     with _save_env() as (root, _, _l, ext):
         source = os.path.join(ext, "output", "run", "001_q_3_hed.png")
