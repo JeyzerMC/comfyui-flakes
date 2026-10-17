@@ -710,6 +710,11 @@ def _take_ownership(data: dict[str, Any], target: str) -> None:
     flake_dir = os.path.dirname(target)
     base = os.path.splitext(os.path.basename(target))[0]
     owned = os.path.join(flake_dir, base)
+
+    def dot_ref(path: str) -> str:
+        # Resolved on both sides: a picked path may reach the flakes folder
+        # through a junction or another drive letter than flake_dir.
+        return "./" + os.path.relpath(os.path.realpath(path), os.path.realpath(flake_dir)).replace(os.sep, "/")
     moved: dict[str, str] = {}
     lora_refs: dict[str, str] = {}
     lora_stems: set[str] = set()
@@ -726,7 +731,7 @@ def _take_ownership(data: dict[str, Any], target: str) -> None:
                 logging.warning("[flakes] could not move %s into %s: %s", src, owned, exc)
                 return None
             moved[key] = dest
-        return "./" + os.path.relpath(moved[key], flake_dir).replace(os.sep, "/")
+        return dot_ref(moved[key])
 
     def own_lora(path: Any, display: Any) -> Any:
         if not isinstance(path, str) or not path or path.startswith("./"):
@@ -796,7 +801,7 @@ def _take_ownership(data: dict[str, Any], target: str) -> None:
         dest = src if in_place else os.path.join(owned, base + os.path.splitext(src)[1].lower())
         try:
             if in_place:
-                data["cover_image"] = "./" + os.path.relpath(src, flake_dir).replace(os.sep, "/")
+                data["cover_image"] = dot_ref(src)
             else:
                 _move_file(src, dest)
                 data.pop("cover_image", None)

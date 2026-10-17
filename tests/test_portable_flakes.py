@@ -330,6 +330,24 @@ def test_save_moves_image_from_extra_model_path():
         assert fio.read_cover("chars/musashi") == (PNG, "image/png")
 
 
+def test_save_in_place_through_junctioned_flakes_root():
+    # The flakes root is reached through a junction while the picked image
+    # comes as its real path; on another drive this used to fail the save.
+    if sys.platform != "win32":
+        return
+    import _winapi
+    with _save_env() as (_, _i, _l, ext):
+        real, link = os.path.join(ext, "real_flakes"), os.path.join(ext, "linked_flakes")
+        os.makedirs(real)
+        _winapi.CreateJunction(real, link)
+        fp.folder_names_and_paths["flakes"] = ([link], {".yaml", ".yml"})
+        _write(os.path.join(link, "chars", "musashi.yaml"), b"{}")
+        cover = os.path.join(real, "chars", "musashi", "cnets", "000_p_0_cover.png")
+        _write(cover, PNG)
+        fio.save_flake("chars/musashi", {"cover_image": cover})
+        assert fio.read_flake_raw("chars/musashi")["cover_image"] == "./musashi/cnets/000_p_0_cover.png"
+
+
 def test_save_moves_image_from_output():
     with _save_env() as (root, _, _l, ext):
         source = os.path.join(ext, "output", "run", "001_q_3_hed.png")
