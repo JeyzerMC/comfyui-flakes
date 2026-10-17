@@ -653,8 +653,9 @@ def _cn_batch(path: str) -> list[str]:
     folder = os.path.dirname(path)
     batch = []
     for fn in os.listdir(folder):
-        other = _CN_BATCH_RE.match(os.path.splitext(fn)[0])
-        if other and other.group(1) == match.group(1) and os.path.isfile(os.path.join(folder, fn)):
+        stem, ext = os.path.splitext(fn)
+        other = _CN_BATCH_RE.match(stem)
+        if other and other.group(1) == match.group(1) and ext.lower() in _COVER_MIME_MAP and os.path.isfile(os.path.join(folder, fn)):
             batch.append(os.path.join(folder, fn))
     return batch
 

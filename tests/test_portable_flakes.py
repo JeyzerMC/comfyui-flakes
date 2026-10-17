@@ -189,7 +189,7 @@ def _exists(*parts):
 
 def test_cn_batch_detection():
     with tempfile.TemporaryDirectory() as tmp:
-        for fn in ("001_x_1_hed.png", "001_x_2_depth.png", "001_x_3_cover.png", "001_x_extra.png", "002_x_1_hed.png", "plain.png"):
+        for fn in ("001_x_1_hed.png", "001_x_2_depth.png", "001_x_3_cover.png", "001_x_4_notes.txt", "001_x_extra.png", "002_x_1_hed.png", "plain.png"):
             _write(os.path.join(tmp, fn), PNG)
         batch = sorted(os.path.basename(p) for p in fio._cn_batch(os.path.join(tmp, "001_x_2_depth.png")))
         assert batch == ["001_x_1_hed.png", "001_x_2_depth.png", "001_x_3_cover.png"], batch
