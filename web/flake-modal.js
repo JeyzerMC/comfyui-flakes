@@ -7,7 +7,7 @@ import {
     familyFolder, familyFromFolder, makeHoverRemoveWrapper, CN_MODEL_MAP,
 } from "./utils.js";
 import {
-    getCoverUrl, getVariantImageUrl, flakeAssetUrl, uploadCover, fetchCnTypes, fetchInputs,
+    getCoverUrl, getVariantImageUrl, flakeAssetUrl, inputImageUrl, uploadCover, fetchCnTypes, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
     fetchLoraVariantSiblingImagePath, invalidateList,
@@ -97,7 +97,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         handlers.onClose = (v) => resolve(v ?? null);
         const cnImageUrl = (v) => v.startsWith("./")
             ? flakeAssetUrl(name, v)
-            : `/view?filename=${encodeURIComponent(v)}&type=input`;
+            : inputImageUrl(v);
 
         // Dirty-state tracking — flipped on the first interaction inside the
         // modal so a stray outside-click can't silently lose progress.
@@ -551,7 +551,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             setCoverFromCnImage = (imagePath) => {
                 if (coverFile || coverSourcePath || !imagePath) return false;
                 coverSourcePath = imagePath;
-                updateCoverPreview(`/view?filename=${encodeURIComponent(imagePath)}&type=input`);
+                updateCoverPreview(inputImageUrl(imagePath));
                 return true;
             };
 
@@ -568,7 +568,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     const probe = new Image();
                     probe.onload = () => { if (!coverFile && !coverSourcePath) setCoverFromCnImage(cand); };
                     probe.onerror = tryNext;
-                    probe.src = `/view?filename=${encodeURIComponent(cand)}&type=input`;
+                    probe.src = inputImageUrl(cand);
                 };
                 tryNext();
             };
@@ -1016,7 +1016,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 const fileName = await pickCnImage();
                                 if (!fileName) return;
                                 arr[i].image = fileName;
-                                updateCnImgPreview(`/view?filename=${encodeURIComponent(fileName)}&type=input`);
+                                updateCnImgPreview(inputImageUrl(fileName));
                                 // Auto-set type + cover from the filename (#306, #353).
                                 let inferredType = "";
                                 let siblingCandidates = [];
@@ -1377,7 +1377,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         } else if (mode !== "create" && name) {
                                             imgPreview.src = getVariantImageUrl(name, groupName, choiceName);
                                         } else {
-                                            imgPreview.src = `/view?filename=${encodeURIComponent(cur.image)}&type=input`;
+                                            imgPreview.src = inputImageUrl(cur.image);
                                         }
                                         imgPreview.style.display = "block";
                                         imgBoxLabel.style.display = "none";

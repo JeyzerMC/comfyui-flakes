@@ -158,6 +158,13 @@ export function getVariantImageUrl(name, group, choice) {
     return `/flakes/variant_image?name=${encodeURIComponent(name)}&group=${encodeURIComponent(group)}&choice=${encodeURIComponent(choice)}`;
 }
 
+// /view drops any folder in `filename`, so a path under input/ goes as `subfolder`.
+export function inputImageUrl(path) {
+    const parts = path.replace(/\\/g, "/").split("/");
+    const filename = parts.pop();
+    return `/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(parts.join("/"))}&type=input`;
+}
+
 export function flakeAssetUrl(name, path) {
     return `/flakes/asset?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`;
 }

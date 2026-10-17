@@ -1,6 +1,6 @@
 import { openOverlay } from "./modal.js";
 import { css, makeButton, makeComfyInput, familyFolder, renderFlakeLabel } from "./utils.js";
-import { getCoverUrl, fetchBrowse, fetchLoras, fetchCheckpoints } from "./api.js";
+import { getCoverUrl, fetchBrowse, fetchLoras, fetchCheckpoints, inputImageUrl } from "./api.js";
 
 const BROWSE_TYPE_LABELS = {
     checkpoints: "models/checkpoints",
@@ -465,7 +465,7 @@ export function openFileBrowser({ type, defaultPath = "" }) {
     return new Promise((resolve) => {
         const { content, footer, close, handlers } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
-        css(content.parentElement, content.parentElement.style.cssText + (type === "inputs" ? "width:min(900px,90vw);max-width:90vw;" : "min-width:420px;max-width:560px;"));
+        css(content.parentElement, content.parentElement.style.cssText + (type === "inputs" ? "width:min(1100px,94vw);max-width:94vw;" : "min-width:420px;max-width:560px;"));
 
         const title = document.createElement("h3");
         css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
@@ -554,25 +554,31 @@ export function openFileBrowser({ type, defaultPath = "" }) {
                 listBox.appendChild(upBtn);
             }
 
-            // Input images are picked by eye: folders stay rows, images become
-            // thumbnail tiles in a grid below them.
+            // Input images are picked by eye: folders and images are thumbnail
+            // tiles, like Explorer's thumbnail view.
             const grid = type === "inputs" ? document.createElement("div") : null;
-            if (grid) css(grid, "display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;");
+            if (grid) css(grid, "display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;");
             for (const entry of entries) {
                 const row = document.createElement("button");
-                const thumb = grid && entry.type !== "dir";
-                if (thumb) {
-                    const filePath = currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name;
+                if (grid) {
                     row.title = entry.name;
                     css(row, "display:flex;flex-direction:column;gap:4px;padding:4px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:4px;cursor:pointer;min-width:0;");
-                    const img = document.createElement("img");
-                    img.loading = "lazy";
-                    img.src = `/view?filename=${encodeURIComponent(filePath)}&type=input`;
-                    css(img, "width:100%;aspect-ratio:1/1;object-fit:contain;background:#1a1a1a;border-radius:3px;pointer-events:none;");
+                    let face;
+                    if (entry.type === "dir") {
+                        face = document.createElement("div");
+                        face.textContent = "📁";
+                        css(face, "display:flex;align-items:center;justify-content:center;font-size:48px;");
+                    } else {
+                        face = document.createElement("img");
+                        face.loading = "lazy";
+                        face.src = inputImageUrl(currentPath ? currentPath.replace(/\\/g, "/") + "/" + entry.name : entry.name);
+                        css(face, "object-fit:contain;");
+                    }
+                    css(face, face.style.cssText + "width:100%;aspect-ratio:1/1;background:#1a1a1a;border-radius:3px;pointer-events:none;");
                     const cap = document.createElement("span");
                     cap.textContent = entry.name;
                     css(cap, "font-size:10px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;");
-                    row.appendChild(img);
+                    row.appendChild(face);
                     row.appendChild(cap);
                 } else {
                     row.textContent = entry.type === "dir" ? "\uD83D\uDCC1 " + entry.name : entry.name;
@@ -598,7 +604,7 @@ export function openFileBrowser({ type, defaultPath = "" }) {
                         close({ file: selectedFile });
                     });
                 }
-                (thumb ? grid : listBox).appendChild(row);
+                (grid || listBox).appendChild(row);
             }
             if (grid?.childElementCount) listBox.appendChild(grid);
 
@@ -625,7 +631,9 @@ export function openFileBrowser({ type, defaultPath = "" }) {
                 const data = await fetchBrowse(type, path);
                 currentPath = data.path || "";
                 pathBar.textContent = fmtPath(currentPath);
-                dirEntries = data.entries || [];
+                // Folders first, then natural case-insensitive name order (Explorer).
+                dirEntries = (data.entries || []).sort((a, b) => (a.type === "dir" ? 0 : 1) - (b.type === "dir" ? 0 : 1)
+                    || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
                 renderEntries();
             } catch (err) {
                 if (path) {
