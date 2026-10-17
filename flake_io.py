@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 import posixpath
 import re
+import shutil
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -590,10 +592,188 @@ def save_flake(
                     os.replace(old_cover, new_cover)
                 except OSError:
                     pass
+            # The owned folder follows the yaml; its `./<old_base>/` references
+            # and owned cover take the new base name.
+            old_base = old_name.rsplit("/", 1)[-1]
+            new_base = os.path.basename(canonical)
+            old_owned = os.path.join(os.path.dirname(old_yaml), old_base)
+            owned = os.path.join(os.path.dirname(target), new_base)
+            if os.path.isdir(old_owned) and not os.path.exists(owned):
+                try:
+                    _move_file(old_owned, owned)
+                    data = _rewrite_prefix(data, f"./{old_base}/", f"./{new_base}/")
+                    for ext in _COVER_EXTENSIONS:
+                        if old_base != new_base and os.path.isfile(os.path.join(owned, old_base + ext)):
+                            os.replace(os.path.join(owned, old_base + ext), os.path.join(owned, new_base + ext))
+                except OSError as exc:
+                    logging.warning("[flakes] could not move %s to %s: %s", old_owned, owned, exc)
+
+    _take_ownership(data, target)
 
     with open(target, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
     return canonical
+
+
+_CN_BATCH_RE = re.compile(r"^(.+)_\d+_[^_]+$")
+
+
+def _file_safe(value: Any) -> str:
+    return re.sub(r"[^A-Za-z0-9_\-]+", "_", str(value or "")).strip("_")
+
+
+def _move_file(src: str, dest: str) -> None:
+    """Move *src* (file or folder) to *dest*; copy it, keeping the origin, when
+    *dest* is on another device."""
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    if os.stat(src).st_dev == os.stat(os.path.dirname(dest)).st_dev:
+        os.replace(src, dest)
+    elif os.path.isdir(src):
+        shutil.copytree(src, dest)
+    else:
+        shutil.copy2(src, dest)
+
+
+def _rewrite_prefix(value: Any, old: str, new: str) -> Any:
+    if isinstance(value, dict):
+        return {k: _rewrite_prefix(v, old, new) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_rewrite_prefix(v, old, new) for v in value]
+    if isinstance(value, str) and value.startswith(old):
+        return new + value[len(old):]
+    return value
+
+
+def _cn_batch(path: str) -> list[str]:
+    """*path* plus the files beside it from the same ControlNet batch: stems
+    ``<prefix>_<n>_<token>`` sharing the selected image's ``<prefix>``."""
+    match = _CN_BATCH_RE.match(os.path.splitext(os.path.basename(path))[0])
+    if not match:
+        return [path]
+    folder = os.path.dirname(path)
+    batch = []
+    for fn in os.listdir(folder):
+        other = _CN_BATCH_RE.match(os.path.splitext(fn)[0])
+        if other and other.group(1) == match.group(1) and os.path.isfile(os.path.join(folder, fn)):
+            batch.append(os.path.join(folder, fn))
+    return batch
+
+
+def _external_image(value: Any, moved: dict[str, str]) -> str | None:
+    """Absolute path of the image a non-``./`` *value* refers to: input-relative
+    (extension optional, like ``_load_cn_image``), absolute, or under the LoRA
+    tree. Files already in *moved* count as existing."""
+    if not isinstance(value, str) or not value or value.startswith("./"):
+        return None
+    direct = os.path.join(folder_paths.get_input_directory(), value)
+    for path in (direct, *(direct + e for e in (".png", ".jpg", ".jpeg", ".webp")), folder_paths.get_full_path("loras", value)):
+        if not path or os.path.splitext(path)[1].lower() not in _COVER_MIME_MAP:
+            continue
+        path = os.path.abspath(path)
+        if os.path.isfile(path) or os.path.normcase(path) in moved:
+            return path
+    return None
+
+
+def _take_ownership(data: dict[str, Any], target: str) -> None:
+    """Move the external files *data* references (LoRAs + sidecars, ControlNet
+    image batches, variant images, the cover) into the flake's owned folder
+    ``<dirname(target)>/<base>`` and rewrite them to ``./<base>/...`` (#392).
+    Flake links, ``./`` values and missing files are left alone."""
+    flake_dir = os.path.dirname(target)
+    base = os.path.splitext(os.path.basename(target))[0]
+    owned = os.path.join(flake_dir, base)
+    moved: dict[str, str] = {}
+    lora_refs: dict[str, str] = {}
+    lora_stems: set[str] = set()
+
+    def own(src: str, dest: str) -> str | None:
+        """Move *src* to *dest* once; its ``./`` reference, or None on failure."""
+        key = os.path.normcase(src)
+        if key not in moved:
+            try:
+                _move_file(src, dest)
+            except OSError as exc:
+                logging.warning("[flakes] could not move %s into %s: %s", src, owned, exc)
+                return None
+            moved[key] = dest
+        return "./" + os.path.relpath(moved[key], flake_dir).replace(os.sep, "/")
+
+    def own_lora(path: Any, display: Any) -> Any:
+        if not isinstance(path, str) or not path or path.startswith("./"):
+            return path
+        if path in lora_refs:
+            return lora_refs[path]
+        src = folder_paths.get_full_path("loras", _resolve_model_name("loras", path))
+        if not src or not os.path.isfile(src):
+            return path
+        src = os.path.abspath(src)
+        src_dir, src_name = os.path.split(src)
+        src_stem, ext = os.path.splitext(src_name)
+        stem = f"{base}_{_file_safe(display)}" if _file_safe(display) else base
+        new_stem, n = stem, 1
+        while new_stem in lora_stems or os.path.exists(os.path.join(owned, new_stem + ext)):
+            n += 1
+            new_stem = f"{stem}_{n}"
+        lora_stems.add(new_stem)
+        # Sidecars (previews, .civitai.info, .json) follow under the new stem.
+        for fn in os.listdir(src_dir):
+            if fn.startswith(src_stem + ".") and not fn.endswith(ext):
+                own(os.path.join(src_dir, fn), os.path.join(owned, new_stem + fn[len(src_stem):]))
+        ref = own(src, os.path.join(owned, new_stem + ext))
+        if ref:
+            lora_refs[path] = ref
+        return ref or path
+
+    def own_entries(loras: Any, cns: Any) -> None:
+        for lora in loras if isinstance(loras, list) else ():
+            if isinstance(lora, dict):
+                lora["path"] = own_lora(lora.get("path"), lora.get("name"))
+        for cn in cns if isinstance(cns, list) else ():
+            src = _external_image(cn.get("image"), moved) if isinstance(cn, dict) else None
+            if not src:
+                continue
+            if os.path.isfile(src):
+                for f in _cn_batch(src):
+                    if f != src:
+                        own(f, os.path.join(owned, "cnets", os.path.basename(f)))
+            cn["image"] = own(src, os.path.join(owned, "cnets", os.path.basename(src))) or cn["image"]
+
+    # Resolved before anything moves: the cover may be a LoRA preview or a CN
+    # batch image that is about to land in the owned folder.
+    cover_src = _external_image(data.get("cover_image"), moved)
+    if "cover_image" not in data and not any(os.path.isfile(os.path.join(owned, base + e)) for e in _COVER_EXTENSIONS):
+        cover_src = next((p for e in _COVER_EXTENSIONS if os.path.isfile(p := os.path.join(flake_dir, base + e))), None)
+
+    own_entries(data.get("loras"), data.get("controlnets"))
+    if "loras" not in data and data.get("path"):
+        data["path"] = own_lora(data["path"], None)
+    variants = data.get("variants")
+    for group, choices in variants.items() if isinstance(variants, dict) else ():
+        for choice, choice_data in choices.items() if isinstance(choices, dict) else ():
+            if not isinstance(choice_data, dict):
+                continue
+            own_entries(choice_data.get("loras"), choice_data.get("controlnets"))
+            src = _external_image(choice_data.get("image"), moved)
+            if src:
+                dest = os.path.join(owned, f"{base}_{_file_safe(group)}_{_file_safe(choice)}{os.path.splitext(src)[1]}")
+                choice_data["image"] = own(src, dest) or choice_data["image"]
+
+    if cover_src:
+        src = moved.get(os.path.normcase(cover_src), cover_src)
+        dest = os.path.join(owned, base + os.path.splitext(src)[1].lower())
+        try:
+            if not os.path.normcase(src).startswith(os.path.normcase(owned) + os.sep):
+                _move_file(src, dest)
+            elif os.path.normcase(src) != os.path.normcase(dest):
+                shutil.copy2(src, dest)
+            for e in _COVER_EXTENSIONS:
+                for old in (os.path.join(owned, base + e), os.path.join(flake_dir, base + e)):
+                    if os.path.normcase(old) != os.path.normcase(dest) and os.path.isfile(old):
+                        os.remove(old)
+            data.pop("cover_image", None)
+        except OSError as exc:
+            logging.warning("[flakes] could not move cover %s into %s: %s", src, owned, exc)
 
 
 def delete_flake(name: str) -> None:
@@ -1037,10 +1217,8 @@ def save_cover(name: str, ext: str, data: bytes) -> None:
     # Remove existing covers (other extension or the legacy sibling)
     _delete_cover(name)
 
-    # Place in primary root
-    root = _primary_root()
-    path = os.path.join(root, f"{_owned_cover_stem(name)}{ext_lower}")
-    _ensure_inside(path, root)
+    base = name.rsplit("/", 1)[-1]
+    path = os.path.join(os.path.dirname(_resolve_file(name)), base, f"{base}{ext_lower}")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         f.write(data)

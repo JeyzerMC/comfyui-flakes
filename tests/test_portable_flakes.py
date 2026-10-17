@@ -1,5 +1,5 @@
-"""Tests for `./` paths relative to the flake yaml and the owned cover
-location (#391). Same loading approach as test_variant_extras.py, with the
+"""Tests for `./` paths relative to the flake yaml, the owned cover
+location (#391) and taking ownership of external data on save (#392). Same loading approach as test_variant_extras.py, with the
 stub `folder_paths` pointing the flakes root at a temp dir."""
 import contextlib
 import importlib.util
@@ -166,6 +166,148 @@ def test_list_dirs_skips_owned_folders():
         _write(os.path.join(root, "solo.yml"), b"{}")
         os.makedirs(os.path.join(root, "solo"))
         assert fio.list_dirs() == ["chars", "chars/loose"]
+
+
+@contextlib.contextmanager
+def _save_env():
+    """Flakes root plus temp `input/` and LoRA dirs for the ownership pass (#392)."""
+    with _flakes_root() as root, tempfile.TemporaryDirectory() as ext:
+        inp, loras = os.path.join(ext, "input"), os.path.join(ext, "loras")
+        fp.get_input_directory = lambda: inp
+        fp.get_full_path = lambda c, n: os.path.join(loras, n) if c == "loras" and os.path.isfile(os.path.join(loras, n)) else None
+        try:
+            yield root, inp, loras, ext
+        finally:
+            fp.get_full_path = lambda category, name: None
+
+
+def _exists(*parts):
+    return os.path.isfile(os.path.join(*parts))
+
+
+def test_cn_batch_detection():
+    with tempfile.TemporaryDirectory() as tmp:
+        for fn in ("001_x_1_hed.png", "001_x_2_depth.png", "001_x_3_cover.png", "001_x_extra.png", "002_x_1_hed.png", "plain.png"):
+            _write(os.path.join(tmp, fn), PNG)
+        batch = sorted(os.path.basename(p) for p in fio._cn_batch(os.path.join(tmp, "001_x_2_depth.png")))
+        assert batch == ["001_x_1_hed.png", "001_x_2_depth.png", "001_x_3_cover.png"], batch
+        assert fio._cn_batch(os.path.join(tmp, "001_x_extra.png")) == [os.path.join(tmp, "001_x_extra.png")]
+        assert fio._cn_batch(os.path.join(tmp, "plain.png")) == [os.path.join(tmp, "plain.png")]
+
+
+def test_save_moves_loras_with_sidecars():
+    with _save_env() as (root, _, loras, _ext):
+        for fn in ("hero.safetensors", "hero.preview.png", "hero.civitai.info", "hero.v2.safetensors", "b.safetensors"):
+            _write(os.path.join(loras, "chars", fn), b"w")
+        data = {
+            "loras": [
+                {"name": "Hero!", "path": "chars/hero.safetensors"},
+                {"name": "Hero", "path": "chars/b.safetensors"},
+                {"path": "./musashi/kept.safetensors"},
+                {"path": "missing.safetensors"},
+            ],
+            "variants": {"outfit": {"armor": {"loras": [{"name": "x", "path": "chars/hero.safetensors"}]}}},
+        }
+        fio.save_flake("chars/musashi", data)
+        raw = fio.read_flake_raw("chars/musashi")
+        assert [lr["path"] for lr in raw["loras"]] == [
+            "./musashi/musashi_Hero.safetensors",
+            "./musashi/musashi_Hero_2.safetensors",
+            "./musashi/kept.safetensors",
+            "missing.safetensors",
+        ], raw["loras"]
+        assert raw["variants"]["outfit"]["armor"]["loras"][0]["path"] == "./musashi/musashi_Hero.safetensors"
+        owned = os.path.join(root, "chars", "musashi")
+        for fn in ("musashi_Hero.safetensors", "musashi_Hero.preview.png", "musashi_Hero.civitai.info", "musashi_Hero_2.safetensors"):
+            assert _exists(owned, fn), fn
+        assert not _exists(loras, "chars", "hero.safetensors")
+        assert _exists(loras, "chars", "hero.v2.safetensors")
+
+
+def test_save_unnamed_legacy_lora_path():
+    with _save_env() as (root, _, loras, _ext):
+        _write(os.path.join(loras, "solo.safetensors"), b"w")
+        fio.save_flake("chars/musashi", {"path": "solo.safetensors", "strength": 0.5})
+        assert fio.read_flake_raw("chars/musashi")["path"] == "./musashi/musashi.safetensors"
+        assert _exists(root, "chars", "musashi", "musashi.safetensors")
+
+
+def test_save_moves_cn_batches_and_variant_images():
+    with _save_env() as (root, inp, _, _ext):
+        for fn in ("001_x_1_hed.png", "001_x_2_depth.png", "other.png", "unrelated.png"):
+            _write(os.path.join(inp, "poses", fn), PNG)
+        data = {
+            "controlnets": [{"type": "openpose", "image": "poses/001_x_1_hed"}],
+            "variants": {"outfit": {
+                "Red Armor": {"image": "poses/other.png", "controlnets": [{"type": "depth", "image": "poses/001_x_2_depth.png"}]},
+                "plain": {"image": "poses/001_x_1_hed.png"},
+            }},
+        }
+        fio.save_flake("chars/musashi", data)
+        raw = fio.read_flake_raw("chars/musashi")
+        outfit = raw["variants"]["outfit"]
+        assert raw["controlnets"][0]["image"] == "./musashi/cnets/001_x_1_hed.png"
+        assert outfit["Red Armor"]["controlnets"][0]["image"] == "./musashi/cnets/001_x_2_depth.png"
+        assert outfit["Red Armor"]["image"] == "./musashi/musashi_outfit_Red_Armor.png"
+        assert outfit["plain"]["image"] == "./musashi/cnets/001_x_1_hed.png"
+        assert _exists(root, "chars", "musashi", "cnets", "001_x_2_depth.png")
+        assert _exists(root, "chars", "musashi", "musashi_outfit_Red_Armor.png")
+        assert _exists(inp, "poses", "unrelated.png")
+        assert not _exists(inp, "poses", "001_x_1_hed.png")
+
+
+def test_save_moves_external_cover():
+    with _save_env() as (root, _, _l, ext):
+        source = os.path.join(ext, "pics", "c.JPG")
+        _write(source, b"jpg")
+        _write(os.path.join(root, "chars", "musashi.png"), PNG)
+        fio.save_flake("chars/musashi", {"cover_image": source})
+        assert "cover_image" not in fio.read_flake_raw("chars/musashi")
+        assert not os.path.exists(source)
+        assert not _exists(root, "chars", "musashi.png")
+        assert fio.read_cover("chars/musashi") == (b"jpg", "image/jpeg")
+
+
+def test_save_copies_cover_already_owned():
+    with _save_env() as (root, inp, _, _ext):
+        _write(os.path.join(inp, "001_x_1_hed.png"), b"hed")
+        _write(os.path.join(inp, "001_x_2_cover.png"), PNG)
+        fio.save_flake("chars/musashi", {"controlnets": [{"type": "openpose", "image": "001_x_1_hed.png"}], "cover_image": "001_x_2_cover.png"})
+        assert _exists(root, "chars", "musashi", "cnets", "001_x_2_cover.png")
+        assert _exists(root, "chars", "musashi", "musashi.png")
+        assert "cover_image" not in fio.read_flake_raw("chars/musashi")
+
+
+def test_save_moves_legacy_sibling_cover():
+    with _save_env() as (root, _, _l, _ext):
+        _write(os.path.join(root, "chars", "musashi.png"), PNG)
+        fio.save_flake("chars/musashi", {})
+        assert not _exists(root, "chars", "musashi.png")
+        assert _exists(root, "chars", "musashi", "musashi.png")
+
+
+def test_rename_moves_owned_folder():
+    with _save_env() as (root, _, _l, _ext):
+        _write(os.path.join(root, "chars", "musashi", "musashi_hero.safetensors"), b"w")
+        _write(os.path.join(root, "chars", "musashi", "musashi.png"), PNG)
+        data = {"loras": [{"name": "hero", "path": "./musashi/musashi_hero.safetensors"}], "flake_links": [{"target": "chars/other"}]}
+        assert fio.save_flake("solo/miyamoto", data, old_name="chars/musashi") == "solo/miyamoto"
+        assert not os.path.exists(os.path.join(root, "chars", "musashi.yaml"))
+        assert not os.path.exists(os.path.join(root, "chars", "musashi"))
+        raw = fio.read_flake_raw("solo/miyamoto")
+        assert raw["loras"][0]["path"] == "./miyamoto/musashi_hero.safetensors"
+        assert raw["flake_links"] == [{"target": "chars/other"}]
+        assert _exists(root, "solo", "miyamoto", "musashi_hero.safetensors")
+        assert fio.read_cover("solo/miyamoto") == (PNG, "image/png")
+
+
+def test_save_cover_next_to_yaml_in_other_root():
+    with _flakes_root() as root, tempfile.TemporaryDirectory() as second:
+        fp.folder_names_and_paths["flakes"] = ([root, second], {".yaml", ".yml"})
+        _write(os.path.join(second, "solo.yaml"), b"{}")
+        fio.save_cover("solo", ".png", PNG)
+        assert _exists(second, "solo", "solo.png")
+        assert not os.path.exists(os.path.join(root, "solo"))
 
 
 if __name__ == "__main__":
