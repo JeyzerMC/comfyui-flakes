@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import posixpath
 import re
 import shutil
 from dataclasses import dataclass, field
@@ -868,19 +867,10 @@ def _parse_prompt_list(raw: dict[str, Any]) -> list["PromptEntry"]:
     ]
 
 
-def _owned_lora_path(path: str, name: str | None) -> str:
-    """A ``./x`` LoRA path of flake *name* → the flakes-root-relative LoRA name
-    ``<dirname(name)>/x`` (the flakes roots are registered as a ``loras``
-    folder). Other paths, presets (no name) and inline flakes are unchanged."""
-    if not name or name == "__inline__" or not path.startswith("./"):
-        return path
-    return posixpath.normpath(posixpath.join(posixpath.dirname(name), path[2:].replace("\\", "/")))
-
-
-def _owned_file_path(value: str, name: str) -> str:
+def _owned_file_path(value: str, name: str | None) -> str:
     """A ``./x`` value of flake *name* → absolute path under the yaml's
-    directory. Other values and inline flakes are unchanged."""
-    if name == "__inline__" or not value.startswith("./"):
+    directory. Other values, presets (no name) and inline flakes are unchanged."""
+    if not name or name == "__inline__" or not value.startswith("./"):
         return value
     return os.path.normpath(os.path.join(os.path.dirname(_resolve_file(name)), value[2:]))
 
@@ -896,7 +886,7 @@ def _parse_lora_list(raw_loras: Any, name: str | None = None) -> list["LoraEntry
             out.append(LoraEntry(
                 name=str(lr.get("name", "")),
                 url=str(lr.get("url", "")),
-                path=_owned_lora_path(str(lr.get("path", "")), name),
+                path=_owned_file_path(str(lr.get("path", "")), name),
                 strength=float(lr.get("strength", 1.0)),
                 schedule=_parse_schedule(lr.get("schedule")),
             ))
@@ -971,7 +961,7 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
     loras = _parse_lora_list(raw.get("loras"), name)
     if not loras and raw.get("path"):
         loras.append(LoraEntry(
-            name="", url="", path=_owned_lora_path(str(raw["path"]), name), strength=float(raw.get("strength", 1.0)),
+            name="", url="", path=_owned_file_path(str(raw["path"]), name), strength=float(raw.get("strength", 1.0)),
         ))
 
     # Parse flake links (#232/#234) — defaults stored on the host yaml. Optional.

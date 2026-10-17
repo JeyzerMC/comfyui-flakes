@@ -11,6 +11,7 @@ import torch
 from PIL import Image, ImageOps
 
 import comfy.hooks
+import comfy.sd
 import comfy.utils
 import folder_paths
 import node_helpers
@@ -35,6 +36,23 @@ def _resolve_lora_name(stem_or_name: str) -> str:
         f"LoRA '{stem_or_name}' not found in models/loras/. "
         f"Provide the stem or full filename of an existing LoRA."
     )
+
+
+def _lora_file(path: str) -> str:
+    """Full path of a flake LoRA: a LoRA the flake owns arrives as an absolute
+    path (#391), anything else is a name under models/loras/."""
+    return path if os.path.isabs(path) else folder_paths.get_full_path_or_raise("loras", _resolve_lora_name(path))
+
+
+def _load_lora(model: Any, clip: Any, path: str, strength_model: float, strength_clip: float) -> tuple[Any, Any]:
+    """LoraLoader for a flake LoRA; an owned LoRA lives outside models/loras/,
+    so it is loaded from its path the way LoraLoader does."""
+    if not os.path.isabs(path):
+        return LoraLoader().load_lora(model, clip, _resolve_lora_name(path), strength_model, strength_clip)
+    if strength_model == 0 and strength_clip == 0:
+        return model, clip
+    lora, metadata = comfy.utils.load_torch_file(path, safe_load=True, return_metadata=True)
+    return comfy.sd.load_lora_for_models(model, clip, lora, strength_model, strength_clip, lora_metadata=metadata)
 
 
 def _load_cn_image(image_name: str) -> torch.Tensor:
@@ -212,13 +230,13 @@ def schedule_segments(schedule: list[flake_io.ScheduleKeyframe]) -> list[tuple[f
     return segments
 
 
-def scheduled_lora_hooks(lora_name: str, strength: float, schedule: list[flake_io.ScheduleKeyframe]) -> Any:
+def scheduled_lora_hooks(lora_path: str, strength: float, schedule: list[flake_io.ScheduleKeyframe]) -> Any:
     """Hook group applying a LoRA's model weights under ``schedule`` (#370).
 
     Hooked weights only act on conds that carry the hooks, so the caller
     attaches the group to both positive and negative.
     """
-    lora = comfy.utils.load_torch_file(folder_paths.get_full_path_or_raise("loras", lora_name), safe_load=True)
+    lora = comfy.utils.load_torch_file(_lora_file(lora_path), safe_load=True)
     hooks = comfy.hooks.create_hook_lora(lora, strength, 0.0)
     keyframes = comfy.hooks.HookKeyframeGroup()
     for kf in schedule:
@@ -233,26 +251,23 @@ def apply_loras(model: Any, clip: Any, flakes: list[flake_io.Flake]) -> tuple[An
     A scheduled LoRA's model weights become hooks on the conds (#370); its
     text-encoder part is applied statically so trigger words encode.
     """
-    lora_loader = LoraLoader()
     lora_entries = []
     hook_groups = []
     for f in flakes:
         for lr in f.loras:
             if not lr.path:
                 continue
-            lora_name = _resolve_lora_name(lr.path)
             if lr.schedule:
                 if all(s == 0 for _, _, s in schedule_segments(lr.schedule)):
                     continue
-                model, clip = lora_loader.load_lora(model, clip, lora_name, 0, lr.strength)
-                hook_groups.append(scheduled_lora_hooks(lora_name, lr.strength, lr.schedule))
+                model, clip = _load_lora(model, clip, lr.path, 0, lr.strength)
+                hook_groups.append(scheduled_lora_hooks(lr.path, lr.strength, lr.schedule))
             else:
-                model, clip = lora_loader.load_lora(model, clip, lora_name, lr.strength, lr.strength)
+                model, clip = _load_lora(model, clip, lr.path, lr.strength, lr.strength)
             lora_entries.append({"name": lr.name or lr.path, "path": lr.path, "strength": lr.strength})
         # Legacy single LoRA fallback
         if f.lora_path:
-            lora_name = _resolve_lora_name(f.lora_path)
-            model, clip = lora_loader.load_lora(model, clip, lora_name, f.strength, f.strength)
+            model, clip = _load_lora(model, clip, f.lora_path, f.strength, f.strength)
             lora_entries.append({"name": f.lora_path, "path": f.lora_path, "strength": f.strength})
     return model, clip, lora_entries, hook_groups
 
@@ -300,12 +315,10 @@ def compose(
 ) -> tuple:
     flakes = [flake_io.resolve(e) for e in entries]
 
-    lora_loader = LoraLoader()
     for f in flakes:
         if not f.lora_path:
             continue
-        lora_name = _resolve_lora_name(f.lora_path)
-        model, clip = lora_loader.load_lora(model, clip, lora_name, f.strength, f.strength)
+        model, clip = _load_lora(model, clip, f.lora_path, f.strength, f.strength)
 
     pos_text = " BREAK ".join(f.positive.strip() for f in flakes if f.positive and f.positive.strip())
     neg_text = ", ".join(f.negative.strip() for f in flakes if f.negative and f.negative.strip())

@@ -73,20 +73,20 @@ def _raises_value_error(fn):
     return False
 
 
-def test_lora_dot_path_resolves_to_flakes_relative_name():
-    with _flakes_root():
+def test_lora_dot_path_resolves_to_absolute_path():
+    with _flakes_root() as root:
         flake = fio.resolve({"name": "chars/musashi", "variant": {"outfit": "armor"}})
         assert [lr.path for lr in flake.loras] == [
-            "chars/musashi/musashi_hero.safetensors",
+            os.path.join(root, "chars", "musashi", "musashi_hero.safetensors"),
             "chars/other.safetensors",
-            "chars/musashi/armor.safetensors",
+            os.path.join(root, "chars", "musashi", "armor.safetensors"),
         ]
 
 
 def test_lora_dot_path_at_root_level():
     with _flakes_root() as root:
         _write(os.path.join(root, "solo.yaml"), b"loras: [{path: ./solo/x.safetensors}]")
-        assert fio.load_flake("solo").loras[0].path == "solo/x.safetensors"
+        assert fio.load_flake("solo").loras[0].path == os.path.join(root, "solo", "x.safetensors")
 
 
 def test_cn_dot_image_resolves_to_absolute_path():
