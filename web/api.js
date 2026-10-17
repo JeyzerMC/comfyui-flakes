@@ -197,19 +197,6 @@ export async function fetchLoraVariantSiblingImagePath(loraPath, group, choice) 
     return d.path || null;
 }
 
-export async function uploadCover(name, file) {
-    const form = new FormData();
-    form.append("file", file);
-    const r = await fetch(`/flakes/cover?name=${encodeURIComponent(name)}`, {
-        method: "POST",
-        body: form,
-    });
-    if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${r.status}`);
-    }
-}
-
 // --- Flake meta ---
 
 const META_CACHE = {};

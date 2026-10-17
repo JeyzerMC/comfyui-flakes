@@ -7,13 +7,13 @@ import {
     familyFolder, familyFromFolder, makeHoverRemoveWrapper, CN_MODEL_MAP,
 } from "./utils.js";
 import {
-    getCoverUrl, getVariantImageUrl, flakeAssetUrl, inputImageUrl, uploadCover, fetchCnTypes, fetchInputs,
+    getCoverUrl, getVariantImageUrl, flakeAssetUrl, inputImageUrl, fetchCnTypes, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
     fetchLoraVariantSiblingImagePath, invalidateList,
     fetchCnModels,
 } from "./api.js";
-import { openFileBrowser } from "./pickers.js";
+import { openFileBrowser, IMAGE_ROOTS } from "./pickers.js";
 import {
     openFieldMenu, makeScheduleHandle, makeSchedulePanel, pickFlakeTarget,
     renderLoraList, serializeLoras, normalizeLinks, renderLinkList, serializeLinks,
@@ -25,14 +25,18 @@ import {
 //   "pose_classic_0_cover_001.png" (the "_3_<preproc>_" run becomes "_0_cover_").
 // `inferredType` is matched against the available CN `types` so an unknown token
 // is ignored.
-// ControlNet images are picked in place under ComfyUI input/ rather than
-// uploaded, so the save can move the original file and its batch (#392).
-let lastCnImageDir = "";
-async function pickCnImage() {
-    const result = await openFileBrowser({ type: "inputs", defaultPath: lastCnImageDir });
+// Flake images (cover, ControlNet, variant) are picked in place from any
+// ComfyUI folder rather than uploaded, so the save can move the original file
+// and its batch, or keep it where it is inside the flake's folder (#392, #396).
+// input/ picks stay input-relative; other folders give an absolute path.
+// Without an earlier pick in this session, an existing flake opens on its folder.
+let lastImageDir = null;
+async function pickImage(flakeName) {
+    const start = lastImageDir || (flakeName ? { type: "flake_images", path: flakeName } : { type: "inputs", path: "" });
+    const result = await openFileBrowser({ type: start.type, defaultPath: start.path, roots: IMAGE_ROOTS });
     if (!result?.file) return null;
-    lastCnImageDir = result.file.split("/").slice(0, -1).join("/");
-    return result.file;
+    lastImageDir = { type: result.type, path: result.file.split("/").slice(0, -1).join("/") };
+    return result.type === "inputs" ? result.file : result.path;
 }
 
 function inferCnFromImage(filename, types = []) {
@@ -95,9 +99,12 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
     return new Promise((resolve) => {
         let { content, footer, close, handlers, panel } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
-        const cnImageUrl = (v) => v.startsWith("./")
-            ? flakeAssetUrl(name, v)
+        // Preview URL of a picked or saved image value: `./` (owned by the
+        // flake), absolute (picked outside input/), else input-relative.
+        const imageUrl = (v) => v.startsWith("./") ? flakeAssetUrl(name, v)
+            : /^([A-Za-z]:)?[\\/]/.test(v) ? `/flakes/image?path=${encodeURIComponent(v)}`
             : inputImageUrl(v);
+        const pickFlakeImage = () => pickImage(mode !== "create" ? name : "");
 
         // Dirty-state tracking — flipped on the first interaction inside the
         // modal so a stray outside-click can't silently lose progress.
@@ -390,7 +397,6 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         }
         topSection.appendChild(leftCol);
 
-        let coverFile = null;
         let coverSourcePath = data?.cover_image || null;
         let coverImg = null;
         let setCoverFromLora = null;
@@ -476,8 +482,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             coverBox.addEventListener("mouseleave", () => { coverRemoveBtn.style.opacity = "0"; });
             coverRemoveBtn.addEventListener("click", async (e) => {
                 e.stopPropagation();
-                // Reset all cover state: any pending upload, the stored source, and the preview.
-                coverFile = null;
+                // Reset all cover state: the stored source and the preview.
                 coverSourcePath = null;
                 updateCoverPreview(null);
                 // In edit mode, also delete the file on disk so it doesn't
@@ -489,11 +494,6 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                     } catch { /* ignore — preview is already cleared */ }
                 }
             });
-
-            const coverInput = document.createElement("input");
-            coverInput.type = "file";
-            coverInput.accept = ".png,.jpg,.jpeg,.webp,.gif";
-            coverInput.style.display = "none";
 
             function updateCoverPreview(src) {
                 if (src) {
@@ -514,27 +514,20 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 updateCoverPreview(getCoverUrl(name));
             }
 
-            coverBox.addEventListener("click", () => coverInput.click());
-            coverInput.addEventListener("change", () => {
-                const file = coverInput.files?.[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = () => updateCoverPreview(reader.result);
-                    reader.readAsDataURL(file);
-                    // Manual selection always copies the image beside the flake
-                    // yaml as <name>.<ext> and uses that copy — never an external
-                    // reference (#352). Automatic covers (LoRA / CN siblings) keep
-                    // their reference behaviour via setCoverFrom* below.
-                    coverFile = file;
-                    coverSourcePath = null;
-                }
+            // The save moves the picked image to <name>/<base><ext>, or keeps
+            // it in place when it already lives in the flake's folder (#396).
+            coverBox.addEventListener("click", async () => {
+                const picked = await pickFlakeImage();
+                if (!picked) return;
+                coverSourcePath = picked;
+                updateCoverPreview(imageUrl(picked));
             });
 
             // Auto-cover from a LoRA's sibling image when no cover has been
             // explicitly chosen yet. Stores the resolved image path (e.g. .png)
             // so the saved YAML never references a .safetensors file.
             setCoverFromLora = async (loraPath) => {
-                if (coverFile || coverSourcePath || !loraPath) return false;
+                if (coverSourcePath || !loraPath) return false;
                 try {
                     const imagePath = await fetchLoraSiblingImagePath(loraPath);
                     if (imagePath) {
@@ -549,9 +542,9 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
 
             // Auto-cover from a controlnet input image when no cover has been chosen
             setCoverFromCnImage = (imagePath) => {
-                if (coverFile || coverSourcePath || !imagePath) return false;
+                if (coverSourcePath || !imagePath) return false;
                 coverSourcePath = imagePath;
-                updateCoverPreview(inputImageUrl(imagePath));
+                updateCoverPreview(imageUrl(imagePath));
                 return true;
             };
 
@@ -560,46 +553,33 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             // set yet (#353). Shared by the top-level and variant-choice CN images.
             trySiblingCover = (candidates) => {
                 if (!Array.isArray(candidates) || !candidates.length) return;
-                if (coverFile || coverSourcePath || !setCoverFromCnImage) return;
+                if (coverSourcePath || !setCoverFromCnImage) return;
                 let idx = 0;
                 const tryNext = () => {
-                    if (idx >= candidates.length || coverFile || coverSourcePath) return;
+                    if (idx >= candidates.length || coverSourcePath) return;
                     const cand = candidates[idx++];
                     const probe = new Image();
-                    probe.onload = () => { if (!coverFile && !coverSourcePath) setCoverFromCnImage(cand); };
+                    probe.onload = () => { if (!coverSourcePath) setCoverFromCnImage(cand); };
                     probe.onerror = tryNext;
-                    probe.src = inputImageUrl(cand);
+                    probe.src = imageUrl(cand);
                 };
                 tryNext();
             };
 
             coverWrap.appendChild(coverBox);
-            coverWrap.appendChild(coverInput);
             topSection.appendChild(coverWrap);
 
             // Default cover when path changes in create mode
             if (mode === "create" && pathInput) {
                 pathInput.addEventListener("input", () => {
                     const p = pathInput.value.trim();
-                    if (p && !coverFile) {
+                    if (p && !coverSourcePath) {
                         const prefix = getOutputPrefix();
                         const fullP = prefix + p.replace(/\.ya?ml$/i, ".png");
                         updateCoverPreview(getCoverUrl(fullP));
                     }
                 });
             }
-
-            const origClose = close;
-            close = async (value) => {
-                // A cover_image reference is moved into the flake's folder by the
-                // save itself (#392); only a picked file still needs uploading.
-                if (value && (value.created || value.saved) && coverFile) {
-                    try {
-                        await uploadCover(value.name, coverFile);
-                    } catch { /* ignore */ }
-                }
-                origClose(value);
-            };
         }
         content.appendChild(topSection);
 
@@ -1009,14 +989,14 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             }
 
                             if (cnImagePath) {
-                                updateCnImgPreview(cnImageUrl(cnImagePath));
+                                updateCnImgPreview(imageUrl(cnImagePath));
                             }
 
                             imgBox.addEventListener("click", async () => {
-                                const fileName = await pickCnImage();
+                                const fileName = await pickFlakeImage();
                                 if (!fileName) return;
                                 arr[i].image = fileName;
-                                updateCnImgPreview(inputImageUrl(fileName));
+                                updateCnImgPreview(imageUrl(fileName));
                                 // Auto-set type + cover from the filename (#306, #353).
                                 let inferredType = "";
                                 let siblingCandidates = [];
@@ -1373,11 +1353,11 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     const cur = fieldState.variants[groupName][choiceName] || {};
                                     if (cur.image) {
                                         if (cur.image.startsWith("./") || cur._uploaded) {
-                                            imgPreview.src = cnImageUrl(cur.image);
+                                            imgPreview.src = imageUrl(cur.image);
                                         } else if (mode !== "create" && name) {
                                             imgPreview.src = getVariantImageUrl(name, groupName, choiceName);
                                         } else {
-                                            imgPreview.src = inputImageUrl(cur.image);
+                                            imgPreview.src = imageUrl(cur.image);
                                         }
                                         imgPreview.style.display = "block";
                                         imgBoxLabel.style.display = "none";
@@ -1390,7 +1370,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     // Skip the file picker when the user clicks the delete button or its
                                     // dropdown — those have their own handlers.
                                     if (e.target === deleteBtn || dropdown.contains(e.target)) return;
-                                    const fileName = await pickCnImage();
+                                    const fileName = await pickFlakeImage();
                                     if (!fileName) return;
                                     fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
                                     fieldState.variants[groupName][choiceName].image = fileName;
@@ -1574,12 +1554,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                             }
                                         });
                                         const showImg = () => {
-                                            if (cn.image) { imgPrev.src = cnImageUrl(cn.image); imgPrev.style.display = "block"; imgPlaceholder.style.display = "none"; }
+                                            if (cn.image) { imgPrev.src = imageUrl(cn.image); imgPrev.style.display = "block"; imgPlaceholder.style.display = "none"; }
                                             else { imgPrev.style.display = "none"; imgPlaceholder.style.display = "block"; dimCap.textContent = ""; dimCap.style.display = "none"; }
                                         };
                                         showImg();
                                         imgBox.addEventListener("click", async () => {
-                                            const fileName = await pickCnImage();
+                                            const fileName = await pickFlakeImage();
                                             if (!fileName) return;
                                             cn.image = fileName;
                                             // Infer the type and seed the flake cover from the CN's
@@ -2041,7 +2021,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     if (outLinks.length > 0) ordered.flake_links = outLinks;
                 }
             }
-            if (coverSourcePath && !coverFile) {
+            if (coverSourcePath) {
                 ordered.cover_image = coverSourcePath;
             }
 

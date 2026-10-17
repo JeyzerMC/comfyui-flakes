@@ -443,29 +443,6 @@ async def _delete_cover_route(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "name": name})
 
 
-@routes.post("/flakes/cover")
-async def _upload_cover(request: web.Request) -> web.Response:
-    reader = await request.multipart()
-    field = await reader.next()
-    if field is None:
-        return _bad_request("no file field in multipart body")
-    filename = field.filename or "cover.png"
-    ext = os.path.splitext(filename)[1]
-    data = await field.read()
-
-    name = request.query.get("name", "").strip()
-    if not name:
-        return _bad_request("missing 'name' query param")
-    try:
-        flake_io.save_cover(name, ext, data)
-    except ValueError as exc:
-        return _bad_request(str(exc))
-    except Exception as exc:
-        logging.exception("[flakes] failed to save cover for %s", name)
-        return _server_error(str(exc))
-    return web.json_response({"ok": True, "name": name})
-
-
 # ---------------------------------------------------------------------------
 # Presets (Phase 4)
 # ---------------------------------------------------------------------------

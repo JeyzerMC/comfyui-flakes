@@ -138,16 +138,6 @@ def test_cover_prefers_owned_location():
         assert fio.read_cover("chars/musashi") == (PNG, "image/png")
 
 
-def test_save_cover_writes_owned_and_removes_legacy():
-    with _flakes_root() as root:
-        legacy = os.path.join(root, "chars", "musashi.jpg")
-        _write(legacy, b"legacy")
-        fio.save_cover("chars/musashi", ".png", PNG)
-        assert not os.path.exists(legacy)
-        assert os.path.isfile(os.path.join(root, "chars", "musashi", "musashi.png"))
-        assert fio.read_cover("chars/musashi") == (PNG, "image/png")
-
-
 def test_delete_flake_keeps_owned_folder():
     with _flakes_root() as root:
         legacy = os.path.join(root, "chars", "musashi.jpg")
@@ -176,7 +166,9 @@ def _save_env():
         inp, loras = os.path.join(ext, "input"), os.path.join(ext, "loras")
         fp.get_input_directory = lambda: inp
         fp.get_full_path = lambda c, n: os.path.join(loras, n) if c == "loras" and os.path.isfile(os.path.join(loras, n)) else None
-        fp.get_folder_paths = lambda c: [loras] if c == "loras" else []
+        fp.get_output_directory = lambda: os.path.join(ext, "output")
+        fp.models_dir = os.path.join(ext, "models")
+        fp.get_folder_paths = lambda c: {"loras": [loras], "flakes": [root]}.get(c, [])
         try:
             yield root, inp, loras, ext
         finally:
@@ -293,14 +285,43 @@ def test_save_leaves_cover_outside_input_and_loras():
         assert not os.path.isdir(os.path.join(root, "chars", "musashi"))
 
 
-def test_save_copies_cover_already_owned():
+def test_save_references_cover_already_owned_in_place():
     with _save_env() as (root, inp, _, _ext):
         _write(os.path.join(inp, "001_x_1_hed.png"), b"hed")
         _write(os.path.join(inp, "001_x_2_cover.png"), PNG)
+        _write(os.path.join(root, "chars", "musashi", "musashi.jpg"), b"old")
         fio.save_flake("chars/musashi", {"controlnets": [{"type": "openpose", "image": "001_x_1_hed.png"}], "cover_image": "001_x_2_cover.png"})
-        assert _exists(root, "chars", "musashi", "cnets", "001_x_2_cover.png")
-        assert _exists(root, "chars", "musashi", "musashi.png")
-        assert "cover_image" not in fio.read_flake_raw("chars/musashi")
+        assert fio.read_flake_raw("chars/musashi")["cover_image"] == "./musashi/cnets/001_x_2_cover.png"
+        assert not _exists(root, "chars", "musashi", "musashi.jpg")
+        assert fio.read_cover("chars/musashi") == (PNG, "image/png")
+
+
+def test_save_keeps_owned_images_in_place():
+    with _save_env() as (root, _, _l, _ext):
+        cnets = os.path.join(root, "chars", "musashi", "cnets")
+        for fn in ("000_p_0_cover.png", "000_p_3_hed.png", "000_p_3_dwpose.png"):
+            _write(os.path.join(cnets, fn), PNG)
+        data = {
+            "controlnets": [{"type": "openpose", "image": os.path.join(cnets, "000_p_3_dwpose.png")}],
+            "variants": {"pose": {"a": {"image": os.path.join(cnets, "000_p_3_hed.png")}}},
+            "cover_image": os.path.join(cnets, "000_p_0_cover.png"),
+        }
+        fio.save_flake("chars/musashi", data)
+        raw = fio.read_flake_raw("chars/musashi")
+        assert raw["controlnets"][0]["image"] == "./musashi/cnets/000_p_3_dwpose.png"
+        assert raw["variants"]["pose"]["a"]["image"] == "./musashi/cnets/000_p_3_hed.png"
+        assert raw["cover_image"] == "./musashi/cnets/000_p_0_cover.png"
+        assert sorted(os.listdir(cnets)) == ["000_p_0_cover.png", "000_p_3_dwpose.png", "000_p_3_hed.png"]
+        assert sorted(os.listdir(os.path.join(root, "chars", "musashi"))) == ["cnets"]
+
+
+def test_save_moves_image_from_output():
+    with _save_env() as (root, _, _l, ext):
+        source = os.path.join(ext, "output", "run", "001_q_3_hed.png")
+        _write(source, PNG)
+        fio.save_flake("chars/musashi", {"controlnets": [{"type": "softedge", "image": source}]})
+        assert fio.read_flake_raw("chars/musashi")["controlnets"][0]["image"] == "./musashi/cnets/001_q_3_hed.png"
+        assert not os.path.exists(source)
 
 
 def test_save_moves_legacy_sibling_cover():
@@ -324,15 +345,6 @@ def test_rename_moves_owned_folder():
         assert raw["flake_links"] == [{"target": "chars/other"}]
         assert _exists(root, "solo", "miyamoto", "musashi_hero.safetensors")
         assert fio.read_cover("solo/miyamoto") == (PNG, "image/png")
-
-
-def test_save_cover_next_to_yaml_in_other_root():
-    with _flakes_root() as root, tempfile.TemporaryDirectory() as second:
-        fp.folder_names_and_paths["flakes"] = ([root, second], {".yaml", ".yml"})
-        _write(os.path.join(second, "solo.yaml"), b"{}")
-        fio.save_cover("solo", ".png", PNG)
-        assert _exists(second, "solo", "solo.png")
-        assert not os.path.exists(os.path.join(root, "solo"))
 
 
 if __name__ == "__main__":

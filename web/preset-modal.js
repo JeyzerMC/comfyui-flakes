@@ -5,8 +5,8 @@ import {
     makeTextarea, makeHoverRemoveWrapper, attachAutoGrow,
     familyFolder, familyFromFolder, familySpec, ensureFamilies,
 } from "./utils.js";
-import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchVaes, fetchEmbeddings } from "./api.js";
-import { openFileBrowser } from "./pickers.js";
+import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchVaes, fetchEmbeddings, inputImageUrl } from "./api.js";
+import { openFileBrowser, IMAGE_ROOTS } from "./pickers.js";
 import { pickFlakeTarget, renderLoraList, serializeLoras, normalizeLinks, renderLinkList, serializeLinks } from "./list-editors.js";
 import { app } from "../../scripts/app.js";
 
@@ -201,7 +201,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         baseRootSelect.addEventListener("change", updateResolvedPath);
 
         // Cover image
-        let presetCoverFile = null;
+        let presetCoverUrl = null; // picked image, copied as the cover on save
         let presetCoverImg = null;
         const presetCoverWrap = document.createElement("div");
         css(presetCoverWrap, "display:flex;flex-direction:column;align-items:center;gap:4px;margin:8px 0;");
@@ -218,10 +218,6 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         css(presetCoverLabel, "font-size:10px;color:#666;pointer-events:none;");
         presetCoverBox.appendChild(presetCoverLabel);
 
-        const presetCoverInput = document.createElement("input");
-        presetCoverInput.type = "file";
-        presetCoverInput.accept = ".png,.jpg,.jpeg,.webp,.gif";
-        presetCoverInput.style.display = "none";
 
         function updatePresetCoverPreview(src) {
             if (src) {
@@ -244,7 +240,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         });
 
         async function tryAutoCover(val) {
-            if (!val || presetCoverFile || presetCoverImg.style.display === "block") return;
+            if (!val || presetCoverUrl || presetCoverImg.style.display === "block") return;
             try {
                 const resp = await fetch(`/flakes/checkpoint_sibling_image?path=${encodeURIComponent(val)}`);
                 if (resp.ok) {
@@ -253,28 +249,25 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
             } catch { /* ignore */ }
         }
 
-        presetCoverBox.addEventListener("click", () => presetCoverInput.click());
-        presetCoverInput.addEventListener("change", () => {
-            const file = presetCoverInput.files?.[0];
-            if (file) {
-                presetCoverFile = file;
-                const reader = new FileReader();
-                reader.onload = () => updatePresetCoverPreview(reader.result);
-                reader.readAsDataURL(file);
-            }
+        presetCoverBox.addEventListener("click", async () => {
+            const result = await openFileBrowser({ type: "inputs", roots: IMAGE_ROOTS });
+            if (!result?.file) return;
+            presetCoverUrl = result.type === "inputs" ? inputImageUrl(result.file) : `/flakes/image?path=${encodeURIComponent(result.path)}`;
+            updatePresetCoverPreview(presetCoverUrl);
         });
 
         presetCoverWrap.appendChild(presetCoverBox);
-        presetCoverWrap.appendChild(presetCoverInput);
         // presetCoverWrap is appended below alongside the Checkpoint column.
 
         // Update close handler to upload cover
         const origPresetClose = close;
         close = async (value) => {
-            if (value && (value.created || value.saved) && presetCoverFile) {
+            if (value && (value.created || value.saved) && presetCoverUrl) {
                 try {
                     const form = new FormData();
-                    form.append("file", presetCoverFile);
+                    // Presets don't own files: the picked image is copied.
+                    const blob = await (await fetch(presetCoverUrl)).blob();
+                    form.append("file", blob, `cover.${blob.type.split("/")[1] || "png"}`);
                     await fetch(`/flakes/preset_cover?name=${encodeURIComponent(value.name)}`, { method: "POST", body: form });
                 } catch { /* ignore */ }
             }

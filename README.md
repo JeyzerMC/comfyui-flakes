@@ -61,9 +61,9 @@ loras:
 # declares a `resolution` wins; otherwise it falls back to 1024 × 1024.
 resolution: [832, 1216]
 
-# Cover image shown on the flake's grid block and in the picker. A reference
-# under `models/loras/` or `ComfyUI/input/` is moved to `musashi/musashi.png`
-# on save — see Portable flakes below. Images elsewhere stay referenced.
+# Cover image shown on the flake's grid block and in the picker. Moved to
+# `musashi/musashi.png` on save, or kept in place (`./musashi/...`) when it
+# already lives in the flake's folder — see Portable flakes below.
 cover_image: "<lora_path>/musashi.png"
 
 # Variant groups — the UI lets you pick one choice per group. Each choice
@@ -144,8 +144,13 @@ the yaml at it with paths starting with `./` (relative to the yaml):
 
 A ControlNet image brings its whole batch: picking
 `001_pose_3_depthanythingv2.png` also moves every `001_pose_<n>_<token>` image
-beside it. ControlNet and variant images are picked in place from ComfyUI
-`input/` (subfolders included), so the originals are what moves.
+beside it.
+
+The cover, ControlNet and variant images are picked in place with the file
+picker, from `input/`, `output/`, `flakes/` or `models/`, so the originals are
+what moves. An image already in the flake's own folder stays where it is: a
+cover picked from `jojo/cnets/` is referenced there, and another ControlNet
+image from that folder needs no move.
 
 - Files are moved, or copied when the flake folder is on another disk. A file
   another flake uses is moved too, so that flake has to be re-pointed.

@@ -664,12 +664,16 @@ def _external_image(value: Any, moved: dict[str, str]) -> str | None:
     """Absolute path of the image a non-``./`` *value* refers to: input-relative
     (extension optional, like ``_load_cn_image``), absolute, or under the LoRA
     tree. Files already in *moved* count as existing. Only files inside the
-    input directory or a LoRA folder qualify, since *value* comes from the
-    client and the file gets moved."""
+    folders the editor's picker browses qualify (input, output, models, flakes
+    and LoRA folders), since *value* comes from the client and the file gets
+    moved."""
     if not isinstance(value, str) or not value or value.startswith("./"):
         return None
     input_dir = folder_paths.get_input_directory()
-    roots = [input_dir, *folder_paths.get_folder_paths("loras")]
+    roots = [
+        input_dir, folder_paths.get_output_directory(), folder_paths.models_dir,
+        *folder_paths.get_folder_paths("flakes"), *folder_paths.get_folder_paths("loras"),
+    ]
     direct = os.path.join(input_dir, value)
     for path in (direct, *(direct + e for e in (".png", ".jpg", ".jpeg", ".webp")), folder_paths.get_full_path("loras", value)):
         if not path or os.path.splitext(path)[1].lower() not in _COVER_MIME_MAP:
@@ -694,6 +698,7 @@ def _take_ownership(data: dict[str, Any], target: str) -> None:
     """Move the external files *data* references (LoRAs + sidecars, ControlNet
     image batches, variant images, the cover) into the flake's owned folder
     ``<dirname(target)>/<base>`` and rewrite them to ``./<base>/...`` (#392).
+    Files already inside the owned folder are referenced in place (#396).
     Flake links, ``./`` values and missing files are left alone."""
     flake_dir = os.path.dirname(target)
     base = os.path.splitext(os.path.basename(target))[0]
@@ -705,6 +710,8 @@ def _take_ownership(data: dict[str, Any], target: str) -> None:
     def own(src: str, dest: str) -> str | None:
         """Move *src* to *dest* once; its ``./`` reference, or None on failure."""
         key = os.path.normcase(src)
+        if key not in moved and _is_inside(src, owned):
+            moved[key] = src
         if key not in moved:
             try:
                 _move_file(src, dest)
@@ -774,19 +781,22 @@ def _take_ownership(data: dict[str, Any], target: str) -> None:
                 dest = os.path.join(owned, f"{base}_{_file_safe(group)}_{_file_safe(choice)}{os.path.splitext(src)[1]}")
                 choice_data["image"] = own(src, dest) or choice_data["image"]
 
+    # A cover already in the owned folder (e.g. a moved CN batch's `_cover`
+    # image) stays where it is and is referenced; others become <base><ext>.
     if cover_src:
         src = moved.get(os.path.normcase(cover_src), cover_src)
-        dest = os.path.join(owned, base + os.path.splitext(src)[1].lower())
+        in_place = _is_inside(src, owned)
+        dest = src if in_place else os.path.join(owned, base + os.path.splitext(src)[1].lower())
         try:
-            if not os.path.normcase(src).startswith(os.path.normcase(owned) + os.sep):
+            if in_place:
+                data["cover_image"] = "./" + os.path.relpath(src, flake_dir).replace(os.sep, "/")
+            else:
                 _move_file(src, dest)
-            elif os.path.normcase(src) != os.path.normcase(dest):
-                shutil.copy2(src, dest)
+                data.pop("cover_image", None)
             for e in _COVER_EXTENSIONS:
                 for old in (os.path.join(owned, base + e), os.path.join(flake_dir, base + e)):
                     if os.path.normcase(old) != os.path.normcase(dest) and os.path.isfile(old):
                         os.remove(old)
-            data.pop("cover_image", None)
         except OSError as exc:
             logging.warning("[flakes] could not move cover %s into %s: %s", src, owned, exc)
 
@@ -1222,23 +1232,6 @@ def _delete_cover(name: str, legacy_only: bool = False) -> None:
         os.remove(path)
 
 
-def save_cover(name: str, ext: str, data: bytes) -> None:
-    """Save a cover image in the flake's owned folder (``<name>/<base><ext>``)."""
-    _validate_name(name)
-    ext_lower = ext.lower()
-    if ext_lower not in _COVER_EXTENSIONS:
-        raise ValueError(f"unsupported cover extension: {ext}")
-
-    # Remove existing covers (other extension or the legacy sibling)
-    _delete_cover(name)
-
-    base = name.rsplit("/", 1)[-1]
-    path = os.path.join(os.path.dirname(_resolve_file(name)), base, f"{base}{ext_lower}")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as f:
-        f.write(data)
-
-
 def read_cover(name: str) -> tuple[bytes, str] | None:
     """Return (data, mime_type) or None if no cover exists."""
     path = _cover_path(name)
@@ -1250,7 +1243,7 @@ def read_cover(name: str) -> tuple[bytes, str] | None:
             raw = read_flake_raw(name)
             cover_source = raw.get("cover_image")
             if cover_source:
-                resolved = _resolve_cover_source(cover_source)
+                resolved = _resolve_cover_source(_owned_file_path(cover_source, name))
                 if resolved:
                     return resolved
         except Exception:
