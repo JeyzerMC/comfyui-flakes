@@ -467,6 +467,37 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         return;
     }
 
+    // Fit Output Image in View (#390): caps the output image to the visible height.
+    let fitOn = localStorage.getItem("flakes.overlayFitImage") === "1";
+    let onFitChange = () => {};
+    const fitToggle = document.createElement("label");
+    css(fitToggle, "display:flex;align-items:center;gap:6px;cursor:pointer;margin-left:auto;font-size:12px;color:#ddd;");
+    const fitChk = document.createElement("input");
+    fitChk.type = "checkbox";
+    fitChk.checked = fitOn;
+    css(fitChk, "cursor:pointer;margin:0;");
+    const fitSpan = document.createElement("span");
+    fitSpan.textContent = "Fit Output Image in View";
+    fitToggle.appendChild(fitChk);
+    fitToggle.appendChild(fitSpan);
+    fitChk.addEventListener("change", () => {
+        fitOn = fitChk.checked;
+        localStorage.setItem("flakes.overlayFitImage", fitOn ? "1" : "0");
+        onFitChange();
+    });
+    header.appendChild(fitToggle);
+    function fitImage(img, cap, stacked) {
+        if (fitOn) {
+            img.style.width = "auto";
+            img.style.maxWidth = "100%";
+            img.style.maxHeight = cap;
+        } else {
+            img.style.width = "100%";
+            img.style.maxWidth = "";
+            img.style.maxHeight = stacked ? STACK_STYLE.maxHeight : "";
+        }
+    }
+
     const hasCombos = model.axes.some(a => a.items.length > 1);
 
     if (hasCombos) {
@@ -695,6 +726,10 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             }).catch((e) => console.error("[flakes] reveal failed", e));
         });
 
+        let stacked = false;
+        const fit = () => fitImage(compositeImg, "calc(78vh - 150px)", stacked);
+        onFitChange = fit;
+
         function applyAspectRatio(w, h) {
             compositeImg.style.maxHeight = "";
             if (!w || !h) return;
@@ -755,6 +790,8 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             currentGenerated = generated;
             // Match the preview aspect ratio to the output's resolution (#231).
             applyAspectRatio(data.width, data.height);
+            stacked = false;
+            fit();
             if (shownPreview) {
                 dimsFromImage = false;
                 compositeImg.src = shownPreview;
@@ -773,6 +810,8 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
                 Object.assign(compositeImg.style, STACK_STYLE);
+                stacked = true;
+                fit();
                 const src = await buildCardStack(urls, key);
                 if (token !== imageToken) return;
                 compositeImg.src = src;
@@ -902,6 +941,10 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             }).catch((e) => console.error("[flakes] reveal failed", e));
         });
 
+        let stacked = false;
+        const fit = () => fitImage(compositeImg, "calc(72vh - 150px)", stacked);
+        onFitChange = fit;
+
         function applyAspectRatioSingle(w, h) {
             compositeImg.style.maxHeight = "";
             if (!w || !h) return;
@@ -999,6 +1042,8 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             const generated = shownPreview ? null : selectedResult();
             currentGenerated = generated;
             applyAspectRatioSingle(data.width, data.height);
+            stacked = false;
+            fit();
             if (shownPreview) {
                 dimsFromImage = false;
                 compositeImg.src = shownPreview;
@@ -1017,6 +1062,8 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 compositeLabel.textContent = "No image generated yet";
                 const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
                 Object.assign(compositeImg.style, STACK_STYLE);
+                stacked = true;
+                fit();
                 const src = await buildCardStack(urls, key);
                 if (token !== imageToken) return;
                 compositeImg.src = src;
