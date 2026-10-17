@@ -258,6 +258,19 @@ def test_save_moves_cn_batches_and_variant_images():
         assert not _exists(inp, "poses", "001_x_1_hed.png")
 
 
+def test_save_moves_whole_batch_from_input_subfolder():
+    batch = ("000_my_pose_0_cover.png", "000_my_pose_1_base.png", "000_my_pose_2_prep.png", "000_my_pose_3_densepose.png",
+             "000_my_pose_3_depthanythingv2.png", "000_my_pose_3_dwpose.png", "000_my_pose_3_hed.png")
+    with _save_env() as (root, inp, _, _ext):
+        folder = os.path.join(inp, "cnets", "poses", "fam")
+        for fn in (*batch, "001_my_pose_0_cover.png"):
+            _write(os.path.join(folder, fn), PNG)
+        fio.save_flake("poses/jojo", {"controlnets": [{"type": "depth", "image": "cnets/poses/fam/000_my_pose_3_depthanythingv2.png"}]})
+        assert fio.read_flake_raw("poses/jojo")["controlnets"][0]["image"] == "./jojo/cnets/000_my_pose_3_depthanythingv2.png"
+        assert sorted(os.listdir(os.path.join(root, "poses", "jojo", "cnets"))) == sorted(batch)
+        assert os.listdir(folder) == ["001_my_pose_0_cover.png"]
+
+
 def test_save_moves_external_cover():
     with _save_env() as (root, _, _l, ext):
         source = os.path.join(_l, "pics", "c.JPG")

@@ -144,8 +144,8 @@ the yaml at it with paths starting with `./` (relative to the yaml):
 
 A ControlNet image brings its whole batch: picking
 `001_pose_3_depthanythingv2.png` also moves every `001_pose_<n>_<token>` image
-beside it. ControlNet and variant images are taken from ComfyUI `input/`, where
-the editor uploads them.
+beside it. ControlNet and variant images are picked in place from ComfyUI
+`input/` (subfolders included), so the originals are what moves.
 
 - Files are moved, or copied when the flake folder is on another disk. A file
   another flake uses is moved too, so that flake has to be re-pointed.

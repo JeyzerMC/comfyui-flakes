@@ -25,6 +25,16 @@ import {
 //   "pose_classic_0_cover_001.png" (the "_3_<preproc>_" run becomes "_0_cover_").
 // `inferredType` is matched against the available CN `types` so an unknown token
 // is ignored.
+// ControlNet images are picked in place under ComfyUI input/ rather than
+// uploaded, so the save can move the original file and its batch (#392).
+let lastCnImageDir = "";
+async function pickCnImage() {
+    const result = await openFileBrowser({ type: "inputs", defaultPath: lastCnImageDir });
+    if (!result?.file) return null;
+    lastCnImageDir = result.file.split("/").slice(0, -1).join("/");
+    return result.file;
+}
+
 function inferCnFromImage(filename, types = []) {
     const ext = filename.match(/\.[^.]+$/)?.[0] || "";
     const base = filename.slice(0, filename.length - ext.length);
@@ -982,10 +992,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 }
                             });
 
-                            const imgFileInput = document.createElement("input");
-                            imgFileInput.type = "file";
-                            imgFileInput.accept = ".png,.jpg,.jpeg,.webp,.gif";
-                            imgFileInput.style.display = "none";
 
                             const cnImagePath = cn.image || cn.image_name || "";
 
@@ -1007,61 +1013,27 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             }
 
                             imgBox.addEventListener("click", async () => {
-                                const fileInput = document.createElement("input");
-                                fileInput.type = "file";
-                                fileInput.accept = ".png,.jpg,.jpeg,.webp,.gif,.bmp";
-                                fileInput.style.display = "none";
-                                document.body.appendChild(fileInput);
-                                fileInput.click();
-                                await new Promise((resolve) => {
-                                    fileInput.addEventListener("change", async () => {
-                                        const file = fileInput.files?.[0];
-                                        if (file) {
-                                            try {
-                                                const form = new FormData();
-                                                form.append("image", file);
-                                                form.append("type", "input");
-                                                form.append("overwrite", "true");
-                                                const resp = await fetch("/upload/image", { method: "POST", body: form });
-                                                const result = await resp.json();
-                                                const fileName = result.name || file.name;
-                                                arr[i].image = fileName;
-                                                updateCnImgPreview(`/view?filename=${encodeURIComponent(fileName)}&type=input`);
-                                                // Auto-set type + cover from the filename (#306, #353).
-                                                let inferredType = "";
-                                                let siblingCandidates = [];
-                                                try {
-                                                    const types = await familyCnTypes();
-                                                    const res = inferCnFromImage(fileName, types);
-                                                    inferredType = res.inferredType;
-                                                    siblingCandidates = res.siblings || [];
-                                                } catch { /* ignore */ }
-                                                if (inferredType && !arr[i].type) arr[i].type = inferredType;
-                                                // Prefer a sibling "_cover" image as the cover; probe candidates.
-                                                if (trySiblingCover) trySiblingCover(siblingCandidates);
-                                                renderCNs();
-                                            } catch { /* ignore */ }
-                                        }
-                                        document.body.removeChild(fileInput);
-                                        resolve();
-                                    });
-                                });
-                            });
-
-                            imgFileInput.addEventListener("change", () => {
-                                const file = imgFileInput.files?.[0];
-                                if (file) {
-                                    const reader = new FileReader();
-                                    reader.onload = () => {
-                                        updateCnImgPreview(reader.result);
-                                    };
-                                    reader.readAsDataURL(file);
-                                }
+                                const fileName = await pickCnImage();
+                                if (!fileName) return;
+                                arr[i].image = fileName;
+                                updateCnImgPreview(`/view?filename=${encodeURIComponent(fileName)}&type=input`);
+                                // Auto-set type + cover from the filename (#306, #353).
+                                let inferredType = "";
+                                let siblingCandidates = [];
+                                try {
+                                    const types = await familyCnTypes();
+                                    const res = inferCnFromImage(fileName, types);
+                                    inferredType = res.inferredType;
+                                    siblingCandidates = res.siblings || [];
+                                } catch { /* ignore */ }
+                                if (inferredType && !arr[i].type) arr[i].type = inferredType;
+                                // Prefer a sibling "_cover" image as the cover; probe candidates.
+                                if (trySiblingCover) trySiblingCover(siblingCandidates);
+                                renderCNs();
                             });
 
                             imageCol.appendChild(imgBox);
                             imageCol.appendChild(dimLabel);
-                            imageCol.appendChild(imgFileInput);
                             card.appendChild(imageCol);
 
                             // Right column (#311): Row 1 = model + Img res + delete;
@@ -1400,8 +1372,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 function refreshChoiceImage() {
                                     const cur = fieldState.variants[groupName][choiceName] || {};
                                     if (cur.image) {
-                                        if (cur._uploaded) {
-                                            imgPreview.src = `/view?filename=${encodeURIComponent(cur.image)}&type=input`;
+                                        if (cur.image.startsWith("./") || cur._uploaded) {
+                                            imgPreview.src = cnImageUrl(cur.image);
                                         } else if (mode !== "create" && name) {
                                             imgPreview.src = getVariantImageUrl(name, groupName, choiceName);
                                         } else {
@@ -1418,33 +1390,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     // Skip the file picker when the user clicks the delete button or its
                                     // dropdown — those have their own handlers.
                                     if (e.target === deleteBtn || dropdown.contains(e.target)) return;
-                                    const fileInput = document.createElement("input");
-                                    fileInput.type = "file";
-                                    fileInput.accept = ".png,.jpg,.jpeg,.webp,.gif,.bmp";
-                                    fileInput.style.display = "none";
-                                    document.body.appendChild(fileInput);
-                                    fileInput.click();
-                                    await new Promise((resolve) => {
-                                        fileInput.addEventListener("change", async () => {
-                                            const file = fileInput.files?.[0];
-                                            if (!file) { document.body.removeChild(fileInput); resolve(); return; }
-                                            try {
-                                                const form = new FormData();
-                                                form.append("image", file);
-                                                form.append("type", "input");
-                                                form.append("overwrite", "true");
-                                                const resp = await fetch("/upload/image", { method: "POST", body: form });
-                                                const result = await resp.json();
-                                                const fileName = result.name || file.name;
-                                                fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
-                                                fieldState.variants[groupName][choiceName].image = fileName;
-                                                fieldState.variants[groupName][choiceName]._uploaded = true;
-                                                refreshChoiceImage();
-                                            } catch { /* ignore */ }
-                                            document.body.removeChild(fileInput);
-                                            resolve();
-                                        });
-                                    });
+                                    const fileName = await pickCnImage();
+                                    if (!fileName) return;
+                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                    fieldState.variants[groupName][choiceName].image = fileName;
+                                    fieldState.variants[groupName][choiceName]._uploaded = true;
+                                    refreshChoiceImage();
                                 });
                                 rightCol.appendChild(imgBox);
                                 refreshChoiceImage();
@@ -1627,31 +1578,19 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                             else { imgPrev.style.display = "none"; imgPlaceholder.style.display = "block"; dimCap.textContent = ""; dimCap.style.display = "none"; }
                                         };
                                         showImg();
-                                        imgBox.addEventListener("click", () => {
-                                            const fi = document.createElement("input");
-                                            fi.type = "file"; fi.accept = ".png,.jpg,.jpeg,.webp,.gif,.bmp"; fi.style.display = "none";
-                                            document.body.appendChild(fi); fi.click();
-                                            fi.addEventListener("change", async () => {
-                                                const file = fi.files?.[0];
-                                                if (file) {
-                                                    try {
-                                                        const form = new FormData(); form.append("image", file); form.append("type", "input"); form.append("overwrite", "true");
-                                                        const resp = await fetch("/upload/image", { method: "POST", body: form });
-                                                        const result = await resp.json();
-                                                        cn.image = result.name || file.name;
-                                                        // Infer the type and seed the flake cover from the CN's
-                                                        // sibling cover when none is set yet (#353).
-                                                        try {
-                                                            const types = await familyCnTypes();
-                                                            const r = inferCnFromImage(cn.image, types);
-                                                            if (r.inferredType && !cn.type) cn.type = r.inferredType;
-                                                            if (trySiblingCover) trySiblingCover(r.siblings || []);
-                                                        } catch { /* ignore */ }
-                                                        renderChoiceExtras();
-                                                    } catch { /* ignore */ }
-                                                }
-                                                document.body.removeChild(fi);
-                                            });
+                                        imgBox.addEventListener("click", async () => {
+                                            const fileName = await pickCnImage();
+                                            if (!fileName) return;
+                                            cn.image = fileName;
+                                            // Infer the type and seed the flake cover from the CN's
+                                            // sibling cover when none is set yet (#353).
+                                            try {
+                                                const types = await familyCnTypes();
+                                                const r = inferCnFromImage(cn.image, types);
+                                                if (r.inferredType && !cn.type) cn.type = r.inferredType;
+                                                if (trySiblingCover) trySiblingCover(r.siblings || []);
+                                            } catch { /* ignore */ }
+                                            renderChoiceExtras();
                                         });
                                         const imageCol = document.createElement("div");
                                         css(imageCol, "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;");
@@ -2070,6 +2009,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         }
                         for (const choice of Object.values(group || {})) {
                             if (!choice) continue;
+                            delete choice._uploaded;
                             if (Array.isArray(choice.loras)) {
                                 choice.loras = choice.loras.filter(l => l && (l.path || l.name));
                                 if (choice.loras.length === 0) delete choice.loras;
