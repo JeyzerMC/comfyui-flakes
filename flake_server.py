@@ -44,6 +44,26 @@ async def _list_flakes(request: web.Request) -> web.Response:
     return web.json_response({"flakes": names, "directories": dirs, "display_names": display_names, "tag_names": tag_names})
 
 
+@routes.get("/flakes/drives")
+async def _flake_drives(request: web.Request) -> web.Response:
+    """Drives holding each flake and folder, so the load picker can show one
+    drive at a time like the file picker."""
+    family = request.query.get("family", "").strip() or None
+    flakes: dict[str, list[str]] = {}
+    dirs: dict[str, list[str]] = {}
+    for root in folder_paths.get_folder_paths("flakes"):
+        drive = _drive(root)
+        for name in flake_io.list_flakes(family=family, roots=[root]):
+            flakes.setdefault(name, []).append(drive)
+        for name in flake_io.list_dirs(family=family, roots=[root]):
+            dirs.setdefault(name, []).append(drive)
+    drives = sorted({d for ds in (*flakes.values(), *dirs.values()) for d in ds})
+    return web.json_response({
+        "flakes": flakes, "directories": dirs, "drives": drives,
+        "default": _default_drive(drives) if drives else "",
+    })
+
+
 @routes.get("/flakes/series")
 async def _list_series(request: web.Request) -> web.Response:
     family = request.query.get("family", "").strip() or None
@@ -734,6 +754,7 @@ _BROWSE_FILTERS = {
     "output": _IMAGE_EXTS,
     "flake_images": _IMAGE_EXTS,
     "models": _IMAGE_EXTS,
+    "lora_images": _IMAGE_EXTS,
 }
 _BROWSE_TYPES = tuple(_BROWSE_FILTERS)
 
@@ -748,6 +769,8 @@ def _get_browse_roots(browse_type: str) -> list[str]:
         roots = [folder_paths.models_dir]
     elif browse_type == "flake_images":
         roots = folder_paths.get_folder_paths("flakes")
+    elif browse_type == "lora_images":
+        roots = folder_paths.get_folder_paths("loras")
     else:
         roots = folder_paths.get_folder_paths(browse_type)
     return [r for r in roots if r and os.path.isdir(r)]
@@ -769,6 +792,12 @@ async def _get_image(request: web.Request) -> web.Response:
 
 def _drive(path: str) -> str:
     return os.path.splitdrive(os.path.abspath(path))[0].upper()
+
+
+def _default_drive(drives: list[str]) -> str:
+    """An extra model path's drive when one is in use, else ComfyUI's own."""
+    base = _drive(folder_paths.models_dir)
+    return next((d for d in drives if d != base), base if base in drives else drives[0])
 
 
 @routes.post("/flakes/browse")
@@ -812,7 +841,7 @@ async def _browse(_request: web.Request) -> web.Response:
     # at a time and switches between them (C:, D:, ...).
     drives = sorted({_drive(b) for b in roots} | {_drive(p) for paths in categories.values() for p in paths})
     if drive not in drives:
-        drive = _drive(roots[0])
+        drive = _default_drive(drives)
     targets = [(b, r) for b, r in targets if _drive(b) == drive]
     if browse_type == "models" and not category:
         for name, paths in categories.items():

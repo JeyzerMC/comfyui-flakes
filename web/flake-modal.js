@@ -177,6 +177,13 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         let resolvedPathLabel = null;
         let serieInput = null;
 
+        // Folder of the flake being edited (e.g. img/anima/characters), where
+        // its LoRAs usually live under models/loras/ too.
+        function flakeDir() {
+            const p = pathInput ? getOutputPrefix() + pathInput.value.trim() : (name || "");
+            return p.replace(/\.ya?ml$/i, "").split("/").slice(0, -1).join("/");
+        }
+
         function getOutputPrefix() {
             const folder = familyFolder(currentFamily);
             return folder ? `img/${folder}/` : "img/";
@@ -795,6 +802,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         family: currentFamily,
                         onTagChange: recomputePrefills,
                         onFirstPath: (path) => setCoverFromLora?.(path),
+                        loraDir: flakeDir,
                     });
                 }
 
@@ -1513,7 +1521,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         const showName = () => { box.textContent = lr.path ? lr.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select LoRA…"; box.title = lr.path || ""; };
                                         showName();
                                         box.addEventListener("click", async () => {
-                                            const result = await openFileBrowser({ type: "loras", defaultPath: "" });
+                                            const result = await openFileBrowser({ type: "loras", defaultPath: flakeDir() });
                                             if (result && result.file) { lr.path = result.file; showName(); }
                                         });
                                         row.appendChild(box);

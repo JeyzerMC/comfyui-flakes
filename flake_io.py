@@ -377,9 +377,9 @@ def _resolve_file(name: str) -> str:
     raise FileNotFoundError(f"Flake '{name}' not found under any registered flakes/ directory")
 
 
-def list_flakes(family: str | None = None) -> list[str]:
+def list_flakes(family: str | None = None, roots: list[str] | None = None) -> list[str]:
     names: set[str] = set()
-    for root in _flakes_roots():
+    for root in roots or _flakes_roots():
         if not os.path.isdir(root):
             continue
         for dirpath, _, filenames in os.walk(root):
@@ -452,9 +452,9 @@ def list_series(family: str | None = None) -> list[str]:
     return sorted(series)
 
 
-def list_dirs(family: str | None = None) -> list[str]:
+def list_dirs(family: str | None = None, roots: list[str] | None = None) -> list[str]:
     dirs: set[str] = set()
-    for root in _flakes_roots():
+    for root in roots or _flakes_roots():
         if not os.path.isdir(root):
             continue
         for dirpath, dirnames, filenames in os.walk(root):

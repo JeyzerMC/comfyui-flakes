@@ -153,7 +153,9 @@ export async function pickFlakeTarget(family, exclude) {
 
 // LoRA cards for `loras`. `onTagChange` enables the tag-name checkbox (#274);
 // `onFirstPath` is called when the first LoRA's file changes.
-export function renderLoraList(box, loras, { family, onTagChange, onFirstPath } = {}) {
+// `loraDir()` gives the folder the LoRA picker opens in (the flake's own
+// path, e.g. img/anima/characters); defaults to the family folder.
+export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, loraDir } = {}) {
     const folder = familyFolder(family);
     function renderLoras() {
         box.replaceChildren();
@@ -267,7 +269,7 @@ export function renderLoraList(box, loras, { family, onTagChange, onFirstPath } 
             pathEditBtn.title = "Type manually";
 
             pathBox.addEventListener("click", async () => {
-                const result = await openFileBrowser({ type: "loras", defaultPath: folder ? `img/${folder}` : "" });
+                const result = await openFileBrowser({ type: "loras", defaultPath: loraDir?.() || (folder ? `img/${folder}` : "") });
                 if (result && result.file) {
                     lora.path = result.file;
                     pathBox.textContent = lora.path ? lora.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";

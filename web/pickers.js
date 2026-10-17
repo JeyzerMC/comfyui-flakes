@@ -13,6 +13,7 @@ const BROWSE_TYPE_LABELS = {
     output: "output",
     flake_images: "flakes",
     models: "models",
+    lora_images: "models/loras",
 };
 
 export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {}, tagNames = {} }) {
@@ -31,10 +32,38 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
         handlers.onClose = (v) => resolve(v ?? null);
         css(content.parentElement, content.parentElement.style.cssText + "width:min(1100px,94vw);max-width:94vw;");
 
+        const headerRow = document.createElement("div");
+        css(headerRow, "display:flex;align-items:center;gap:4px;margin-bottom:8px;");
         const title = document.createElement("h3");
-        css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
+        css(title, "margin:0;font-size:16px;color:#fff;font-weight:500;");
         title.textContent = "Load existing flake";
-        content.appendChild(title);
+        headerRow.appendChild(title);
+        // Drive tabs (C:, D:, ...) when the flakes folders span several drives;
+        // one drive is shown at a time, an extra model path's by default.
+        const driveTabs = document.createElement("div");
+        css(driveTabs, "display:flex;gap:4px;margin-left:auto;");
+        headerRow.appendChild(driveTabs);
+        content.appendChild(headerRow);
+        let drives = { flakes: {}, directories: {}, drives: [] };
+        let currentDrive = "";
+        const onDrive = (map, name) => !currentDrive || !map[name] || map[name].includes(currentDrive);
+        const visibleFlakes = () => allFlakes.filter(n => onDrive(drives.flakes, n));
+        const visibleDirs = () => allDirs.filter(d => onDrive(drives.directories, d));
+
+        function renderDriveTabs() {
+            driveTabs.replaceChildren();
+            if (drives.drives.length < 2) return;
+            for (const d of drives.drives) {
+                const tab = makeButton(d);
+                tab.style.borderColor = d === currentDrive ? "#2a6acf" : "#444";
+                tab.addEventListener("click", () => {
+                    currentDrive = d;
+                    renderDriveTabs();
+                    renderGrid(searchInput.value);
+                });
+                driveTabs.appendChild(tab);
+            }
+        }
 
         // Breadcrumb / path bar
         const pathBar = document.createElement("div");
@@ -67,7 +96,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
         function getSubfolders(folder) {
             const prefix = folder ? normPath(folder) + "/" : "";
             const subs = new Set();
-            for (const d of allDirs) {
+            for (const d of visibleDirs()) {
                 const n = normPath(d);
                 if (!n.startsWith(prefix)) continue;
                 const rest = n.slice(prefix.length);
@@ -79,7 +108,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
 
         function getFlakesInFolder(folder) {
             const prefix = folder ? normPath(folder) + "/" : "";
-            return allFlakes.filter(f => {
+            return visibleFlakes().filter(f => {
                 const n = normPath(f);
                 if (!prefix) return !n.includes("/");
                 if (!n.startsWith(prefix)) return false;
@@ -88,7 +117,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
         }
 
         function renderBreadcrumb() {
-            const base = "models/flakes/";
+            const base = (drives.drives.length > 1 ? `${currentDrive} ` : "") + "models/flakes/";
             pathBar.textContent = base + (currentFolder ? normPath(currentFolder) + "/" : "");
         }
 
@@ -103,8 +132,8 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
                 // Search mode: scoped to currentFolder so the breadcrumb stays meaningful
                 const prefix = currentFolder ? normPath(currentFolder) + "/" : "";
                 const scoped = prefix
-                    ? allFlakes.filter(n => normPath(n).startsWith(prefix))
-                    : allFlakes;
+                    ? visibleFlakes().filter(n => normPath(n).startsWith(prefix))
+                    : visibleFlakes();
                 const filtered = scoped.filter(n => normPath(n).slice(prefix.length).toLowerCase().includes(term));
                 if (filtered.length === 0) {
                     const empty = document.createElement("div");
@@ -219,6 +248,12 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
 
         renderGrid();
         searchInput.addEventListener("input", () => renderGrid(searchInput.value));
+        fetch(`/flakes/drives?family=${encodeURIComponent(family || "")}`).then(r => r.json()).then((d) => {
+            drives = d;
+            currentDrive = d.default || "";
+            renderDriveTabs();
+            renderGrid(searchInput.value);
+        }).catch(() => {});
 
         const cancelBtn = makeButton("Cancel");
         cancelBtn.addEventListener("click", () => close(undefined));
@@ -472,7 +507,8 @@ const BROWSE_TITLES = {
     vae: "Select VAE", text_encoders: "Select Text Encoder", diffusion_models: "Select Diffusion Model",
 };
 // Image picks can switch between these ComfyUI folders.
-export const IMAGE_ROOTS = ["inputs", "output", "flake_images", "models"];
+export const IMAGE_ROOTS = ["inputs", "output", "flake_images", "models", "lora_images"];
+const ROOT_TAB_LABELS = { lora_images: "loras" };
 
 const naturalOrder = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 
@@ -493,8 +529,10 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
 
         let currentType = type;
         // Root tabs on the left; drive tabs (C:, D:, ...) on the right when the
-        // root has folders on several drives — drives are never merged.
+        // root has folders on several drives — drives are never merged. The
+        // server picks the extra model path's drive until one is clicked.
         let currentDrive = "";
+        let chosenDrive = "";
         const tabsRow = document.createElement("div");
         css(tabsRow, "display:flex;gap:4px;margin-bottom:8px;");
         const tabs = document.createElement("div");
@@ -639,7 +677,7 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
                 const tab = makeButton(d);
                 tab.style.borderColor = d === currentDrive ? "#2a6acf" : "#444";
                 tab.addEventListener("click", () => {
-                    currentDrive = d;
+                    chosenDrive = d;
                     loadDir(currentPath);
                 });
                 driveTabs.appendChild(tab);
@@ -650,7 +688,7 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
             pathBar.textContent = fmtPath(path);
             searchInput.value = "";
             try {
-                const data = await fetchBrowse(currentType, path, currentDrive);
+                const data = await fetchBrowse(currentType, path, chosenDrive);
                 currentDrive = data.drive || "";
                 renderDriveTabs(data.drives || []);
                 currentPath = data.path || "";
@@ -661,8 +699,8 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
                 renderEntries();
             } catch (err) {
                 if (path) {
-                    // Requested directory does not exist — fall back to root
-                    return loadDir("");
+                    // Requested directory does not exist — open its closest parent
+                    return loadDir(path.replace(/\\/g, "/").split("/").slice(0, -1).join("/"));
                 }
                 dirEntries = [];
                 grid.replaceChildren();
@@ -681,7 +719,7 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
         }
 
         for (const root of roots) {
-            const tab = makeButton(`${BROWSE_TYPE_LABELS[root] || root}/`);
+            const tab = makeButton(`${ROOT_TAB_LABELS[root] || BROWSE_TYPE_LABELS[root] || root}/`);
             tab.dataset.root = root;
             tab.addEventListener("click", () => switchRoot(root));
             tabs.appendChild(tab);
