@@ -459,12 +459,13 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             return out;
         }
 
-        // New ControlNet entry. Anima defaults to depth through its VACE model at
-        // 0.7 strength until 30% of the steps (#398).
+        // New ControlNet entry, sized from its image (img res) by default (#400).
+        // Anima defaults to depth through its VACE model at 0.7 strength until
+        // 30% of the steps (#398).
         async function newCn() {
-            if (familyFolder(currentFamily) !== "anima") return { type: "", image: "", strength: 1.0, start_percent: 0, end_percent: 1 };
+            if (familyFolder(currentFamily) !== "anima") return { type: "", image: "", strength: 1.0, start_percent: 0, end_percent: 1, resolution_from_image: true };
             const vace = (await fetchCnModels(currentFamily).catch(() => [])).find(f => f.kind === "vace");
-            return { type: "depth", image: "", strength: 0.7, start_percent: 0, end_percent: 0.3, ...(vace ? { model: vace.name } : {}) };
+            return { type: "depth", image: "", strength: 0.7, start_percent: 0, end_percent: 0.3, resolution_from_image: true, ...(vace ? { model: vace.name } : {}) };
         }
 
         // Families that list pickable files (Anima: LLLite patches + VACE, #381)
