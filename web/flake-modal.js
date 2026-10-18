@@ -39,6 +39,8 @@ async function pickImage(flakeName) {
     return result.type === "inputs" ? result.file : result.path;
 }
 
+const slugStem = (name) => name.trim().toLowerCase().replace(/\s+/g, "_");
+
 function inferCnFromImage(filename, types = []) {
     const ext = filename.match(/\.[^.]+$/)?.[0] || "";
     const base = filename.slice(0, filename.length - ext.length);
@@ -1224,6 +1226,13 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
                                     fieldState.variants[groupName][choiceName].output_stem = stemInput.value || null;
                                 });
+                                const stemFromNameBtn = makeSmallButton("→");
+                                stemFromNameBtn.title = "Use the choice name as output stem";
+                                stemFromNameBtn.addEventListener("click", () => {
+                                    stemInput.value = slugStem(choiceName);
+                                    stemInput.dispatchEvent(new Event("change"));
+                                });
+                                cRow.appendChild(stemFromNameBtn);
                                 cRow.appendChild(stemInput);
                                 choiceCard.appendChild(cRow);
 
@@ -1742,14 +1751,31 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 }
 
                                 addBtn.addEventListener("click", async () => {
-                                    const trimmed = choiceNameInput.value.trim();
-                                    if (!trimmed) { finish(); return; }
-                                    if (fieldState.variants[groupName][trimmed]) {
-                                        window.alert(`Choice '${trimmed}' already exists in this group.`);
-                                        finish();
-                                        return;
+                                    const base = choiceNameInput.value.trim();
+                                    if (!base) { finish(); return; }
+                                    const group = fieldState.variants[groupName];
+                                    // Taken names get the first free suffix: "Pose B" .. "Pose Z", then "Pose 27" ...
+                                    let trimmed = base;
+                                    for (let i = 1; group[trimmed]; i++) {
+                                        trimmed = `${base} ${i < 26 ? String.fromCharCode(65 + i) : i + 1}`;
                                     }
+                                    // Inherit the fields the group's choices have (#401).
+                                    const siblings = Object.values(group).map(c => c || {});
                                     const choiceData = { positive: "" };
+                                    if (siblings.some(c => "negative" in c)) choiceData.negative = "";
+                                    const cnSrc = siblings.find(c => c.controlnets?.length)?.controlnets[0];
+                                    if (cnSrc) {
+                                        const { image, ...cnSettings } = cnSrc;
+                                        choiceData.controlnets = [{ ...cnSettings, image: "" }];
+                                    }
+                                    if (siblings.some(c => c.loras)) {
+                                        const strength = siblings.find(c => c.loras?.length)?.loras[0].strength ?? 1.0;
+                                        choiceData.loras = [{ name: "", path: "", strength }];
+                                    }
+                                    const stemmed = Object.entries(group).filter(([, c]) => c?.output_stem);
+                                    if (stemmed.length && stemmed.every(([n, c]) => c.output_stem === slugStem(n))) {
+                                        choiceData.output_stem = slugStem(trimmed);
+                                    }
                                     // Auto-detect variant sibling image from first LoRA
                                     const firstLora = Array.isArray(data.loras) ? data.loras[0] : null;
                                     const loraPath = firstLora?.path || firstLora?.name || null;
