@@ -14,6 +14,7 @@ Run directly (``python tests/test_preset_loader.py``) or via pytest.
 import importlib.util
 import os
 import sys
+import tempfile
 import types
 
 
@@ -469,6 +470,16 @@ def test_override_cfg_drives_the_decision_not_the_preset():
     assert samp2[1] == 1.0
     out = flake_compose.maybe_zero_out_negative(gen[1], samp2[1])
     assert out[0][0] == "ZEROED"
+
+
+def test_list_presets_walks_given_roots_only():
+    """The preset picker's drive tabs list each model_presets root on its own (#399)."""
+    with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+        os.makedirs(os.path.join(a, "img", "sdxl"))
+        open(os.path.join(a, "img", "sdxl", "base.yaml"), "w").close()
+        open(os.path.join(b, "other.yaml"), "w").close()
+        assert flake_io.list_presets(roots=[a]) == ["img/sdxl/base"]
+        assert flake_io.list_presets(roots=[a, b]) == ["img/sdxl/base", "other"]
 
 
 if __name__ == "__main__":

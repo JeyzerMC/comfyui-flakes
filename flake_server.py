@@ -46,9 +46,20 @@ async def _list_flakes(request: web.Request) -> web.Response:
 
 @routes.get("/flakes/drives")
 async def _flake_drives(request: web.Request) -> web.Response:
-    """Drives holding each flake and folder, so the load picker can show one
-    drive at a time like the file picker."""
+    """Drives holding each flake and folder (or each preset with
+    kind=presets), so the load picker can show one drive at a time like the
+    file picker."""
     family = request.query.get("family", "").strip() or None
+    if request.query.get("kind") == "presets":
+        presets: dict[str, list[str]] = {}
+        for root in folder_paths.get_folder_paths("model_presets"):
+            for name in flake_io.list_presets(family=family, roots=[root]):
+                presets.setdefault(name, []).append(_drive(root))
+        drives = sorted({d for ds in presets.values() for d in ds})
+        return web.json_response({
+            "presets": presets, "drives": drives,
+            "default": _default_drive(drives) if drives else "",
+        })
     flakes: dict[str, list[str]] = {}
     dirs: dict[str, list[str]] = {}
     for root in folder_paths.get_folder_paths("flakes"):

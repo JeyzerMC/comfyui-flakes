@@ -16,17 +16,46 @@ const BROWSE_TYPE_LABELS = {
     lora_images: "models/loras",
 };
 
-export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {}, tagNames = {} }) {
-    // Exclude model_presets from everything
-    const allFlakes = flakes.filter(n => {
-        const norm = n.replace(/\\/g, "/");
-        return !norm.startsWith("model_presets/") && norm !== "model_presets";
-    });
-    const allDirs = directories.filter(d => {
-        const norm = d.replace(/\\/g, "/");
-        return !norm.startsWith("model_presets/") && norm !== "model_presets";
-    });
+const withoutPresets = (names) => names.filter(n => {
+    const norm = n.replace(/\\/g, "/");
+    return !norm.startsWith("model_presets/") && norm !== "model_presets";
+});
 
+export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {}, tagNames = {} }) {
+    return openNamePicker({
+        title: "Load existing flake", kind: "flakes", noun: "flake", base: "models/flakes/",
+        names: withoutPresets(flakes), directories: withoutPresets(directories), family,
+        coverUrl: getCoverUrl,
+        // Stacked label with a dimmer tag line, matching the grid (#297).
+        renderLabel: (el, name) => renderFlakeLabel(el, { name: displayNames[name] || name.split("/").pop(), tags: tagNames[name] || [] }),
+    });
+}
+
+export async function openPresetPicker({ selected = "", family = "" } = {}) {
+    let presets = [];
+    let displayNames = {};
+    try {
+        const query = family ? `?family=${encodeURIComponent(family)}` : "";
+        const d = await (await fetch(`/flakes/presets${query}`, { cache: "no-store" })).json();
+        presets = d.presets || [];
+        displayNames = d.display_names || {};
+    } catch (err) {
+        console.error("[flakes] failed to load presets for picker:", err);
+    }
+    return openNamePicker({
+        title: "Select a Preset", kind: "presets", noun: "preset", base: "model_presets/",
+        names: presets, family, selected,
+        coverUrl: (name) => `/flakes/preset_cover?name=${encodeURIComponent(name)}`,
+        renderLabel: (el, name) => { el.textContent = displayNames[name] || name.replace(/\\/g, "/").split("/").pop(); },
+    });
+}
+
+// Grid picker over slash-separated names (flakes or presets): folders first,
+// natural case-insensitive order, 7 tiles per row, and drive tabs (C:, D:, ...)
+// when the names span several drives. One drive is shown at a time, an extra
+// model path's by default. Without `directories`, folders come from the names.
+// Resolves to {name} or null.
+function openNamePicker({ title, kind, noun, base, names, directories = null, family, selected = "", coverUrl, renderLabel }) {
     return new Promise((resolve) => {
         const { content, footer, close, handlers } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
@@ -34,21 +63,21 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
 
         const headerRow = document.createElement("div");
         css(headerRow, "display:flex;align-items:center;gap:4px;margin-bottom:8px;");
-        const title = document.createElement("h3");
-        css(title, "margin:0;font-size:16px;color:#fff;font-weight:500;");
-        title.textContent = "Load existing flake";
-        headerRow.appendChild(title);
-        // Drive tabs (C:, D:, ...) when the flakes folders span several drives;
-        // one drive is shown at a time, an extra model path's by default.
+        const titleEl = document.createElement("h3");
+        css(titleEl, "margin:0;font-size:16px;color:#fff;font-weight:500;");
+        titleEl.textContent = title;
+        headerRow.appendChild(titleEl);
         const driveTabs = document.createElement("div");
         css(driveTabs, "display:flex;gap:4px;margin-left:auto;");
         headerRow.appendChild(driveTabs);
         content.appendChild(headerRow);
-        let drives = { flakes: {}, directories: {}, drives: [] };
+        let drives = { drives: [] };
         let currentDrive = "";
-        const onDrive = (map, name) => !currentDrive || !map[name] || map[name].includes(currentDrive);
-        const visibleFlakes = () => allFlakes.filter(n => onDrive(drives.flakes, n));
-        const visibleDirs = () => allDirs.filter(d => onDrive(drives.directories, d));
+        const onDrive = (map, name) => !currentDrive || !map?.[name] || map[name].includes(currentDrive);
+        const visibleNames = () => names.filter(n => onDrive(drives[kind], n));
+        const visibleDirs = () => directories
+            ? directories.filter(d => onDrive(drives.directories, d))
+            : visibleNames().flatMap(n => normPath(n).split("/").slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join("/")));
 
         function renderDriveTabs() {
             driveTabs.replaceChildren();
@@ -65,15 +94,13 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
             }
         }
 
-        // Breadcrumb / path bar
         const pathBar = document.createElement("div");
         css(pathBar, "font-size:11px;color:#888;margin-bottom:6px;word-break:break-all;cursor:pointer;");
         content.appendChild(pathBar);
 
-        // Search bar
         const searchRow = document.createElement("div");
         css(searchRow, "margin-bottom:8px;");
-        const searchInput = makeComfyInput("", "Search flakes...");
+        const searchInput = makeComfyInput("", `Search ${noun}s...`);
         searchRow.appendChild(searchInput);
         content.appendChild(searchRow);
 
@@ -81,12 +108,9 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
         css(grid, "display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;max-height:65vh;overflow:auto;align-content:start;");
         content.appendChild(grid);
 
-        const initialFolder = (() => {
-            const folder = familyFolder(family);
-            return folder ? `img/${folder}` : "";
-        })();
-        let currentFolder = initialFolder;
-        let selectedName = null;
+        const folder = familyFolder(family);
+        let currentFolder = folder ? `img/${folder}` : "";
+        let selectedName = selected || null;
         let selectedEl = null;
 
         function normPath(p) {
@@ -106,9 +130,9 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
             return [...subs].sort(naturalOrder);
         }
 
-        function getFlakesInFolder(folder) {
+        function getNamesInFolder(folder) {
             const prefix = folder ? normPath(folder) + "/" : "";
-            return visibleFlakes().filter(f => {
+            return visibleNames().filter(f => {
                 const n = normPath(f);
                 if (!prefix) return !n.includes("/");
                 if (!n.startsWith(prefix)) return false;
@@ -117,13 +141,25 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
         }
 
         function renderBreadcrumb() {
-            const base = (drives.drives.length > 1 ? `${currentDrive} ` : "") + "models/flakes/";
-            pathBar.textContent = base + (currentFolder ? normPath(currentFolder) + "/" : "");
+            const drive = drives.drives.length > 1 ? `${currentDrive} ` : "";
+            pathBar.textContent = drive + base + (currentFolder ? normPath(currentFolder) + "/" : "");
+        }
+
+        function showEmpty() {
+            const empty = document.createElement("div");
+            empty.textContent = `No ${noun}s found.`;
+            css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;grid-column:1 / -1;");
+            grid.appendChild(empty);
+        }
+
+        function openFolder(path) {
+            currentFolder = path;
+            searchInput.value = "";
+            renderGrid();
         }
 
         function renderGrid(filter = "") {
             grid.replaceChildren();
-            selectedName = null;
             selectedEl = null;
             const term = filter.toLowerCase().trim();
             renderBreadcrumb();
@@ -131,124 +167,74 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
             if (term) {
                 // Search mode: scoped to currentFolder so the breadcrumb stays meaningful
                 const prefix = currentFolder ? normPath(currentFolder) + "/" : "";
-                const scoped = prefix
-                    ? visibleFlakes().filter(n => normPath(n).startsWith(prefix))
-                    : visibleFlakes();
-                const filtered = scoped.filter(n => normPath(n).slice(prefix.length).toLowerCase().includes(term));
-                if (filtered.length === 0) {
-                    const empty = document.createElement("div");
-                    empty.textContent = "No flakes found.";
-                    css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;grid-column:1 / -1;");
-                    grid.appendChild(empty);
-                    return;
-                }
-                for (const name of filtered) {
-                    grid.appendChild(makeFlakeThumb(name));
-                }
+                const filtered = visibleNames().filter(n => normPath(n).startsWith(prefix) && normPath(n).slice(prefix.length).toLowerCase().includes(term));
+                if (filtered.length === 0) return showEmpty();
+                for (const name of filtered) grid.appendChild(makeThumb(name));
                 return;
             }
 
-            // Folder mode: subfolders + flakes in current folder
             const subfolders = getSubfolders(currentFolder);
-            const folderFlakes = getFlakesInFolder(currentFolder);
+            const folderNames = getNamesInFolder(currentFolder);
 
             if (currentFolder) {
-                // Up folder item
-                const upItem = document.createElement("div");
-                css(upItem, "aspect-ratio:1/1;background:#252525;border:1px solid #444;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
-                const upIcon = document.createElement("div");
-                upIcon.textContent = "\u2191";
-                css(upIcon, "font-size:24px;color:#888;");
-                const upLabel = document.createElement("div");
-                upLabel.textContent = "..";
-                css(upLabel, "font-size:10px;color:#aaa;");
-                upItem.appendChild(upIcon);
-                upItem.appendChild(upLabel);
-                upItem.addEventListener("click", () => {
-                    const parts = normPath(currentFolder).split("/").filter(Boolean);
-                    parts.pop();
-                    currentFolder = parts.join("/");
-                    renderGrid();
-                });
-                upItem.addEventListener("dblclick", (e) => e.stopPropagation());
-                grid.appendChild(upItem);
+                const parts = normPath(currentFolder).split("/").filter(Boolean);
+                parts.pop();
+                grid.appendChild(makeFolderTile("↑", "..", () => openFolder(parts.join("/"))));
             }
-
             for (const sub of subfolders) {
-                const folderItem = document.createElement("div");
-                css(folderItem, "aspect-ratio:1/1;background:#252525;border:1px solid #444;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
-                const fIcon = document.createElement("div");
-                fIcon.textContent = "\uD83D\uDCC1";
-                css(fIcon, "font-size:32px;");
-                const fLabel = document.createElement("div");
-                fLabel.textContent = sub;
-                css(fLabel, "font-size:10px;color:#ddd;text-align:center;padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;");
-                folderItem.appendChild(fIcon);
-                folderItem.appendChild(fLabel);
-                folderItem.addEventListener("click", () => {
-                    currentFolder = currentFolder ? normPath(currentFolder) + "/" + sub : sub;
-                    renderGrid();
-                });
-                folderItem.addEventListener("dblclick", () => {
-                    currentFolder = currentFolder ? normPath(currentFolder) + "/" + sub : sub;
-                    renderGrid();
-                });
-                grid.appendChild(folderItem);
+                grid.appendChild(makeFolderTile("📁", sub, () => openFolder(currentFolder ? normPath(currentFolder) + "/" + sub : sub)));
             }
-
-            for (const name of folderFlakes) {
-                grid.appendChild(makeFlakeThumb(name));
-            }
-
-            if (subfolders.length === 0 && folderFlakes.length === 0) {
-                const empty = document.createElement("div");
-                empty.textContent = "No flakes found.";
-                css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;grid-column:1 / -1;");
-                grid.appendChild(empty);
-            }
+            for (const name of folderNames) grid.appendChild(makeThumb(name));
+            if (subfolders.length === 0 && folderNames.length === 0) showEmpty();
         }
 
-        function makeFlakeThumb(name) {
+        function makeFolderTile(icon, label, onClick) {
+            const item = document.createElement("div");
+            css(item, "aspect-ratio:1/1;background:#252525;border:1px solid #444;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
+            const iconEl = document.createElement("div");
+            iconEl.textContent = icon;
+            css(iconEl, label === ".." ? "font-size:24px;color:#888;" : "font-size:32px;");
+            const labelEl = document.createElement("div");
+            labelEl.textContent = label;
+            css(labelEl, "font-size:10px;color:#ddd;text-align:center;padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;");
+            item.appendChild(iconEl);
+            item.appendChild(labelEl);
+            item.addEventListener("click", onClick);
+            item.addEventListener("dblclick", (e) => e.stopPropagation());
+            return item;
+        }
+
+        function makeThumb(name) {
             const thumb = document.createElement("div");
-            css(thumb, `position:relative;aspect-ratio:1/1;background:#2a2a2a;border:1px solid #444;border-radius:4px;cursor:pointer;font-size:10px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(${getCoverUrl(name)});background-size:cover;background-position:center;`);
+            css(thumb, `position:relative;aspect-ratio:1/1;background:#2a2a2a;border:1px solid ${name === selectedName ? "#2a6acf" : "#444"};border-radius:4px;cursor:pointer;font-size:10px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(${coverUrl(name)});background-size:cover;background-position:center;`);
+            if (name === selectedName) selectedEl = thumb;
 
             const overlay = document.createElement("div");
             css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.45);pointer-events:none;z-index:0;");
             thumb.appendChild(overlay);
 
-            const displayName = displayNames[name] || "";
-            const label = displayName || (name.includes("/") ? name.split("/").pop() : name);
             const nameEl = document.createElement("div");
             nameEl.title = name;
             css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
-            // Stacked label with a dimmer tag line, matching the grid (#297).
-            renderFlakeLabel(nameEl, { name: label, tags: tagNames[name] || [] });
+            renderLabel(nameEl, name);
             thumb.appendChild(nameEl);
 
             thumb.addEventListener("click", () => {
-                if (selectedEl) {
-                    selectedEl.style.borderColor = "#444";
-                }
+                if (selectedEl) selectedEl.style.borderColor = "#444";
                 selectedName = name;
                 selectedEl = thumb;
                 thumb.style.borderColor = "#2a6acf";
             });
-            thumb.addEventListener("dblclick", () => {
-                close({ name });
-            });
-
+            thumb.addEventListener("dblclick", () => close({ name }));
             return thumb;
         }
 
-        pathBar.addEventListener("click", () => {
-            currentFolder = "";
-            searchInput.value = "";
-            renderGrid();
-        });
+        pathBar.addEventListener("click", () => openFolder(""));
 
         renderGrid();
         searchInput.addEventListener("input", () => renderGrid(searchInput.value));
-        fetch(`/flakes/drives?family=${encodeURIComponent(family || "")}`).then(r => r.json()).then((d) => {
+        searchInput.focus();
+        fetch(`/flakes/drives?kind=${kind}&family=${encodeURIComponent(family || "")}`).then(r => r.json()).then((d) => {
             drives = d;
             currentDrive = d.default || "";
             renderDriveTabs();
@@ -262,238 +248,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
         const selectBtn = makeButton("Select", true);
         selectBtn.addEventListener("click", () => {
             if (!selectedName) {
-                window.alert("Select a flake first.");
-                return;
-            }
-            close({ name: selectedName });
-        });
-        footer.appendChild(selectBtn);
-    });
-}
-
-export async function openPresetPicker({ selected = "", family = "" } = {}) {
-    return new Promise(async (resolve) => {
-        let presets = [];
-        let displayNames = {};
-        try {
-            const query = family ? `?family=${encodeURIComponent(family)}` : "";
-            const r = await fetch(`/flakes/presets${query}`, { cache: "no-store" });
-            const d = await r.json();
-            presets = d.presets || [];
-            displayNames = d.display_names || {};
-        } catch (err) {
-            console.error("[flakes] failed to load presets for picker:", err);
-        }
-
-        const { content, footer, close, handlers } = openOverlay();
-        handlers.onClose = (v) => resolve(v ?? null);
-        css(content.parentElement, content.parentElement.style.cssText + "min-width:420px;max-width:640px;");
-
-        const title = document.createElement("h3");
-        css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
-        title.textContent = "Select a Preset";
-        content.appendChild(title);
-
-        const pathBar = document.createElement("div");
-        css(pathBar, "font-size:11px;color:#888;margin-bottom:6px;word-break:break-all;cursor:pointer;");
-        content.appendChild(pathBar);
-
-        const searchRow = document.createElement("div");
-        css(searchRow, "margin-bottom:8px;");
-        const searchInput = makeComfyInput("", "Search presets...");
-        searchRow.appendChild(searchInput);
-        content.appendChild(searchRow);
-
-        const grid = document.createElement("div");
-        css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(100px, 1fr));gap:8px;max-height:400px;overflow:auto;padding:4px;");
-        content.appendChild(grid);
-
-        let selectedName = selected || null;
-        let selectedEl = null;
-        const folder = familyFolder(family) || "";
-        let currentFolder = folder ? `img/${folder}` : "";
-
-        function normPath(p) {
-            return p.replace(/\\/g, "/");
-        }
-
-        function getSubfolders(folder) {
-            const prefix = folder ? normPath(folder) + "/" : "";
-            const subs = new Set();
-            for (const p of presets) {
-                const n = normPath(p);
-                if (!n.startsWith(prefix)) continue;
-                const rest = n.slice(prefix.length);
-                if (!rest) continue;
-                const slashIdx = rest.indexOf("/");
-                if (slashIdx === -1) continue;
-                subs.add(rest.slice(0, slashIdx));
-            }
-            return [...subs].sort();
-        }
-
-        function getPresetsInFolder(folder) {
-            const prefix = folder ? normPath(folder) + "/" : "";
-            return presets.filter(p => {
-                const n = normPath(p);
-                if (!prefix) return !n.includes("/");
-                if (!n.startsWith(prefix)) return false;
-                return !n.slice(prefix.length).includes("/");
-            }).sort();
-        }
-
-        function renderBreadcrumb() {
-            const base = "model_presets/";
-            pathBar.textContent = base + (currentFolder ? normPath(currentFolder) + "/" : "");
-        }
-
-        function makePresetThumb(name) {
-            const thumb = document.createElement("div");
-            css(thumb, `position:relative;height:100px;background:#2a2a2a;border:2px solid ${name === selectedName ? "#2a6acf" : "#444"};border-radius:6px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;overflow:hidden;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(name)});background-size:cover;background-position:center;transition:border-color 0.15s ease;`);
-
-            const overlay = document.createElement("div");
-            css(overlay, "position:absolute;inset:0;background:rgba(0,0,0,0.4);pointer-events:none;z-index:0;transition:background 0.15s ease;");
-            thumb.appendChild(overlay);
-
-            const displayLabel = displayNames[name] || name.replace(/\\/g, "/").split("/").pop() || name;
-            const nameEl = document.createElement("div");
-            nameEl.title = name;
-            css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.9);padding:6px 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
-            nameEl.textContent = displayLabel;
-            thumb.appendChild(nameEl);
-
-            thumb.addEventListener("mouseenter", () => {
-                thumb.style.borderColor = "#555";
-                overlay.style.background = "rgba(0,0,0,0.25)";
-            });
-            thumb.addEventListener("mouseleave", () => {
-                thumb.style.borderColor = name === selectedName ? "#2a6acf" : "#444";
-                overlay.style.background = "rgba(0,0,0,0.4)";
-            });
-
-            thumb.addEventListener("click", () => {
-                if (selectedEl) {
-                    selectedEl.style.borderColor = "#444";
-                }
-                selectedName = name;
-                selectedEl = thumb;
-                thumb.style.borderColor = "#2a6acf";
-            });
-            thumb.addEventListener("dblclick", () => {
-                close({ name });
-            });
-
-            if (name === selectedName) {
-                selectedEl = thumb;
-            }
-
-            return thumb;
-        }
-
-        function renderGrid(filter = "") {
-            grid.replaceChildren();
-            selectedEl = null;
-            const term = String(filter || "").toLowerCase().trim();
-            renderBreadcrumb();
-
-            if (term) {
-                const prefix = currentFolder ? normPath(currentFolder) + "/" : "";
-                const scoped = prefix
-                    ? presets.filter(n => normPath(n).startsWith(prefix))
-                    : presets;
-                const filtered = scoped.filter(n => normPath(n).slice(prefix.length).toLowerCase().includes(term));
-                if (filtered.length === 0) {
-                    const empty = document.createElement("div");
-                    empty.textContent = "No presets found.";
-                    css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;grid-column:1 / -1;");
-                    grid.appendChild(empty);
-                    return;
-                }
-                for (const name of filtered) {
-                    grid.appendChild(makePresetThumb(name));
-                }
-                return;
-            }
-
-            const subfolders = getSubfolders(currentFolder);
-            const folderPresets = getPresetsInFolder(currentFolder);
-
-            if (currentFolder) {
-                const upItem = document.createElement("div");
-                css(upItem, "height:100px;background:#252525;border:1px solid #444;border-radius:6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
-                const upIcon = document.createElement("div");
-                upIcon.textContent = "\u2191";
-                css(upIcon, "font-size:24px;color:#888;");
-                const upLabel = document.createElement("div");
-                upLabel.textContent = "..";
-                css(upLabel, "font-size:10px;color:#aaa;");
-                upItem.appendChild(upIcon);
-                upItem.appendChild(upLabel);
-                upItem.addEventListener("click", () => {
-                    const parts = normPath(currentFolder).split("/").filter(Boolean);
-                    parts.pop();
-                    currentFolder = parts.join("/");
-                    searchInput.value = "";
-                    renderGrid();
-                });
-                upItem.addEventListener("dblclick", (e) => e.stopPropagation());
-                grid.appendChild(upItem);
-            }
-
-            for (const sub of subfolders) {
-                const folderItem = document.createElement("div");
-                css(folderItem, "height:100px;background:#252525;border:1px solid #444;border-radius:6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
-                const fIcon = document.createElement("div");
-                fIcon.textContent = "\uD83D\uDCC1";
-                css(fIcon, "font-size:32px;");
-                const fLabel = document.createElement("div");
-                fLabel.textContent = sub;
-                css(fLabel, "font-size:10px;color:#ddd;text-align:center;padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;");
-                folderItem.appendChild(fIcon);
-                folderItem.appendChild(fLabel);
-                folderItem.addEventListener("click", () => {
-                    currentFolder = currentFolder ? normPath(currentFolder) + "/" + sub : sub;
-                    searchInput.value = "";
-                    renderGrid();
-                });
-                folderItem.addEventListener("dblclick", () => {
-                    currentFolder = currentFolder ? normPath(currentFolder) + "/" + sub : sub;
-                    searchInput.value = "";
-                    renderGrid();
-                });
-                grid.appendChild(folderItem);
-            }
-
-            for (const name of folderPresets) {
-                grid.appendChild(makePresetThumb(name));
-            }
-
-            if (subfolders.length === 0 && folderPresets.length === 0) {
-                const empty = document.createElement("div");
-                empty.textContent = "No presets found.";
-                css(empty, "opacity:0.5;font-style:italic;padding:12px;text-align:center;grid-column:1 / -1;");
-                grid.appendChild(empty);
-            }
-        }
-
-        pathBar.addEventListener("click", () => {
-            currentFolder = "";
-            searchInput.value = "";
-            renderGrid();
-        });
-
-        renderGrid();
-        searchInput.addEventListener("input", () => renderGrid(searchInput.value));
-        searchInput.focus();
-
-        const cancelBtn = makeButton("Cancel");
-        cancelBtn.addEventListener("click", () => close(undefined));
-        footer.appendChild(cancelBtn);
-
-        const selectBtn = makeButton("Select", true);
-        selectBtn.addEventListener("click", () => {
-            if (!selectedName) {
-                window.alert("Select a preset first.");
+                window.alert(`Select a ${noun} first.`);
                 return;
             }
             close({ name: selectedName });

@@ -1343,9 +1343,9 @@ def _find_preset_root_index(name: str) -> int:
     raise FileNotFoundError(f"Preset '{name}' not found under any registered model_presets/ directory")
 
 
-def list_presets(family: str | None = None) -> list[str]:
+def list_presets(family: str | None = None, roots: list[str] | None = None) -> list[str]:
     names: set[str] = set()
-    for root in _presets_roots():
+    for root in roots or _presets_roots():
         if not os.path.isdir(root):
             continue
         for dirpath, _, filenames in os.walk(root):
