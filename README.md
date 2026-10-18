@@ -161,6 +161,23 @@ image from that folder needs no move.
 
 Move the yaml and its folder together to share or relocate a flake.
 
+### Editor helpers
+
+- **Favorites**: the ☆ next to the editor title marks a flake as favorite
+  (`favorite: true` in the yaml). Favorites show a ★ on grid items and in the
+  flake picker.
+- **Variant choices**: `→` between a choice's name and output stem fills the
+  stem from the name (`Jojo Pose` → `jojo_pose`). A new choice gets the fields
+  the group's choices already have (negative prompt, a ControlNet with the same
+  settings minus the image, a LoRA row) and a name-derived stem when the others
+  use theirs. A taken name becomes `Pose B`, `Pose C`, …
+- **ControlNets**: new entries have `img res` on. Picking a ControlNet image uses
+  its batch's `_0_cover` image as the flake cover when it has none, and as the
+  variant choice's image for a ControlNet inside a choice.
+- **File pickers** show one drive at a time when your folders span several
+  (C:, D:, …), starting on the extra model path drive. This includes the flake and
+  preset pickers.
+
 ![Flake Edit](assets/img/flake_fields.png)
 
 ---
