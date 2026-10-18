@@ -146,6 +146,7 @@ export async function pickFlakeTarget(family, exclude) {
             family: family || "",
             displayNames: list.display_names || {},
             tagNames: list.tag_names || {},
+            favorites: list.favorites || [],
         });
         return res && res.name ? res.name : null;
     } catch { return null; }

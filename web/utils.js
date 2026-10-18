@@ -1155,6 +1155,14 @@ export function makeBypassStrike() {
     return strike;
 }
 
+// Gold star at the bottom-left of a favorite flake's grid item (#402).
+export function makeFavoriteStar() {
+    const star = document.createElement("div");
+    star.textContent = "★";
+    css(star, "position:absolute;bottom:2px;left:4px;z-index:6;color:#f5c518;font-size:12px;line-height:14px;text-shadow:0 1px 3px rgba(0,0,0,0.9);pointer-events:none;");
+    return star;
+}
+
 // Long-press ("hold") a combo activation checkbox to "single out": activate
 // only this item and deactivate every other one. A normal click still toggles
 // just this item. Used by Flake Combo and Flake Model Combo (#281).

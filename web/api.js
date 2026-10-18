@@ -16,6 +16,7 @@ export async function fetchList(family = "") {
             // Surface tag_names so the Load-existing-flake picker can show the
             // LoRA tag line, matching the grid items (#334).
             tag_names: d.tag_names || {},
+            favorites: Array.isArray(d.favorites) ? d.favorites : [],
         }));
     }
     return LIST_PROMISE;

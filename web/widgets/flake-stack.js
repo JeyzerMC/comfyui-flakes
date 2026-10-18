@@ -1,5 +1,5 @@
 import {
-    css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
+    css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, makeFavoriteStar, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider, variantInitials, renderFlakeLabel, splitNameAndTags,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, effectiveVariant, variantDropdownOptions,
@@ -96,6 +96,8 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
         dup.addEventListener("dblclick", (e) => e.stopPropagation());
         block.appendChild(dup);
     }
+
+    if (!isDefault && entry.favorite) block.appendChild(makeFavoriteStar());
 
     // Name — stacked label: name line, dimmer tag line (#297), variant suffix.
     const fullName = isDefault ? "Default" : (entry.display_name || entry.name || "(missing)");
@@ -688,6 +690,7 @@ export function setupFlakeWidget(node) {
             if (result.name && result.name !== arr[idx].name) arr[idx].name = result.name;
             arr[idx]._edited_at = Date.now();
             arr[idx].flake_type = result.data?.flake_type || null;
+            arr[idx].favorite = !!result.data?.favorite;
             if (result.data?.name) arr[idx].display_name = appendLoraTags(result.data.name, result.data.loras);
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
             // Clear per-instance overrides so the grid item reflects the new
@@ -734,23 +737,25 @@ export function setupFlakeWidget(node) {
 
     async function handleReplace(idx) {
         if (idx === 0) return;
-        const { flakes, directories, display_names, tag_names } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names });
+        const { flakes, directories, display_names, tag_names, favorites } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names, favorites });
         if (!result || !result.name) return;
         const arr = readEntries();
         let has_lora = false;
         let display_name = null;
         let flake_type = null;
+        let favorite = false;
         let loras = [];
         try {
             const d = await fetchFlake(result.name);
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
             display_name = appendLoraTags(d.name || null, d.loras);
             flake_type = d.flake_type || null;
+            favorite = !!d.favorite;
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr[idx] = { name: result.name, loras, variant: {}, has_lora, display_name, flake_type };
+        arr[idx] = { name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite };
         writeEntries(arr);
         render();
     }
@@ -791,29 +796,31 @@ export function setupFlakeWidget(node) {
             } catch {}
         }
         display_name = appendLoraTags(display_name, result.data?.loras);
-        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type });
+        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite: !!result.data?.favorite });
         writeEntries(arr);
         render();
     }
 
     async function handleLoad() {
-        const { flakes, directories, display_names, tag_names } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names });
+        const { flakes, directories, display_names, tag_names, favorites } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names, favorites });
         if (!result || !result.name) return;
         const arr = readEntries();
         let has_lora = false;
         let display_name = null;
         let flake_type = null;
+        let favorite = false;
         let loras = [];
         try {
             const d = await fetchFlake(result.name);
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
             display_name = appendLoraTags(d.name || null, d.loras);
             flake_type = d.flake_type || null;
+            favorite = !!d.favorite;
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type });
+        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite });
         writeEntries(arr);
         render();
     }

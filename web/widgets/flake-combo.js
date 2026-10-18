@@ -1,5 +1,5 @@
 import {
-    css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, TYPE_COLORS,
+    css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, makeFavoriteStar, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
     makePanelDropdown, makeSmallValueSlider, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut, effectiveVariant, variantDropdownOptions,
@@ -95,6 +95,8 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
         dup.addEventListener("dblclick", (e) => e.stopPropagation());
         block.appendChild(dup);
     }
+
+    if (entry.favorite) block.appendChild(makeFavoriteStar());
 
     // Name — stacked label: name line, dimmer tag line (#297), variant suffix.
     const baseName = entry.display_name || entry.name || "(missing)";
@@ -652,6 +654,7 @@ export function setupFlakeComboWidget(node) {
             if (result.name && result.name !== arr[idx].name) arr[idx].name = result.name;
             arr[idx]._edited_at = Date.now();
             arr[idx].flake_type = result.data?.flake_type || null;
+            arr[idx].favorite = !!result.data?.favorite;
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
             arr[idx].display_name = result.data?.name || null;
             arr[idx].tags = loraTagNames(result.data?.loras);
@@ -706,13 +709,14 @@ export function setupFlakeComboWidget(node) {
     }
 
     async function handleReplace(idx) {
-        const { flakes, directories, display_names, tag_names } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names });
+        const { flakes, directories, display_names, tag_names, favorites } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names, favorites });
         if (!result || !result.name) return;
         const arr = readAllFlakes();
         let has_lora = false;
         let display_name = null;
         let flake_type = null;
+        let favorite = false;
         let loras = [];
         let tags = [];
         try {
@@ -720,11 +724,12 @@ export function setupFlakeComboWidget(node) {
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
             display_name = d.name || null;
             flake_type = d.flake_type || null;
+            favorite = !!d.favorite;
             tags = loraTagNames(d.loras);
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr[idx] = { ...arr[idx], name: result.name, loras, variant: {}, has_lora, display_name, flake_type, tags };
+        arr[idx] = { ...arr[idx], name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite, tags };
         writeAllFlakes(arr);
         render();
     }
@@ -763,19 +768,20 @@ export function setupFlakeComboWidget(node) {
                 flake_type = flake_type || d.flake_type || null;
             } catch {}
         }
-        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, tags: loraTagNames(result.data?.loras) });
+        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite: !!result.data?.favorite, tags: loraTagNames(result.data?.loras) });
         writeAllFlakes(arr);
         render();
     }
 
     async function handleLoad() {
-        const { flakes, directories, display_names, tag_names } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names });
+        const { flakes, directories, display_names, tag_names, favorites } = await fetchList(getFamily());
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names, favorites });
         if (!result || !result.name) return;
         const arr = readAllFlakes();
         let has_lora = false;
         let display_name = null;
         let flake_type = null;
+        let favorite = false;
         let loras = [];
         let tags = [];
         try {
@@ -783,11 +789,12 @@ export function setupFlakeComboWidget(node) {
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
             display_name = d.name || null;
             flake_type = d.flake_type || null;
+            favorite = !!d.favorite;
             tags = loraTagNames(d.loras);
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, tags });
+        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite, tags });
         writeAllFlakes(arr);
         render();
     }

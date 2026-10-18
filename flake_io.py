@@ -438,6 +438,19 @@ def list_flake_tag_names(family: str | None = None) -> dict[str, list[str]]:
     return result
 
 
+def list_flake_favorites(family: str | None = None) -> list[str]:
+    """Names of flakes saved with ``favorite: true`` (#402)."""
+    result: list[str] = []
+    for name in list_flakes(family=family):
+        try:
+            raw = read_flake_raw(name)
+        except Exception:
+            continue
+        if raw.get("favorite"):
+            result.append(name)
+    return result
+
+
 def list_series(family: str | None = None) -> list[str]:
     """Distinct, non-empty `serie` values across flakes (sorted)."""
     series: set[str] = set()

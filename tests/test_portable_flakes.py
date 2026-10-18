@@ -159,6 +159,13 @@ def test_list_dirs_skips_owned_folders():
         assert fio.list_dirs() == ["chars", "chars/loose"]
 
 
+def test_list_flake_favorites():
+    with _flakes_root() as root:
+        _write(os.path.join(root, "chars", "fennec.yaml"), b"favorite: true\npositive: fluffy tail\n")
+        _write(os.path.join(root, "solo.yml"), b"favorite: false\n")
+        assert fio.list_flake_favorites() == ["chars/fennec"]
+
+
 def _get_full_path(loras):
     def get_full_path(category, name):
         # Like ComfyUI: names only; an absolute path on another drive raises.

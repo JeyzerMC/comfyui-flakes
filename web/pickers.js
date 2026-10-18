@@ -21,11 +21,11 @@ const withoutPresets = (names) => names.filter(n => {
     return !norm.startsWith("model_presets/") && norm !== "model_presets";
 });
 
-export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {}, tagNames = {} }) {
+export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {}, tagNames = {}, favorites = [] }) {
     return openNamePicker({
         title: "Load existing flake", kind: "flakes", noun: "flake", base: "models/flakes/",
         names: withoutPresets(flakes), directories: withoutPresets(directories), family,
-        coverUrl: getCoverUrl,
+        coverUrl: getCoverUrl, favorites,
         // Stacked label with a dimmer tag line, matching the grid (#297).
         renderLabel: (el, name) => renderFlakeLabel(el, { name: displayNames[name] || name.split("/").pop(), tags: tagNames[name] || [] }),
     });
@@ -55,7 +55,7 @@ export async function openPresetPicker({ selected = "", family = "" } = {}) {
 // when the names span several drives. One drive is shown at a time, an extra
 // model path's by default. Without `directories`, folders come from the names.
 // Resolves to {name} or null.
-function openNamePicker({ title, kind, noun, base, names, directories = null, family, selected = "", coverUrl, renderLabel }) {
+function openNamePicker({ title, kind, noun, base, names, directories = null, family, selected = "", coverUrl, renderLabel, favorites = [] }) {
     return new Promise((resolve) => {
         const { content, footer, close, handlers } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
@@ -218,6 +218,13 @@ function openNamePicker({ title, kind, noun, base, names, directories = null, fa
             css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
             renderLabel(nameEl, name);
             thumb.appendChild(nameEl);
+
+            if (favorites.includes(name)) {
+                const star = document.createElement("div");
+                star.textContent = "★";
+                css(star, "position:absolute;top:2px;right:4px;color:#f5c518;font-size:12px;line-height:1;text-shadow:0 1px 3px rgba(0,0,0,0.9);pointer-events:none;z-index:2;");
+                thumb.appendChild(star);
+            }
 
             thumb.addEventListener("click", () => {
                 if (selectedEl) selectedEl.style.borderColor = "#444";

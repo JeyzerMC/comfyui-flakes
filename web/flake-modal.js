@@ -143,13 +143,30 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             return window.confirm("Are you sure you want to cancel? Unsaved changes will be lost.");
         };
 
+        const titleRow = document.createElement("div");
+        css(titleRow, "display:flex;align-items:center;gap:8px;margin:0 0 8px;");
         const title = document.createElement("h3");
-        css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
+        css(title, "margin:0;font-size:16px;color:#fff;font-weight:500;");
         title.textContent =
             mode === "default" ? "Edit default flake" :
             mode === "create" ? "New flake" :
             `Edit ${name}`;
-        content.appendChild(title);
+        titleRow.appendChild(title);
+        // Favorite toggle (#402), saved as `favorite: true`.
+        let favorite = !!data.favorite;
+        if (mode !== "default") {
+            const favBtn = document.createElement("button");
+            const paintFav = () => {
+                favBtn.textContent = favorite ? "★" : "☆";
+                favBtn.title = favorite ? "Favorite (click to unfavorite)" : "Mark as favorite";
+                favBtn.style.color = favorite ? "#f5c518" : "#888";
+            };
+            css(favBtn, "padding:0;border:none;background:transparent;font-size:18px;line-height:1;cursor:pointer;");
+            favBtn.addEventListener("click", () => { favorite = !favorite; paintFav(); markDirty(); });
+            paintFav();
+            titleRow.appendChild(favBtn);
+        }
+        content.appendChild(titleRow);
 
         // ---- Top section: name, path, cover image ----
         const topSection = document.createElement("div");
@@ -1495,7 +1512,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     try {
                                         const list = await (await fetch(`/flakes/list?family=${encodeURIComponent(currentFamily || "")}`)).json();
                                         const flakes = (list.flakes || []).filter((n) => n !== name);
-                                        const res = await openFileLoadPicker({ flakes, directories: list.directories || [], family: currentFamily || "", displayNames: list.display_names || {}, tagNames: list.tag_names || {} });
+                                        const res = await openFileLoadPicker({ flakes, directories: list.directories || [], family: currentFamily || "", displayNames: list.display_names || {}, tagNames: list.tag_names || {}, favorites: list.favorites || [] });
                                         return res && res.name ? res.name : null;
                                     } catch { return null; }
                                 }
@@ -1998,6 +2015,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
             if (selectedType) ordered.flake_type = selectedType;
             if (serieInput && serieInput.value.trim()) ordered.serie = serieInput.value.trim();
             if (outputStemInput && outputStemInput.value.trim()) ordered.output_stem = outputStemInput.value.trim();
+            if (favorite) ordered.favorite = true;
 
             // Save fields in the user-selected order so YAML key order is preserved
             for (const ft of activeFields) {
