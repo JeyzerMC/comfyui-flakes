@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, makeFavoriteStar, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
-    makePanelDropdown, makeSmallValueSlider, variantInitials, renderFlakeLabel, splitNameAndTags,
+    makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, variantInitials, renderFlakeLabel, splitNameAndTags,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, effectiveVariant, variantDropdownOptions,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, invalidateList } from "../api.js";
@@ -263,9 +263,12 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             const groupsWrap = document.createElement("div");
             css(groupsWrap, "display:flex;flex-direction:column;gap:3px;");
             nativeColumn.appendChild(groupsWrap);
+            // Per-group choice LoRA sliders, hidden while All Variants is on (#413).
+            const variantLoraRenders = [];
             const applyAv = () => {
                 groupsWrap.style.opacity = entry._all_variants ? "0.4" : "1";
                 groupsWrap.style.pointerEvents = entry._all_variants ? "none" : "auto";
+                variantLoraRenders.forEach(r => r());
             };
             avChk.addEventListener("change", () => {
                 entry._all_variants = avChk.checked || undefined;
@@ -285,6 +288,12 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                 const defaultChoice = (cachedVariantDefaults(entry.name) || {})[group];
                 const current = (entry.variant || {})[group] || "";
                 const dd = makePanelDropdown(variantDropdownOptions(hasOptions[group], defaultChoice), current === defaultChoice ? "" : current);
+                const vlHost = document.createElement("div");
+                const renderVl = () => {
+                    const ch = (entry.variant || {})[group] || defaultChoice;
+                    renderVariantLoraSliders(vlHost, flakeData?.variants, entry, group, entry._all_variants ? null : ch, onChanged);
+                };
+                variantLoraRenders.push(renderVl);
                 dd.element.addEventListener("change", () => {
                     if (dd.element.value) {
                         entry.variant = entry.variant || {};
@@ -292,10 +301,11 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     } else {
                         if (entry.variant) delete entry.variant[group];
                     }
+                    renderVl();
                     onChanged();
                     if (onVariantChange) onVariantChange();
                 });
-                row.appendChild(dd.container);
+                row.append(dd.container, vlHost);
                 groupsWrap.appendChild(row);
             }
             applyAv();

@@ -115,6 +115,49 @@ def test_choice_prompt_still_works():
     assert "base" in flake.positive and "moody lighting" in flake.positive
 
 
+def _two_choice_pose():
+    _with_flakes({
+        "pose": {
+            "name": "Pose",
+            "variants": {"style": {
+                "calm": {"default": True, "loras": [{"name": "calm", "path": "calm.safetensors", "strength": 0.5}]},
+                "dramatic": {"loras": [
+                    {"name": "drama", "path": "drama.safetensors", "strength": 0.7},
+                    {"name": "light", "path": "light.safetensors", "strength": 0.3},
+                ]},
+            }},
+        },
+    })
+
+
+def test_variant_loras_override_selected_choice():
+    """`variant_loras[group][choice][i]` overrides the choice's LoRA strengths (#413)."""
+    _two_choice_pose()
+    flake = fio.resolve({
+        "name": "pose",
+        "variant": {"style": "dramatic"},
+        "variant_loras": {"style": {"dramatic": [None, 1.2], "calm": [2.0]}},
+    })
+    assert _strength_of(flake, "drama.safetensors") == 0.7
+    assert _strength_of(flake, "light.safetensors") == 1.2
+    assert _strength_of(flake, "calm.safetensors") is None
+
+
+def test_variant_loras_override_default_choice():
+    _two_choice_pose()
+    flake = fio.resolve({"name": "pose", "variant_loras": {"style": {"calm": [0.9]}}})
+    assert _strength_of(flake, "calm.safetensors") == 0.9
+
+
+def test_variant_loras_extra_slots_and_malformed_ignored():
+    _two_choice_pose()
+    flake = fio.resolve({"name": "pose", "variant_loras": {"style": {"calm": [0.9, 1.5, 2.0]}}})
+    assert [lr.strength for lr in flake.loras] == [0.9]
+    for bad in ("x", ["x"], {"style": "x"}, {"style": {"calm": "x"}}, {"style": {"calm": ["x"]}}):
+        flake = fio.resolve({"name": "pose", "variant_loras": bad})
+        assert _strength_of(flake, "calm.safetensors") == 0.5
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

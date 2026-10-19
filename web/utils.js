@@ -975,6 +975,27 @@ export function makeSmallValueSlider(value, min, max, step, onChange) {
     return row;
 }
 
+// Grid dropdown strength sliders for the LoRAs of one variant choice (#413).
+// Values live in owner.variant_loras[group][choice][i]; an unset slot shows
+// fallback[i], then the choice's yaml strength. A null choice renders nothing.
+export function renderVariantLoraSliders(host, variants, owner, group, choice, onChanged, fallback = []) {
+    host.replaceChildren();
+    const loras = choice ? variants?.[group]?.[choice]?.loras : null;
+    if (!Array.isArray(loras)) return;
+    loras.forEach((lr, i) => {
+        const label = document.createElement("div");
+        label.textContent = lr?.name || String(lr?.path || "LoRA").split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
+        css(label, "font-size:9px;opacity:0.7;padding:2px 0;text-align:center;");
+        const slider = makeSmallValueSlider(owner.variant_loras?.[group]?.[choice]?.[i] ?? fallback[i] ?? lr?.strength ?? 1.0, -10, 10, 0.05, (v) => {
+            const slots = (((owner.variant_loras ||= {})[group] ||= {})[choice] ||= []);
+            while (slots.length <= i) slots.push(null);
+            slots[i] = v;
+            onChanged();
+        });
+        host.append(label, slider);
+    });
+}
+
 // ---------- Shared grid item helpers ----------
 
 export const TYPE_COLORS = {

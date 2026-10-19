@@ -300,6 +300,14 @@ async function flakeEntryRows(entry) {
             const v = d.variants?.[g]?.[c];
             if (v?.positive) promptRows.push([`${vLabel} · ${g} · Positive`, v.positive]);
             if (v?.negative) promptRows.push([`${vLabel} · ${g} · Negative`, v.negative]);
+            // Choice LoRAs with the grid item's strength overrides (#413).
+            if (Array.isArray(v?.loras)) {
+                v.loras.forEach((lr, idx) => {
+                    const name = lr.name || `LoRA #${idx + 1}`;
+                    const s = entry.variant_loras?.[g]?.[c]?.[idx] ?? lr.strength ?? 1;
+                    loraRows.push([`${name} [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`, lr.path || lr.name || ""]);
+                });
+            }
         }
     } catch { /* skip */ }
 

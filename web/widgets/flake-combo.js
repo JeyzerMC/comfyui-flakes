@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, makeFavoriteStar, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
-    makePanelDropdown, makeSmallValueSlider, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
+    makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut, effectiveVariant, variantDropdownOptions,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults } from "../api.js";
@@ -238,9 +238,12 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             const groupsWrap = document.createElement("div");
             css(groupsWrap, "display:flex;flex-direction:column;gap:3px;");
             nativeColumn.appendChild(groupsWrap);
+            // Per-group choice LoRA sliders, hidden while All Variants is on (#413).
+            const variantLoraRenders = [];
             const applyAv = () => {
                 groupsWrap.style.opacity = entry._all_variants ? "0.4" : "1";
                 groupsWrap.style.pointerEvents = entry._all_variants ? "none" : "auto";
+                variantLoraRenders.forEach(r => r());
             };
             avChk.addEventListener("change", () => {
                 entry._all_variants = avChk.checked || undefined;
@@ -267,6 +270,13 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                 ddOptions.push({ value: "__multiple__", label: multipleLabel(stored()) });
                 const dd = makePanelDropdown(ddOptions, ddValue(stored()));
                 const multipleOpt = dd.element.options[dd.element.options.length - 1];
+                // No sliders for a "Multiple" selection (#413).
+                const vlHost = document.createElement("div");
+                const renderVl = () => {
+                    const ch = stored() || defaultChoice;
+                    renderVariantLoraSliders(vlHost, flakeData?.variants, entry, group, entry._all_variants || Array.isArray(ch) ? null : ch, onChanged);
+                };
+                variantLoraRenders.push(renderVl);
                 const store = (v) => {
                     if (v) {
                         entry.variant = entry.variant || {};
@@ -276,6 +286,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     }
                     multipleOpt.textContent = multipleLabel(v);
                     dd.element.value = ddValue(v);
+                    renderVl();
                     onChanged();
                     if (onVariantChange) onVariantChange();
                 };
@@ -298,7 +309,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     }
                     store(picked.length > 1 ? picked : picked[0] || noneValue);
                 });
-                row.appendChild(dd.container);
+                row.append(dd.container, vlHost);
                 groupsWrap.appendChild(row);
             }
             applyAv();
@@ -758,7 +769,7 @@ export function setupFlakeComboWidget(node) {
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr[idx] = { ...arr[idx], name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite, tags };
+        arr[idx] = { ...arr[idx], name: result.name, loras, variant: {}, variant_loras: undefined, has_lora, display_name, flake_type, favorite, tags };
         writeAllFlakes(arr);
         render();
     }

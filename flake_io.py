@@ -1045,6 +1045,9 @@ def resolve(entry: dict[str, Any]) -> Flake:
     # A group with no selection falls back to its default choice (#387);
     # "__none__" is an explicit "no choice" that skips the default.
     selected = dict(entry.get("variant") or entry.get("option") or {})
+    variant_loras = entry.get("variant_loras")
+    if not isinstance(variant_loras, dict):
+        variant_loras = {}
     for group, default in variant_defaults(flake).items():
         if not selected.get(group):
             selected[group] = default
@@ -1066,7 +1069,15 @@ def resolve(entry: dict[str, Any]) -> Flake:
         # (#299) — merged on top of the flake's base. Choice links are appended to
         # flake_links so the shared _apply_flake_link below resolves them (with its
         # cycle guard) alongside any host links.
-        flake.loras.extend(_parse_lora_list(variant.get("loras"), flake.name))
+        choice_loras = _parse_lora_list(variant.get("loras"), flake.name)
+        # Per-choice strength overrides from the grid item (#413).
+        group_loras = variant_loras.get(group)
+        slots = group_loras.get(choice) if isinstance(group_loras, dict) else None
+        if isinstance(slots, list):
+            for lr, s in zip(choice_loras, slots):
+                if isinstance(s, (int, float)):
+                    lr.strength = float(s)
+        flake.loras.extend(choice_loras)
         flake.controlnets.extend(_parse_cn_list(variant.get("controlnets"), flake.name))
         flake.flake_links.extend(_parse_link_list(variant))
 
