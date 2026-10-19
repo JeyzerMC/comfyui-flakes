@@ -403,13 +403,22 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     for (const ch of Object.keys(linkedVariants[group])) ddOptions.push({ value: ch, label: ch });
                     const current = ovr.variant[group] || (yamlDefaults.variant || {})[group] || "";
                     const dd = makePanelDropdown(ddOptions, current);
+                    // Choice LoRA sliders: override > link yaml > target default choice (#414).
+                    const [firstChoice, firstData] = Object.entries(linkedVariants[group])[0] || [];
+                    const vlHost = document.createElement("div");
+                    const renderVl = () => {
+                        const ch = ovr.variant[group] || (yamlDefaults.variant || {})[group] || (firstData?.default ? firstChoice : "");
+                        renderVariantLoraSliders(vlHost, linkedVariants, ovr, group, ch, onChanged, yamlDefaults.variant_loras?.[group]?.[ch] || []);
+                    };
                     dd.element.addEventListener("change", () => {
                         if (dd.element.value) ovr.variant[group] = dd.element.value;
                         else delete ovr.variant[group];
+                        renderVl();
                         onChanged();
                     });
-                    row.appendChild(dd.container);
+                    row.append(dd.container, vlHost);
                     linkedColumn.appendChild(row);
+                    renderVl();
                 }
             }
 

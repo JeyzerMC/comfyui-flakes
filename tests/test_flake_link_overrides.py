@@ -114,6 +114,56 @@ def test_grid_override_beats_yaml_override():
     assert _strength_of(flake, "drama.safetensors") == 0.3
 
 
+def _choice_lora_flakes(link):
+    _with_flakes({
+        "test_a": {
+            "name": "Test A",
+            "variants": {"mood": {
+                "calm": {"default": True, "loras": [{"name": "calm", "path": "calm.safetensors", "strength": 0.5}]},
+                "dark": {"loras": [
+                    {"name": "dark", "path": "dark.safetensors", "strength": 0.7},
+                    {"name": "rim", "path": "rim.safetensors", "strength": 0.3},
+                ]},
+            }},
+        },
+        "test_b": {"name": "Test B", "flake_links": [link]},
+    })
+
+
+def test_link_variant_loras_from_yaml():
+    """The host yaml link overrides the linked choice's LoRA strengths (#414)."""
+    _choice_lora_flakes({"target": "test_a", "variant": {"mood": "dark"}, "variant_loras": {"mood": {"dark": [None, 1.1]}}})
+    flake = fio.resolve({"name": "test_b"})
+    assert _strength_of(flake, "dark.safetensors") == 0.7
+    assert _strength_of(flake, "rim.safetensors") == 1.1
+
+
+def test_link_variant_loras_default_choice():
+    _choice_lora_flakes({"target": "test_a", "variant_loras": {"mood": {"calm": [0.9]}}})
+    flake = fio.resolve({"name": "test_b"})
+    assert _strength_of(flake, "calm.safetensors") == 0.9
+
+
+def test_grid_variant_loras_beat_yaml_per_slot():
+    _choice_lora_flakes({"target": "test_a", "variant": {"mood": "dark"}, "variant_loras": {"mood": {"dark": [0.2, 1.1]}}})
+    flake = fio.resolve({
+        "name": "test_b",
+        "flake_link_overrides": [{"variant_loras": {"mood": {"dark": [None, 2.5]}}}],
+    })
+    assert _strength_of(flake, "dark.safetensors") == 0.2
+    assert _strength_of(flake, "rim.safetensors") == 2.5
+
+
+def test_grid_variant_loras_follow_grid_choice():
+    _choice_lora_flakes({"target": "test_a", "variant_loras": {"mood": {"calm": [0.9]}}})
+    flake = fio.resolve({
+        "name": "test_b",
+        "flake_link_overrides": [{"variant": {"mood": "dark"}, "variant_loras": {"mood": {"dark": [1.5]}}}],
+    })
+    assert _strength_of(flake, "calm.safetensors") is None
+    assert _strength_of(flake, "dark.safetensors") == 1.5
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

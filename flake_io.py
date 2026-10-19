@@ -229,6 +229,8 @@ class FlakeLink:
     target: str
     variant: dict[str, str] = field(default_factory=dict)
     lora_strengths: list[float | None] = field(default_factory=list)
+    # {group: {choice: [strength|None]}} for the target's choice LoRAs (#414).
+    variant_loras: dict[str, dict[str, list[float | None]]] = field(default_factory=dict)
     # Multiplies into every LoRA and prompt the linked flake contributes.
     schedule: list[ScheduleKeyframe] = field(default_factory=list)
 
@@ -947,6 +949,13 @@ def _parse_link_list(raw: dict[str, Any]) -> list["FlakeLink"]:
                 (float(s) if isinstance(s, (int, float)) else None)
                 for s in (d.get("lora_strengths") or [])
             ],
+            variant_loras={
+                str(g): {
+                    str(c): [(float(s) if isinstance(s, (int, float)) else None) for s in slots]
+                    for c, slots in choices.items() if isinstance(slots, list)
+                }
+                for g, choices in (d.get("variant_loras") or {}).items() if isinstance(choices, dict)
+            },
             schedule=_parse_schedule(d.get("schedule")),
         )
 
@@ -1138,6 +1147,19 @@ def _apply_single_link(host: "Flake", link: "FlakeLink", grid_override: dict[str
             link_strengths.extend([None] * (i - len(link_strengths) + 1))
         link_strengths[i] = float(s)
 
+    # Choice LoRA strengths (#414): per slot, a non-null grid override wins.
+    link_variant_loras = {g: {c: list(slots) for c, slots in choices.items()} for g, choices in link.variant_loras.items()}
+    ovr_variant_loras = grid_override.get("variant_loras")
+    for g, choices in (ovr_variant_loras.items() if isinstance(ovr_variant_loras, dict) else ()):
+        for c, slots in (choices.items() if isinstance(choices, dict) else ()):
+            merged = link_variant_loras.setdefault(str(g), {}).setdefault(str(c), [])
+            for i, s in enumerate(slots if isinstance(slots, list) else ()):
+                if not isinstance(s, (int, float)):
+                    continue
+                if i >= len(merged):
+                    merged.extend([None] * (i - len(merged) + 1))
+                merged[i] = float(s)
+
     linked_entry = {
         "name": link.target,
         "variant": link_variant,
@@ -1147,6 +1169,8 @@ def _apply_single_link(host: "Flake", link: "FlakeLink", grid_override: dict[str
     # fall back to the linked flake's own default).
     if link_strengths:
         linked_entry["loras"] = link_strengths
+    if link_variant_loras:
+        linked_entry["variant_loras"] = link_variant_loras
 
     try:
         linked = resolve(linked_entry)

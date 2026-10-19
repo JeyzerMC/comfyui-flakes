@@ -311,12 +311,14 @@ async function flakeEntryRows(entry) {
         }
     } catch { /* skip */ }
 
-    // Linked flake surfacing.
-    if (hostData?.flake_link?.target) {
+    // Linked flake surfacing, one block per link (#234); the overrides mirror
+    // flake_io._apply_flake_link.
+    const links = hostData?.flake_links || (hostData?.flake_link ? [hostData.flake_link] : []);
+    for (const [li, link] of links.entries()) {
+        if (!link?.target) continue;
         try {
-            const linkTarget = hostData.flake_link.target;
-            const link = hostData.flake_link;
-            const ovr = entry.flake_link_override || {};
+            const linkTarget = link.target;
+            const ovr = (Array.isArray(entry.flake_link_overrides) ? entry.flake_link_overrides[li] : li === 0 && entry.flake_link_override) || {};
             const linked = await fetchFlake(linkTarget);
             const hostLabel = entry.display_name || hostData.name || entry.name.split("/").pop() || entry.name;
             const linkLabel = (linked.name || linkTarget).split("/").pop();
@@ -348,6 +350,14 @@ async function flakeEntryRows(entry) {
                 const v = linked.variants?.[g]?.[c];
                 if (v?.positive) promptRows.push([`${groupLabel} · ${g} · Positive`, v.positive]);
                 if (v?.negative) promptRows.push([`${groupLabel} · ${g} · Negative`, v.negative]);
+                // Linked choice LoRAs: grid override > link yaml > choice yaml (#414).
+                if (Array.isArray(v?.loras)) {
+                    v.loras.forEach((lr, idx) => {
+                        const name = lr.name || `LoRA #${idx + 1}`;
+                        const s = ovr.variant_loras?.[g]?.[c]?.[idx] ?? link.variant_loras?.[g]?.[c]?.[idx] ?? lr.strength ?? 1;
+                        loraRows.push([`[linked] ${name} [${Number.isInteger(s) ? s : Number(s).toFixed(2)}]`, lr.path || lr.name || ""]);
+                    });
+                }
             }
         } catch { /* missing linked target — skip silently */ }
     }

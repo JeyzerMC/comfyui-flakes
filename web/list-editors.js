@@ -375,6 +375,7 @@ export function normalizeLinks(data) {
         target: String(l.target || ""),
         variant: { ...(l.variant || {}) },
         lora_strengths: Array.isArray(l.lora_strengths) ? [...l.lora_strengths] : [],
+        variant_loras: JSON.parse(JSON.stringify(l.variant_loras || {})),
         ...(Array.isArray(l.schedule) ? { schedule: l.schedule.map(k => ({ ...k })) } : {}),
     }));
 }
@@ -408,14 +409,50 @@ function renderOneLinkOverrides(link, box) {
                 row.appendChild(gLabel);
                 const opts = [{ value: "", label: "— none —" }, ...Object.keys(choices).map(c => ({ value: c, label: c }))];
                 const dd = makeComfyDropdown(opts, link.variant?.[group] || "");
+                // Strengths of the chosen (or the target's default) choice LoRAs (#414).
+                const vlBox = document.createElement("div");
+                css(vlBox, "display:flex;flex-direction:column;gap:6px;");
+                const [firstChoice, firstData] = Object.entries(choices)[0] || [];
+                const renderVl = () => {
+                    vlBox.replaceChildren();
+                    const choice = link.variant?.[group] || (firstData?.default ? firstChoice : "");
+                    const choiceLoras = choices[choice]?.loras;
+                    if (!Array.isArray(choiceLoras)) return;
+                    choiceLoras.forEach((lr, i) => {
+                        const vrow = document.createElement("div");
+                        css(vrow, "display:flex;gap:8px;align-items:center;padding-left:128px;");
+                        const nm = document.createElement("span");
+                        nm.textContent = lr.name || String(lr.path || `LoRA ${i + 1}`).split(/[\\/]/).pop().replace(/\.[^.]+$/, "");
+                        css(nm, "flex:0 0 160px;font-size:12px;color:#bbb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
+                        vrow.appendChild(nm);
+                        const slider = makeComfyValueSlider(link.variant_loras?.[group]?.[choice]?.[i] ?? lr.strength ?? 1.0, -10, 10, 0.05, (v) => {
+                            const slots = (((link.variant_loras ||= {})[group] ||= {})[choice] ||= []);
+                            while (slots.length <= i) slots.push(null);
+                            slots[i] = v;
+                        });
+                        slider.style.flex = "1";
+                        vrow.appendChild(slider);
+                        const resetBtn = makeSmallButton("↺");
+                        resetBtn.title = "Use linked flake's default strength";
+                        resetBtn.addEventListener("click", () => {
+                            const slots = link.variant_loras?.[group]?.[choice];
+                            if (slots) slots[i] = null;
+                            renderVl();
+                        });
+                        vrow.appendChild(resetBtn);
+                        vlBox.appendChild(vrow);
+                    });
+                };
                 dd.element.addEventListener("change", () => {
                     link.variant = link.variant || {};
                     if (dd.element.value) link.variant[group] = dd.element.value;
                     else delete link.variant[group];
+                    renderVl();
                 });
                 css(dd.container, "flex:1;min-width:0;");
                 row.appendChild(dd.container);
-                box.appendChild(row);
+                box.append(row, vlBox);
+                renderVl();
             }
         }
         // Linked flake's LoRAs — the modern `loras` list, or a
@@ -488,6 +525,7 @@ export function renderLinkList(box, links, pickTarget) {
                     link.target = picked;
                     link.variant = {};
                     link.lora_strengths = [];
+                    link.variant_loras = {};
                     renderLinks();
                 }
             });
@@ -532,6 +570,15 @@ export function serializeLinks(links) {
             strengths.pop();
         }
         if (strengths.length > 0) out.lora_strengths = strengths;
+        const variantLoras = {};
+        for (const [g, choices] of Object.entries(link.variant_loras || {})) {
+            for (const [c, slots] of Object.entries(choices || {})) {
+                const kept = (slots || []).slice();
+                while (kept.length && (kept[kept.length - 1] === null || kept[kept.length - 1] === undefined)) kept.pop();
+                if (kept.length) (variantLoras[g] ||= {})[c] = kept;
+            }
+        }
+        if (Object.keys(variantLoras).length > 0) out.variant_loras = variantLoras;
         if (link.schedule?.length) out.schedule = link.schedule;
         outLinks.push(out);
     }
