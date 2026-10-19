@@ -263,13 +263,17 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                 // "Multiple ↗" stores an array of choices, picked in an overlay (#406).
                 const defaultChoice = (cachedVariantDefaults(entry.name) || {})[group];
                 const stored = () => (entry.variant || {})[group] || "";
-                const ddValue = (v) => Array.isArray(v) ? "__multiple__" : v === defaultChoice ? "" : v;
+                // The shown value is a hidden option, so re-picking the listed "Multiple" always fires change (#418).
+                const ddValue = (v) => Array.isArray(v) ? "__multiple_current__" : v === defaultChoice ? "" : v;
                 const multipleLabel = (v) => Array.isArray(v) ? `Multiple (${v.length}) ↗` : "Multiple ↗";
                 const ddOptions = variantDropdownOptions(hasOptions[group], defaultChoice);
                 const noneValue = ddOptions[0].value;
                 ddOptions.push({ value: "__multiple__", label: multipleLabel(stored()) });
+                ddOptions.push({ value: "__multiple_current__", label: multipleLabel(stored()) });
                 const dd = makePanelDropdown(ddOptions, ddValue(stored()));
-                const multipleOpt = dd.element.options[dd.element.options.length - 1];
+                const currentOpt = dd.element.options[dd.element.options.length - 1];
+                currentOpt.hidden = true;
+                const multipleOpt = dd.element.options[dd.element.options.length - 2];
                 // No sliders for a "Multiple" selection (#413).
                 const vlHost = document.createElement("div");
                 const renderVl = () => {
@@ -284,18 +288,12 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     } else {
                         if (entry.variant) delete entry.variant[group];
                     }
-                    multipleOpt.textContent = multipleLabel(v);
+                    multipleOpt.textContent = currentOpt.textContent = multipleLabel(v);
                     dd.element.value = ddValue(v);
                     renderVl();
                     onChanged();
                     if (onVariantChange) onVariantChange();
                 };
-                // A select fires no change for its current option, so clear it
-                // while open: picking "Multiple (k) ↗" again reopens the overlay.
-                dd.element.addEventListener("mousedown", () => {
-                    if (Array.isArray(stored())) dd.element.selectedIndex = -1;
-                });
-                dd.element.addEventListener("blur", () => { dd.element.value = ddValue(stored()); });
                 dd.element.addEventListener("change", async () => {
                     if (dd.element.value !== "__multiple__") return store(dd.element.value);
                     const current = stored() || defaultChoice;
