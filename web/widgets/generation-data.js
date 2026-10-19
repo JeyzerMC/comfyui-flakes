@@ -1,4 +1,4 @@
-import { css, effectiveVariant } from "../utils.js";
+import { css, effectiveVariant, expandEntryVariants } from "../utils.js";
 import { openOverlay } from "../modal.js";
 import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults } from "../api.js";
 import { getActiveBatch, subscribeBatch, variantKey } from "../queue.js";
@@ -154,14 +154,14 @@ export async function buildModel(startNode) {
             if (flakes.length === 0) continue;
             const items = [];
             for (const e of flakes) {
-                // One card per variant combination (#345), like the queue.js
-                // expansion.
-                const combos = e._all_variants ? await flakeVariantCombos(e.name) : [];
-                if (combos.length) {
+                // One card per variant combination (#345) or "Multiple" choice
+                // (#406), like the queue.js expansion. The meta load also gives
+                // the default variant choices the cards show (#388).
+                await fetchFlakeMeta(e.name).catch(() => {});
+                const combos = e._all_variants ? await flakeVariantCombos(e.name) : expandEntryVariants(e);
+                if (combos.length > (e._all_variants ? 0 : 1)) {
                     for (const variant of combos) items.push(makeFlakeCard({ ...e, variant }, `${e._uid}.${variantKey(variant)}`));
                 } else {
-                    // Loads the default variant choices the card shows (#388).
-                    await fetchFlakeMeta(e.name).catch(() => {});
                     items.push(makeFlakeCard(e, e._uid));
                 }
             }

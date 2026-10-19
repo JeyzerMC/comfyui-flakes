@@ -1140,13 +1140,23 @@ export function variantDropdownOptions(choices, defaultChoice) {
 }
 
 // Initials of a flake's effective variant choices, formatted "[P, C]" (#298).
-// Returns "" when nothing is selected.
+// A "Multiple" group shows its count, e.g. "3×" (#406). Returns "" when
+// nothing is selected.
 export function variantInitials(entry, defaults) {
     const initials = Object.values(effectiveVariant(entry?.variant, defaults))
-        .map(v => String(v).trim()[0])
-        .filter(Boolean)
-        .map(c => c.toUpperCase());
+        .map(v => Array.isArray(v) ? `${v.length}×` : String(v).trim().charAt(0).toUpperCase())
+        .filter(Boolean);
     return initials.length ? `[${initials.join(", ")}]` : "";
+}
+
+// Plain variant selections of a Flake Combo entry: the cartesian product over
+// its "Multiple" (array) groups, other groups as stored (#406).
+export function expandEntryVariants(entry) {
+    let out = [{}];
+    for (const [g, ch] of Object.entries(entry.variant || {})) {
+        out = out.flatMap(v => (Array.isArray(ch) ? ch : [ch]).map(c => ({ ...v, [g]: c })));
+    }
+    return out;
 }
 
 export function makeBypassStrike() {

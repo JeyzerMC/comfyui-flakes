@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { collectChain } from "./widgets/generation-data.js";
-import { serializeModelOverrides } from "./utils.js";
+import { serializeModelOverrides, expandEntryVariants } from "./utils.js";
 import { fetchFlakeMeta, variantComboCount } from "./api.js";
 
 // Full set of variant selections for a flake whose groups are `meta`
@@ -68,10 +68,11 @@ export function computeJobCount(graph) {
     for (const node of g.nodes) {
         if (node.type === "FlakeCombo") {
             // Each active flake is one axis item; an "All Variants" flake expands
-            // into one item per variant combination (#343).
+            // into one item per variant combination (#343), a "Multiple" one
+            // into one per checked choice set (#406).
             let axis = 0;
             for (const f of activeComboFlakes(node)) {
-                axis += f._all_variants ? Math.max(1, variantComboCount(f.name)) : 1;
+                axis += f._all_variants ? Math.max(1, variantComboCount(f.name)) : expandEntryVariants(f).length;
             }
             if (axis > 0) count *= axis;
         } else if (node.type === "FlakeModelCombo") {
@@ -517,15 +518,16 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 window.alert("FlakeCombo node has no active (non-bypassed) flakes.");
                 return;
             }
-            // Expand "All Variants" flakes into one axis item per variant combo;
-            // ordinary flakes stay a single item. vkey keeps each combo's
-            // comboKey unique (#343).
+            // Expand "All Variants" flakes into one axis item per variant combo,
+            // "Multiple" choices into one per checked choice (#406); ordinary
+            // flakes stay a single item. vkey keeps each combo's comboKey
+            // unique (#343).
             const comboItems = [];
             for (const flake of activeFlakes) {
                 const uid = flake._uid;
-                if (flake._all_variants) {
-                    const meta = await fetchFlakeMeta(flake.name);
-                    for (const variant of enumerateVariantCombos(meta)) {
+                const variants = flake._all_variants ? enumerateVariantCombos(await fetchFlakeMeta(flake.name)) : expandEntryVariants(flake);
+                if (flake._all_variants || variants.length > 1) {
+                    for (const variant of variants) {
                         comboItems.push({ node, type: "combo", value: { ...flake, variant }, uid, vkey: `${uid}.${variantKey(variant)}` });
                     }
                 } else {

@@ -6,7 +6,7 @@ import {
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
-import { openFileLoadPicker } from "../pickers.js";
+import { openFileLoadPicker, openVariantMultiPicker } from "../pickers.js";
 import { getGeneratingUid, newItemUid } from "../queue.js";
 
 function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, onReplace, onToggleBypass, onSingleOut, onDuplicate, onDragStart, onDragOver, onDrop, onDragEnd }) {
@@ -35,7 +35,7 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
             return;
         }
         const [group, choice] = sel;
-        const variantUrl = getVariantImageUrl(entry.name, group, choice);
+        const variantUrl = getVariantImageUrl(entry.name, group, Array.isArray(choice) ? choice[0] : choice);
         const probe = new Image();
         probe.onload = () => { block.style.backgroundImage = `url(${variantUrl})`; };
         probe.onerror = () => { block.style.backgroundImage = `url(${baseUrl})`; };
@@ -257,18 +257,46 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                 css(gLabel, "font-size:9px;opacity:0.7;text-align:center;");
                 row.appendChild(gLabel);
 
+                // "Multiple ↗" stores an array of choices, picked in an overlay (#406).
                 const defaultChoice = (cachedVariantDefaults(entry.name) || {})[group];
-                const current = (entry.variant || {})[group] || "";
-                const dd = makePanelDropdown(variantDropdownOptions(hasOptions[group], defaultChoice), current === defaultChoice ? "" : current);
-                dd.element.addEventListener("change", () => {
-                    if (dd.element.value) {
+                const stored = () => (entry.variant || {})[group] || "";
+                const ddValue = (v) => Array.isArray(v) ? "__multiple__" : v === defaultChoice ? "" : v;
+                const multipleLabel = (v) => Array.isArray(v) ? `Multiple (${v.length}) ↗` : "Multiple ↗";
+                const ddOptions = variantDropdownOptions(hasOptions[group], defaultChoice);
+                const noneValue = ddOptions[0].value;
+                ddOptions.push({ value: "__multiple__", label: multipleLabel(stored()) });
+                const dd = makePanelDropdown(ddOptions, ddValue(stored()));
+                const multipleOpt = dd.element.options[dd.element.options.length - 1];
+                const store = (v) => {
+                    if (v) {
                         entry.variant = entry.variant || {};
-                        entry.variant[group] = dd.element.value;
+                        entry.variant[group] = v;
                     } else {
                         if (entry.variant) delete entry.variant[group];
                     }
+                    multipleOpt.textContent = multipleLabel(v);
+                    dd.element.value = ddValue(v);
                     onChanged();
                     if (onVariantChange) onVariantChange();
+                };
+                // A select fires no change for its current option, so clear it
+                // while open: picking "Multiple (k) ↗" again reopens the overlay.
+                dd.element.addEventListener("mousedown", () => {
+                    if (Array.isArray(stored())) dd.element.selectedIndex = -1;
+                });
+                dd.element.addEventListener("blur", () => { dd.element.value = ddValue(stored()); });
+                dd.element.addEventListener("change", async () => {
+                    if (dd.element.value !== "__multiple__") return store(dd.element.value);
+                    const current = stored() || defaultChoice;
+                    const picked = await openVariantMultiPicker({
+                        flakeName: entry.name, group, choices: hasOptions[group],
+                        selected: Array.isArray(current) ? current : current && current !== "__none__" ? [current] : [],
+                    });
+                    if (!picked) {
+                        dd.element.value = ddValue(stored());
+                        return;
+                    }
+                    store(picked.length > 1 ? picked : picked[0] || noneValue);
                 });
                 row.appendChild(dd.container);
                 groupsWrap.appendChild(row);

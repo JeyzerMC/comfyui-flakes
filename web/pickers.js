@@ -1,6 +1,6 @@
 import { openOverlay } from "./modal.js";
-import { css, makeButton, makeComfyInput, familyFolder, renderFlakeLabel } from "./utils.js";
-import { getCoverUrl, fetchBrowse, fetchLoras, fetchCheckpoints } from "./api.js";
+import { css, makeButton, makeComfyInput, makeComfyValueSlider, familyFolder, renderFlakeLabel } from "./utils.js";
+import { getCoverUrl, getVariantImageUrl, fetchBrowse, fetchLoras, fetchCheckpoints } from "./api.js";
 
 const BROWSE_TYPE_LABELS = {
     checkpoints: "models/checkpoints",
@@ -261,6 +261,88 @@ function openNamePicker({ title, kind, noun, base, names, directories = null, fa
             close({ name: selectedName });
         });
         footer.appendChild(selectBtn);
+    });
+}
+
+// Flake Combo "Multiple ↗" (#406): check several choices of one variant group.
+// The slider sets how many choices Randomize checks; each press re-rolls.
+// Resolves to the checked choices in group order, or null on cancel.
+export function openVariantMultiPicker({ flakeName, group, choices, selected = [] }) {
+    return new Promise((resolve) => {
+        const { content, footer, close, handlers } = openOverlay();
+        handlers.onClose = (v) => resolve(v ?? null);
+        const checked = new Set(selected.filter(c => choices.includes(c)));
+
+        const titleEl = document.createElement("h3");
+        css(titleEl, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
+        titleEl.textContent = group;
+        content.appendChild(titleEl);
+
+        const topRow = document.createElement("div");
+        css(topRow, "display:flex;align-items:center;gap:8px;margin-bottom:8px;");
+        const slider = makeComfyValueSlider(checked.size, 0, choices.length, 1);
+        slider.style.flex = "1";
+        const randomBtn = makeButton("Randomize");
+        randomBtn.style.height = "32px";
+        randomBtn.addEventListener("click", () => {
+            const pool = [...choices];
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+            checked.clear();
+            for (const c of pool.slice(0, slider.getValue())) checked.add(c);
+            refreshTiles();
+        });
+        topRow.append(slider, randomBtn);
+        content.appendChild(topRow);
+
+        const grid = document.createElement("div");
+        css(grid, "display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;max-height:65vh;overflow:auto;align-content:start;");
+        content.appendChild(grid);
+
+        // Tiles show the choice image, or its initial when it has none.
+        const tiles = choices.map((choice) => {
+            const tile = document.createElement("div");
+            const initial = document.createElement("div");
+            initial.textContent = choice.trim().charAt(0).toUpperCase();
+            css(initial, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:600;color:#555;");
+            const img = document.createElement("img");
+            img.src = getVariantImageUrl(flakeName, group, choice);
+            img.addEventListener("error", () => img.remove());
+            css(img, "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;");
+            const nameEl = document.createElement("div");
+            nameEl.textContent = choice;
+            nameEl.title = choice;
+            css(nameEl, "position:absolute;left:0;right:0;bottom:0;padding:12px 4px 4px;font-size:11px;font-weight:500;text-align:center;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,0.85));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
+            const mark = document.createElement("div");
+            mark.textContent = "✓";
+            css(mark, "position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:#2a6acf;color:#fff;font-size:13px;font-weight:700;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.8);");
+            tile.append(initial, img, nameEl, mark);
+            tile.addEventListener("click", () => {
+                if (checked.has(choice)) checked.delete(choice);
+                else checked.add(choice);
+                refreshTiles();
+            });
+            grid.appendChild(tile);
+            return { tile, mark, choice };
+        });
+        function refreshTiles() {
+            for (const { tile, mark, choice } of tiles) {
+                const on = checked.has(choice);
+                css(tile, `position:relative;aspect-ratio:1/1;background:#252525;border:2px solid ${on ? "#2a6acf" : "#444"};border-radius:4px;cursor:pointer;user-select:none;box-sizing:border-box;overflow:hidden;${on ? "" : "opacity:0.55;"}`);
+                mark.style.display = on ? "flex" : "none";
+            }
+        }
+        refreshTiles();
+
+        const cancelBtn = makeButton("Cancel");
+        cancelBtn.addEventListener("click", () => close(undefined));
+        footer.appendChild(cancelBtn);
+
+        const okBtn = makeButton("OK", true);
+        okBtn.addEventListener("click", () => close(choices.filter(c => checked.has(c))));
+        footer.appendChild(okBtn);
     });
 }
 
