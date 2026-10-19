@@ -194,6 +194,15 @@ function loadImage(url) {
     });
 }
 
+// First image of `urls` that loads, else null (#410).
+async function loadFirstImage(urls) {
+    for (const url of urls) {
+        const img = await loadImage(url);
+        if (img) return img;
+    }
+    return null;
+}
+
 // A flake's prompts: the `prompts:` list or the legacy single `prompt:` (#371).
 function flakePrompts(d) {
     return Array.isArray(d.prompts) ? d.prompts : (d.prompt ? [d.prompt] : []);
@@ -210,7 +219,7 @@ const STACK_STYLE = { aspectRatio: String(STACK_ASPECT), maxHeight: "40vh" };
 // `seedKey` (#384). A missing cover is drawn as a plain card. The width is
 // DPR-aware (~1024 logical px × devicePixelRatio, capped at 2×) so it isn't
 // blurred in the overlay (#354).
-async function buildCardStack(urls, seedKey) {
+async function buildCardStack(urlLists, seedKey) {
     const cw = Math.round(1024 * Math.min(window.devicePixelRatio || 1, 2));
     const ch = Math.round(cw / STACK_ASPECT);
     const canvas = document.createElement("canvas");
@@ -219,7 +228,7 @@ async function buildCardStack(urls, seedKey) {
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#1a1a1a";
     ctx.fillRect(0, 0, cw, ch);
-    const images = await Promise.all(urls.map(loadImage));
+    const images = await Promise.all(urlLists.map(loadFirstImage));
     const rand = seededRandom(seedKey);
     const n = images.length;
     const cols = Math.max(1, Math.min(n, Math.ceil(Math.sqrt(n * STACK_ASPECT))));
@@ -408,8 +417,12 @@ async function combinationData(model, selection) {
         out.comboPromptRows.push(...rows.promptRows);
     }
 
-    // Cover urls for the composite = the selected combo item covers, in order.
-    out.coverUrls = model.axes.map((_, i) => selection[i].coverUrl);
+    // Cover candidates per selected item, in order: the variant image then the
+    // flake cover, since a variant choice may have no image (#410).
+    out.coverUrls = model.axes.map((_, i) => {
+        const it = selection[i];
+        return (it.baseCoverUrl ? [it.variantCoverUrl, it.baseCoverUrl] : [it.coverUrl]).filter(Boolean);
+    });
     return out;
 }
 
@@ -839,11 +852,11 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             } else {
                 dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
-                const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
+                const urlLists = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [[`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`]] : []);
                 Object.assign(compositeImg.style, STACK_STYLE);
                 stacked = true;
                 fit();
-                const src = await buildCardStack(urls, key);
+                const src = await buildCardStack(urlLists, key);
                 if (token !== imageToken) return;
                 compositeImg.src = src;
                 compositeDimensions.textContent = data.dimensions || "";
@@ -1095,11 +1108,11 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             } else {
                 dimsFromImage = false;
                 compositeLabel.textContent = "No image generated yet";
-                const urls = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`] : []);
+                const urlLists = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [[`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`]] : []);
                 Object.assign(compositeImg.style, STACK_STYLE);
                 stacked = true;
                 fit();
-                const src = await buildCardStack(urls, key);
+                const src = await buildCardStack(urlLists, key);
                 if (token !== imageToken) return;
                 compositeImg.src = src;
                 compositeDimensions.textContent = data.dimensions || "";
