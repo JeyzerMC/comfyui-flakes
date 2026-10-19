@@ -91,6 +91,19 @@ def test_link_gets_default():
     assert "soft light" in flake.positive
 
 
+def test_link_empty_variant_gets_default():
+    _with_flakes({"pose": POSE, "host": {"name": "Host", "flake_links": [{"target": "pose", "variant": {"light": ""}}]}})
+    flake = fio.resolve({"name": "host"})
+    assert "soft light" in flake.positive
+
+
+def test_link_none_skips_default():
+    # A link saved with "None" picked in the editor opts out of the target default (#419).
+    _with_flakes({"pose": POSE, "host": {"name": "Host", "flake_links": [{"target": "pose", "variant": {"light": "__none__"}}]}})
+    flake = fio.resolve({"name": "host"})
+    assert flake.positive == "base"
+
+
 def test_grid_override_beats_link_variant():
     _with_flakes({
         "pose": POSE,

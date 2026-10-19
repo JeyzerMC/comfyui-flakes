@@ -1151,6 +1151,17 @@ export function effectiveVariant(variant, defaults) {
     return out;
 }
 
+// A flake's {group: default choice} map from its variants: a group's first
+// choice when it has `default: true`, as flake_io.variant_defaults (#414, #419).
+export function variantDefaultsOf(variants) {
+    const out = {};
+    for (const [g, choices] of Object.entries(variants || {})) {
+        const [first, data] = Object.entries(choices || {})[0] || [];
+        if (data?.default) out[g] = first;
+    }
+    return out;
+}
+
 // Variant group dropdown options: "None" first, then the choices. The default
 // choice is labeled "<choice> (default)" and maps to "" (follow the default),
 // so "None" is an explicit "__none__" opt-out only when a default exists (#388, #405).

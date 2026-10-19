@@ -2,7 +2,7 @@ import {
     css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, makeFavoriteStar, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock, flakeDrag, clearFlakeDrag,
     makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
-    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut, effectiveVariant, variantDropdownOptions,
+    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut, effectiveVariant, variantDropdownOptions, variantDefaultsOf,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
@@ -382,26 +382,29 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                 const sep = document.createElement("div");
                 css(sep, "border-top:1px solid #333;margin:2px 0;");
                 linkedColumn.appendChild(sep);
+                const targetDefaults = variantDefaultsOf(linkedVariants);
                 for (const group of Object.keys(linkedVariants)) {
+                    const targetDefault = targetDefaults[group];
                     const row = document.createElement("div");
                     css(row, "display:flex;flex-direction:column;gap:2px;");
                     const gLabel = document.createElement("span");
                     gLabel.textContent = group;
                     css(gLabel, "font-size:9px;opacity:0.7;text-align:center;");
                     row.appendChild(gLabel);
-                    const ddOptions = [{ value: "", label: "-" }];
-                    for (const ch of Object.keys(linkedVariants[group])) ddOptions.push({ value: ch, label: ch });
-                    const current = ovr.variant[group] || (yamlDefaults.variant || {})[group] || "";
-                    const dd = makePanelDropdown(ddOptions, current);
+                    const yamlChoice = (yamlDefaults.variant || {})[group] || "";
+                    const current = ovr.variant[group] || yamlChoice;
+                    const dd = makePanelDropdown(variantDropdownOptions(Object.keys(linkedVariants[group]), targetDefault), current === targetDefault ? "" : current);
                     // Choice LoRA sliders: override > link yaml > target default choice (#414).
-                    const [firstChoice, firstData] = Object.entries(linkedVariants[group])[0] || [];
                     const vlHost = document.createElement("div");
                     const renderVl = () => {
-                        const ch = ovr.variant[group] || (yamlDefaults.variant || {})[group] || (firstData?.default ? firstChoice : "");
+                        const ch = ovr.variant[group] || yamlChoice || targetDefault;
                         renderVariantLoraSliders(vlHost, linkedVariants, ovr, group, ch, onChanged, yamlDefaults.variant_loras?.[group]?.[ch] || []);
                     };
+                    // "" (the default entry, or None without a default) follows the link
+                    // yaml when it is unset; otherwise it must beat the yaml choice (#419).
                     dd.element.addEventListener("change", () => {
-                        if (dd.element.value) ovr.variant[group] = dd.element.value;
+                        const value = dd.element.value || (yamlChoice && (targetDefault || "__none__"));
+                        if (value) ovr.variant[group] = value;
                         else delete ovr.variant[group];
                         renderVl();
                         onChanged();

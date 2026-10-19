@@ -1,6 +1,6 @@
 import {
     css, makeSmallButton, makeComfyInput, makeComfyDropdown, makeSearchableDropdown,
-    makeComfyNumberInput, makeComfyValueSlider, makeLabel, familyFolder,
+    makeComfyNumberInput, makeComfyValueSlider, makeLabel, familyFolder, variantDefaultsOf, variantDropdownOptions,
 } from "./utils.js";
 import { fetchLoras, fetchFlake } from "./api.js";
 import { openFileBrowser, openFileLoadPicker } from "./pickers.js";
@@ -400,22 +400,24 @@ function renderOneLinkOverrides(link, box) {
             vLabel.textContent = "Variant choice override (saved on this flake)";
             css(vLabel, "font-size:11px;color:#aaa;font-weight:500;");
             box.appendChild(vLabel);
+            const targetDefaults = variantDefaultsOf(variants);
             for (const [group, choices] of Object.entries(variants)) {
+                const targetDefault = targetDefaults[group];
                 const row = document.createElement("div");
                 css(row, "display:flex;gap:8px;align-items:center;");
                 const gLabel = document.createElement("span");
                 gLabel.textContent = group;
                 css(gLabel, "flex:0 0 120px;font-size:12px;color:#bbb;");
                 row.appendChild(gLabel);
-                const opts = [{ value: "", label: "— none —" }, ...Object.keys(choices).map(c => ({ value: c, label: c }))];
-                const dd = makeComfyDropdown(opts, link.variant?.[group] || "");
+                // The target's default choice shows as "<choice> (default)" = "" (#419).
+                const v = link.variant?.[group] || "";
+                const dd = makeComfyDropdown(variantDropdownOptions(Object.keys(choices), targetDefault), v === targetDefault ? "" : v);
                 // Strengths of the chosen (or the target's default) choice LoRAs (#414).
                 const vlBox = document.createElement("div");
                 css(vlBox, "display:flex;flex-direction:column;gap:6px;");
-                const [firstChoice, firstData] = Object.entries(choices)[0] || [];
                 const renderVl = () => {
                     vlBox.replaceChildren();
-                    const choice = link.variant?.[group] || (firstData?.default ? firstChoice : "");
+                    const choice = link.variant?.[group] || targetDefault;
                     const choiceLoras = choices[choice]?.loras;
                     if (!Array.isArray(choiceLoras)) return;
                     choiceLoras.forEach((lr, i) => {
