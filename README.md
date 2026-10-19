@@ -108,6 +108,8 @@ flake_links:
     variant:
       intensity: heavy                 # default variant choice on the target
     lora_strengths: [0.8]              # per-lora overrides (null = target default)
+    variant_loras:                     # strengths for the LoRAs of a variant choice
+      intensity: {heavy: [0.6]}        # {group: {choice: [strengths]}}
   - target: "poses/standing"
 ```
 
@@ -177,6 +179,11 @@ Move the yaml and its folder together to share or relocate a flake.
   `Multiple ↗` opens a grid to check several choices of a group; each checked
   choice is generated as its own combination. The slider + `Randomize` checks
   that many random choices (press again to re-roll).
+  The dropdown also shows strength sliders for the LoRAs of the selected
+  choice, stored per choice in the grid item (`variant_loras`).
+- **Flake links**: the editor's link card and the grid dropdown's linked column
+  show sliders for the LoRAs of the linked flake's selected variant choice
+  (`flake_links[i].variant_loras`).
 - **ControlNets**: new entries have `img res` on. Picking a ControlNet image uses
   its batch's `_0_cover` image as the flake cover when it has none, and as the
   variant choice's image for a ControlNet inside a choice.
@@ -271,7 +278,7 @@ Sits between your checkpoint loader and sampler. Loads an ordered list of **flak
 
 ![Flake Stack demo](assets/img/flake_stack.png)
 
-Flakes can be reordered, enabled / disabled, and edited. You can also open a small dropdown menu to make small non-persistent tweaks, such as changing a variant option, or a lora strength.
+Flakes can be reordered, enabled / disabled, and edited, and dragged and dropped between Flake Stack / Flake Combo nodes in any direction. You can also open a small dropdown menu to make small non-persistent tweaks, such as changing a variant option, or a lora strength.
 
 <div align="center">
 
@@ -299,10 +306,12 @@ ADetailer pass (upscaling has no steps to preview). When ComfyUI's **Live previe
 method** setting is `default` and the server runs without `--preview-method`,
 Flakes requests `auto` (latent2rgb) previews for its prompts; pick `taesd` for
 sharper previews or `none` to turn them off. Combinations that are not generated
-yet show their flakes' covers as scattered cards. Results stay matched to their
+yet show their flakes' covers as scattered cards that fill the image panel (a
+choice without an image uses its flake's cover). Results stay matched to their
 grid item when items are moved or duplicated. **Fit Output Image in View** (top
-right of the overlay, on by default) shrinks the image to fit without
-scrolling. Landscape and square outputs widen the image panel to fit. Prompts,
+right of the overlay, on by default) fits the whole image in view; off, it shows
+at full size and scrolls both ways. Landscape outputs widen the overlay to
+nearly the screen width. Prompts,
 LoRAs and model details are folded under the `^` at the bottom of each panel.
 
 ### Flake Data Split
