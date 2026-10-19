@@ -1524,7 +1524,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     const co = fieldState.variants[groupName][choiceName] || (fieldState.variants[groupName][choiceName] = {});
                                     if (key === "lora") {
                                         if (!Array.isArray(co.loras)) co.loras = [];
-                                        co.loras.push({ name: "", path: "", strength: 1.0 });
+                                        co.loras.push({ name: "", url: "", path: "", strength: 1.0, _editing: true });
                                         renderChoiceExtras();
                                     } else if (key === "controlnets") {
                                         if (!Array.isArray(co.controlnets)) co.controlnets = [];
@@ -1551,32 +1551,13 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     };
                                     // ---- LoRAs ---- (rendered into loraHost, beside the floated
                                     // cover image, wrapping to full width when tall — #336)
-                                    const loras = Array.isArray(co.loras) ? co.loras : [];
-                                    if (loras.length) sectionLabel("Variant LoRAs", loraHost);
-                                    loras.forEach((lr, i) => {
-                                        const row = document.createElement("div");
-                                        css(row, "display:flex;gap:6px;align-items:center;margin-top:3px;");
-                                        row.appendChild(makeScheduleHandle(lr, renderChoiceExtras));
-                                        // Clickable box that opens the same "Select LoRA" file
-                                        // popup as the regular flake LoRA section (#310).
-                                        const box = document.createElement("div");
-                                        css(box, "flex:1;min-width:0;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:5px 8px;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;");
-                                        const showName = () => { box.textContent = lr.path ? lr.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select LoRA…"; box.title = lr.path || ""; };
-                                        showName();
-                                        box.addEventListener("click", async () => {
-                                            const result = await openFileBrowser({ type: "loras", defaultPath: flakeDir() });
-                                            if (result && result.file) { lr.path = result.file; showName(); }
-                                        });
-                                        row.appendChild(box);
-                                        const slider = makeSmallValueSlider(lr.strength ?? 1.0, 0, 2, 0.05, (v) => { lr.strength = v; });
-                                        slider.style.flex = "0 0 110px";
-                                        row.appendChild(slider);
-                                        const rm = makeSmallButton("✕");
-                                        rm.addEventListener("click", () => { loras.splice(i, 1); if (!loras.length) delete co.loras; renderChoiceExtras(); });
-                                        row.appendChild(rm);
-                                        loraHost.appendChild(row);
-                                        if (lr.schedule) loraHost.appendChild(makeSchedulePanel(lr));
-                                    });
+                                    if (co.loras?.length) {
+                                        sectionLabel("Variant LoRAs", loraHost);
+                                        const loraList = document.createElement("div");
+                                        css(loraList, "display:flex;flex-direction:column;gap:6px;margin-top:3px;");
+                                        loraHost.appendChild(loraList);
+                                        renderLoraList(loraList, co.loras, { family: currentFamily, loraDir: flakeDir, showAdd: false });
+                                    }
                                     // ---- ControlNets ----
                                     const cnets = Array.isArray(co.controlnets) ? co.controlnets : [];
                                     if (cnets.length) sectionLabel("Variant ControlNets");
@@ -2068,7 +2049,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             if (!choice) continue;
                             delete choice._uploaded;
                             if (Array.isArray(choice.loras)) {
-                                choice.loras = choice.loras.filter(l => l && (l.path || l.name));
+                                choice.loras = serializeLoras(choice.loras.filter(l => l && (l.path || l.name)));
                                 if (choice.loras.length === 0) delete choice.loras;
                             }
                             if (Array.isArray(choice.controlnets)) {
