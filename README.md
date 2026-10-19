@@ -170,7 +170,13 @@ Move the yaml and its folder together to share or relocate a flake.
   stem from the name (`Jojo Pose` → `jojo_pose`). A new choice gets the fields
   the group's choices already have (negative prompt, a ControlNet with the same
   settings minus the image, a LoRA row) and a name-derived stem when the others
-  use theirs. A taken name becomes `Pose B`, `Pose C`, …
+  use theirs. A taken name becomes `Pose B`, `Pose C`, … Choice LoRAs have the
+  same name/URL fields and -10…10 strength as the flake's own LoRAs.
+- **Variant dropdowns** on grid items list `None` first, then the choices, with
+  the default one marked `(default)` and preselected. On Flake Combo,
+  `Multiple ↗` opens a grid to check several choices of a group; each checked
+  choice is generated as its own combination. The slider + `Randomize` checks
+  that many random choices (press again to re-roll).
 - **ControlNets**: new entries have `img res` on. Picking a ControlNet image uses
   its batch's `_0_cover` image as the flake cover when it has none, and as the
   variant choice's image for a ControlNet inside a choice.
@@ -295,7 +301,9 @@ Flakes requests `auto` (latent2rgb) previews for its prompts; pick `taesd` for
 sharper previews or `none` to turn them off. Combinations that are not generated
 yet show their flakes' covers as scattered cards. Results stay matched to their
 grid item when items are moved or duplicated. **Fit Output Image in View** (top
-right of the overlay) shrinks the image to fit without scrolling.
+right of the overlay, on by default) shrinks the image to fit without
+scrolling. Landscape and square outputs widen the image panel to fit. Prompts,
+LoRAs and model details are folded under the `^` at the bottom of each panel.
 
 ### Flake Data Split
 
