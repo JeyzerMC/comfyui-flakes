@@ -1130,12 +1130,12 @@ export function effectiveVariant(variant, defaults) {
     return out;
 }
 
-// Variant group dropdown options: "-" is no selection, shown as the group's
-// default choice when it has one, with "None" to opt out of it (#388).
+// Variant group dropdown options: "None" first, then the choices. The default
+// choice is labeled "<choice> (default)" and maps to "" (follow the default),
+// so "None" is an explicit "__none__" opt-out only when a default exists (#388, #405).
 export function variantDropdownOptions(choices, defaultChoice) {
-    const opts = [{ value: "", label: defaultChoice ? `Default (${defaultChoice})` : "-" }];
-    if (defaultChoice) opts.push({ value: "__none__", label: "None" });
-    for (const ch of choices) opts.push({ value: ch, label: ch });
+    const opts = [{ value: defaultChoice ? "__none__" : "", label: "None" }];
+    for (const ch of choices) opts.push(ch === defaultChoice ? { value: "", label: `${ch} (default)` } : { value: ch, label: ch });
     return opts;
 }
 

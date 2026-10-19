@@ -282,8 +282,9 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                 css(gLabel, "font-size:9px;opacity:0.7;text-align:center;");
                 row.appendChild(gLabel);
 
-                const ddOptions = variantDropdownOptions(hasOptions[group], (cachedVariantDefaults(entry.name) || {})[group]);
-                const dd = makePanelDropdown(ddOptions, (entry.variant || {})[group] || "");
+                const defaultChoice = (cachedVariantDefaults(entry.name) || {})[group];
+                const current = (entry.variant || {})[group] || "";
+                const dd = makePanelDropdown(variantDropdownOptions(hasOptions[group], defaultChoice), current === defaultChoice ? "" : current);
                 dd.element.addEventListener("change", () => {
                     if (dd.element.value) {
                         entry.variant = entry.variant || {};
