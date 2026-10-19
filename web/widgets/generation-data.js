@@ -486,6 +486,19 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         onFitChange();
     });
     header.appendChild(fitToggle);
+    // Landscape/square outputs widen the overlay to fit the image at the fit
+    // height budget, clamped to the viewport (#407); portrait keeps today's width.
+    // `extra` = everything beside the image panel (left panel, gaps, padding).
+    function imageWidth(w, h, budget) {
+        return `(${budget}) * ${w / h} + 24px`;
+    }
+    function sizeOverlay(w, h, budget, extra) {
+        const box = content.parentElement;
+        box.style.maxWidth = "none";
+        box.style.width = w && h && w >= h
+            ? `min(max(min(1200px, 85vw), ${extra}px + ${imageWidth(w, h, budget)}), 94vw)`
+            : "min(1200px, 85vw)";
+    }
     function fitImage(img, cap, stacked) {
         if (fitOn) {
             img.style.width = "auto";
@@ -505,10 +518,10 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         css(split, "display:flex;gap:8px;align-items:flex-start;");
         content.appendChild(split);
 
-        // Left third: combo axis grids + combo-specific fields below
+        // Left: combo axis grids + combo-specific fields below
         const left = document.createElement("div");
-        css(left, "flex:0 0 33%;display:flex;flex-direction:column;gap:12px;min-width:0;max-height:78vh;overflow:auto;");
-        // Right two-thirds: composite image + common data sections
+        css(left, "flex:0 0 380px;display:flex;flex-direction:column;gap:12px;min-width:0;max-height:78vh;overflow:auto;");
+        // Right: composite image + common data sections
         const right = document.createElement("div");
         css(right, "flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;max-height:78vh;overflow:auto;");
         split.appendChild(left);
@@ -790,6 +803,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             currentGenerated = generated;
             // Match the preview aspect ratio to the output's resolution (#231).
             applyAspectRatio(data.width, data.height);
+            sizeOverlay(data.width, data.height, "78vh - 150px", 380 + 8 + 40);
             stacked = false;
             fit();
             if (shownPreview) {
@@ -895,7 +909,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
     } else {
         // No combo nodes: single centered panel
         const singleWrap = document.createElement("div");
-        css(singleWrap, "display:flex;flex-direction:column;align-items:center;gap:10px;max-width:520px;margin:0 auto;max-height:72vh;overflow:auto;");
+        css(singleWrap, "display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;max-width:520px;margin:0 auto;max-height:72vh;overflow:auto;");
         content.appendChild(singleWrap);
 
         const compositeWrap = document.createElement("div");
@@ -1042,6 +1056,9 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             const generated = shownPreview ? null : selectedResult();
             currentGenerated = generated;
             applyAspectRatioSingle(data.width, data.height);
+            const wide = data.width && data.height && data.width >= data.height;
+            singleWrap.style.maxWidth = wide ? `max(520px, ${imageWidth(data.width, data.height, "72vh - 150px")})` : "520px";
+            sizeOverlay(data.width, data.height, "72vh - 150px", 40);
             stacked = false;
             fit();
             if (shownPreview) {
