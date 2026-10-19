@@ -499,6 +499,23 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             ? `min(max(min(1200px, 85vw), ${extra}px + ${imageWidth(w, h, budget)}), 94vw)`
             : "min(1200px, 85vw)";
     }
+    // Panel metadata stays collapsed behind a ^ / v toggle at the bottom (#408).
+    function metaToggle(panel, meta) {
+        const btn = document.createElement("button");
+        btn.textContent = "^";
+        css(btn, "align-self:center;background:none;border:none;color:#ddd;font-size:28px;line-height:1;padding:2px 12px;cursor:pointer;opacity:0.5;");
+        btn.addEventListener("mouseenter", () => { btn.style.opacity = "0.9"; });
+        btn.addEventListener("mouseleave", () => { btn.style.opacity = "0.5"; });
+        meta.style.display = "none";
+        btn.addEventListener("click", () => {
+            const open = meta.style.display === "none";
+            meta.style.display = open ? "flex" : "none";
+            btn.textContent = open ? "v" : "^";
+        });
+        panel.appendChild(btn);
+        panel.appendChild(meta);
+        return btn;
+    }
     function fitImage(img, cap, stacked) {
         if (fitOn) {
             img.style.width = "auto";
@@ -551,7 +568,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 const card = document.createElement("div");
                 card.dataset.nodeId = String(axis.node.id);
                 card.dataset.itemKey = item.itemKey;
-                css(card, `position:relative;flex:0 0 auto;width:72px;height:80px;border-radius:4px;cursor:pointer;background:#2a2a2a;background-size:cover;background-position:center;border:2px solid ${ii === selIdx[ai] ? ACCENT : "transparent"};box-sizing:border-box;`);
+                css(card, `position:relative;flex:0 0 auto;width:108px;height:120px;border-radius:4px;cursor:pointer;background:#2a2a2a;background-size:cover;background-position:center;border:2px solid ${ii === selIdx[ai] ? ACCENT : "transparent"};box-sizing:border-box;`);
                 // #237: probe-load variant image and fall back to base cover if 404,
                 // matching the flake-combo node grid behavior. Without this the
                 // card showed no image when a missing variant choice image was
@@ -572,7 +589,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 // Progress bar (above the caption) — shown while the active
                 // batch's running prompt includes this (nodeId, itemKey) pair.
                 const progressTrack = document.createElement("div");
-                css(progressTrack, "position:absolute;left:2px;right:2px;bottom:14px;height:3px;background:rgba(0,0,0,0.55);border-radius:2px;overflow:hidden;display:none;");
+                css(progressTrack, "position:absolute;left:3px;right:3px;bottom:19px;height:4px;background:rgba(0,0,0,0.55);border-radius:2px;overflow:hidden;display:none;");
                 const progressFill = document.createElement("div");
                 css(progressFill, `height:100%;width:0%;background:${ACCENT};transition:width 0.15s ease;`);
                 progressTrack.appendChild(progressFill);
@@ -583,7 +600,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 const cap = document.createElement("div");
                 cap.textContent = item.label;
                 cap.title = item.label;
-                css(cap, "position:absolute;left:0;right:0;bottom:0;font-size:9px;color:#fff;background:rgba(0,0,0,0.6);padding:1px 3px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:0 0 2px 2px;");
+                css(cap, "position:absolute;left:0;right:0;bottom:0;font-size:11px;color:#fff;background:rgba(0,0,0,0.6);padding:2px 4px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:0 0 2px 2px;");
                 card.appendChild(cap);
                 card.addEventListener("click", () => {
                     selIdx[ai] = ii;
@@ -601,7 +618,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         // Left: combo-specific fields container (below grids)
         const leftDataWrap = document.createElement("div");
         css(leftDataWrap, "display:flex;flex-direction:column;gap:10px;");
-        left.appendChild(leftDataWrap);
+        const leftToggle = metaToggle(left, leftDataWrap);
 
         // ── Progress bars on combo grid items (#230) ──
         // Walk through every card and update its progress track based on the
@@ -753,7 +770,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
 
         const dataWrap = document.createElement("div");
         css(dataWrap, "display:flex;flex-direction:column;gap:10px;");
-        right.appendChild(dataWrap);
+        metaToggle(right, dataWrap);
 
         function section(titleText, rows) {
             if (!rows.length) return null;
@@ -864,6 +881,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             const cs2 = section("Prompts", data.comboPromptRows);
             if (cs1) leftDataWrap.appendChild(cs1);
             if (cs2) leftDataWrap.appendChild(cs2);
+            leftToggle.style.display = cs1 || cs2 ? "" : "none";
         }
 
         // ADetailer A/B toggle (#328): only visible when this run produced both
@@ -969,7 +987,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
 
         const dataWrap = document.createElement("div");
         css(dataWrap, "display:flex;flex-direction:column;gap:10px;width:100%;");
-        singleWrap.appendChild(dataWrap);
+        metaToggle(singleWrap, dataWrap);
 
         function section(titleText, rows) {
             if (!rows.length) return null;
