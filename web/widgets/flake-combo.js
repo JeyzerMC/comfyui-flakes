@@ -1,6 +1,6 @@
 import {
     css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, makeFavoriteStar, TYPE_COLORS,
-    _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock,
+    _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock, flakeDrag, clearFlakeDrag,
     makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut, effectiveVariant, variantDropdownOptions,
 } from "../utils.js";
@@ -626,11 +626,12 @@ export function setupFlakeComboWidget(node) {
                 onDuplicate: handleDuplicate,
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
+                    Object.assign(flakeDrag, { node, entry: flakes[idx], take: () => takeDragged(idx) });
                     e.dataTransfer.effectAllowed = "move";
                     el.style.opacity = "0.4";
                 },
                 onDragOver: (e, idx, el) => {
-                    if (dragSrcIdx === null || idx === dragSrcIdx) return;
+                    if (!isForeignDrag() && (dragSrcIdx === null || idx === dragSrcIdx)) return;
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "move";
                     _showDropIndicator(el);
@@ -638,6 +639,10 @@ export function setupFlakeComboWidget(node) {
                 onDrop: (e, idx, el) => {
                     e.preventDefault();
                     _hideDropIndicator(el);
+                    if (isForeignDrag()) {
+                        dropForeign(idx);
+                        return;
+                    }
                     if (dragSrcIdx === null || idx === dragSrcIdx) return;
                     const arr = readAllFlakes();
                     const [moved] = arr.splice(dragSrcIdx, 1);
@@ -656,6 +661,7 @@ export function setupFlakeComboWidget(node) {
                 onDragEnd: (el) => {
                     el.style.opacity = "";
                     dragSrcIdx = null;
+                    clearFlakeDrag();
                     _hideAllDropIndicators();
                 },
             });
@@ -665,6 +671,37 @@ export function setupFlakeComboWidget(node) {
 
         if (grid._addBlock) grid.appendChild(grid._addBlock);
         refreshToggleAll();
+    }
+
+    // Cross-node drag & drop with other Flake Stack / Flake Combo grids (#415).
+    function isForeignDrag() {
+        return flakeDrag.node !== null && flakeDrag.node !== node;
+    }
+
+    // The source block leaves the DOM on re-render, so its dragend may never fire.
+    function takeDragged(idx) {
+        const arr = readAllFlakes();
+        arr.splice(idx, 1);
+        if (node.properties._combo_active_index > idx) node.properties._combo_active_index--;
+        if (node.properties._combo_active_index >= arr.length) {
+            node.properties._combo_active_index = Math.max(0, arr.length - 1);
+        }
+        writeAllFlakes(arr);
+        dragSrcIdx = null;
+        clearFlakeDrag();
+        render();
+        node.setDirtyCanvas(true, true);
+    }
+
+    function dropForeign(at) {
+        const entry = JSON.parse(JSON.stringify(flakeDrag.entry));
+        entry._uid = newItemUid();
+        const arr = readAllFlakes();
+        if (arr.length && node.properties._combo_active_index >= at) node.properties._combo_active_index++;
+        arr.splice(at, 0, entry);
+        writeAllFlakes(arr);
+        render();
+        flakeDrag.take();
     }
 
     async function handleEdit(idx) {
@@ -851,7 +888,7 @@ export function setupFlakeComboWidget(node) {
     grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad });
 
     grid._addBlock.addEventListener("dragover", (e) => {
-        if (dragSrcIdx === null) return;
+        if (dragSrcIdx === null && !isForeignDrag()) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
         _showDropIndicator(grid._addBlock);
@@ -862,6 +899,10 @@ export function setupFlakeComboWidget(node) {
     grid._addBlock.addEventListener("drop", (e) => {
         e.preventDefault();
         _hideDropIndicator(grid._addBlock);
+        if (isForeignDrag()) {
+            dropForeign(readAllFlakes().length);
+            return;
+        }
         if (dragSrcIdx === null) return;
         const arr = readAllFlakes();
         const [moved] = arr.splice(dragSrcIdx, 1);

@@ -1335,6 +1335,16 @@ export function makeModelOverridePanel(overrides, onChange, defaults = {}) {
 
 // ---------- Drag indicator helpers ----------
 
+// Item dragged out of a Flake Stack / Flake Combo grid, so another node's grid
+// can accept the drop; take() removes it from the source node (#415).
+export const flakeDrag = { node: null, entry: null, take: null };
+
+export function clearFlakeDrag() {
+    flakeDrag.node = null;
+    flakeDrag.entry = null;
+    flakeDrag.take = null;
+}
+
 export function _showDropIndicator(block) {
     let indicator = block.querySelector(".flake-drop-indicator");
     if (!indicator) {
