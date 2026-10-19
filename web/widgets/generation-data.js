@@ -521,10 +521,15 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
     header.appendChild(fitToggle);
     // A landscape image widens the overlay to ~the screen width (#412); portrait,
     // square and unknown keep today's width. `wrap` is the single-panel column.
-    function sizeOverlay(w, h, wrap) {
+    // Given the fitted image's box, the overlay hugs the contain-fit image
+    // instead (#417): the box height is fixed, so one measurement suffices.
+    function sizeOverlay(w, h, wrap, fitBox) {
         const landscape = w > h;
         box.style.width = landscape ? "94vw" : "min(1200px, 85vw)";
-        if (wrap) wrap.style.maxWidth = landscape ? "none" : "520px";
+        if (wrap) wrap.style.maxWidth = landscape || fitBox ? "none" : "520px";
+        if (!fitBox || !w || !h) return;
+        const extra = box.offsetWidth - fitBox.clientWidth;
+        box.style.width = `min(94vw, ${Math.max(520, extra + fitBox.clientHeight * w / h)}px)`;
     }
     // Panel metadata stays collapsed behind a ^ / v toggle at the bottom (#408).
     // onToggle(open) runs before the metadata is shown or hidden (#411).
@@ -768,7 +773,10 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             if (dimsFromImage && compositeImg.naturalWidth) {
                 compositeDimensions.textContent = `${compositeImg.naturalWidth} × ${compositeImg.naturalHeight}`;
             }
-            if (!stacked) sizeOverlay(compositeImg.naturalWidth, compositeImg.naturalHeight);
+            if (!stacked) {
+                shownSize = [compositeImg.naturalWidth, compositeImg.naturalHeight];
+                resize();
+            }
         });
 
         // Double-click the overlay image to reveal it on disk, like the Flake
@@ -791,7 +799,9 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
 
         let stacked = false;
         const fit = () => fitImage(compositeImg, imageBox, stacked);
-        onFitChange = fit;
+        let shownSize = null; // natural size of the shown output / preview (#417)
+        const resize = () => { if (!stacked && shownSize) sizeOverlay(...shownSize, null, fitOn && imageBox); };
+        onFitChange = () => { fit(); resize(); };
 
         const dataWrap = document.createElement("div");
         css(dataWrap, "display:flex;flex-direction:column;gap:10px;");
@@ -978,7 +988,10 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             if (dimsFromImage && compositeImg.naturalWidth) {
                 compositeDimensions.textContent = `${compositeImg.naturalWidth} × ${compositeImg.naturalHeight}`;
             }
-            if (!stacked) sizeOverlay(compositeImg.naturalWidth, compositeImg.naturalHeight, singleWrap);
+            if (!stacked) {
+                shownSize = [compositeImg.naturalWidth, compositeImg.naturalHeight];
+                resize();
+            }
         });
 
         // Double-click the overlay image to reveal it on disk, like the Flake
@@ -1001,7 +1014,9 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
 
         let stacked = false;
         const fit = () => fitImage(compositeImg, imageBox, stacked);
-        onFitChange = fit;
+        let shownSize = null; // natural size of the shown output / preview (#417)
+        const resize = () => { if (!stacked && shownSize) sizeOverlay(...shownSize, singleWrap, fitOn && imageBox); };
+        onFitChange = () => { fit(); resize(); };
 
         const dataWrap = document.createElement("div");
         css(dataWrap, "display:flex;flex-direction:column;gap:10px;width:100%;");
