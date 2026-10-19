@@ -477,10 +477,12 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         return;
     }
     // Fixed-height overlay; each panel is its own (only) scroller (#411).
-    content.parentElement.style.height = "85vh";
+    const box = content.parentElement;
+    css(box, box.style.cssText + "height:85vh;width:min(1200px,85vw);max-width:none;");
     content.style.overflow = "hidden";
 
-    // Fit Output Image in View (#390): caps the output image to the visible height.
+    // Fit Output Image in View (#390): on, the output is contain-fit in its box;
+    // off, it shows at natural size and the box scrolls (#412).
     let fitOn = localStorage.getItem("flakes.overlayFitImage") !== "0";
     let onFitChange = () => {};
     const fitToggle = document.createElement("label");
@@ -499,18 +501,12 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         onFitChange();
     });
     header.appendChild(fitToggle);
-    // Landscape/square outputs widen the overlay to fit the image at the fit
-    // height budget, clamped to the viewport (#407); portrait keeps today's width.
-    // `extra` = everything beside the image panel (left panel, gaps, padding).
-    function imageWidth(w, h, budget) {
-        return `(${budget}) * ${w / h} + 24px`;
-    }
-    function sizeOverlay(w, h, budget, extra) {
-        const box = content.parentElement;
-        box.style.maxWidth = "none";
-        box.style.width = w && h && w >= h
-            ? `min(max(min(1200px, 85vw), ${extra}px + ${imageWidth(w, h, budget)}), 94vw)`
-            : "min(1200px, 85vw)";
+    // A landscape image widens the overlay to ~the screen width (#412); portrait,
+    // square and unknown keep today's width. `wrap` is the single-panel column.
+    function sizeOverlay(w, h, wrap) {
+        const landscape = w > h;
+        box.style.width = landscape ? "94vw" : "min(1200px, 85vw)";
+        if (wrap) wrap.style.maxWidth = landscape ? "none" : "520px";
     }
     // Panel metadata stays collapsed behind a ^ / v toggle at the bottom (#408).
     // onToggle(open) runs before the metadata is shown or hidden (#411).
@@ -531,12 +527,12 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         panel.appendChild(meta);
         return btn;
     }
-    // The image fills its box contain-fit; Fit off lets an output overflow and
-    // scroll inside the box (#411).
-    function fitImage(img, box, stacked) {
+    // The image fills its box contain-fit; Fit off shows an output at natural
+    // size, scrolling on both axes inside the box (#412). The card stack always fills.
+    function fitImage(img, imageBox, stacked) {
         const fill = fitOn || stacked;
-        img.style.height = fill ? "100%" : "auto";
-        box.style.overflow = fill ? "hidden" : "auto";
+        img.style.width = img.style.height = fill ? "100%" : "auto";
+        imageBox.style.overflow = fill ? "hidden" : "auto";
     }
     // Collapsed metadata: the image fills the panel, no scrollbar. Expanded: the
     // image keeps its height and the panel scrolls (#411).
@@ -731,7 +727,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         const imageBox = document.createElement("div");
         css(imageBox, "flex:1;min-height:0;display:flex;overflow:hidden;border-radius:6px;border:1px solid #333;background:#1a1a1a;box-sizing:border-box;");
         const compositeImg = document.createElement("img");
-        css(compositeImg, "display:block;margin:auto;width:100%;height:100%;object-fit:contain;");
+        css(compositeImg, "display:block;margin:auto;flex:none;width:100%;height:100%;max-width:none;object-fit:contain;");
         imageBox.appendChild(compositeImg);
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
@@ -754,6 +750,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             if (dimsFromImage && compositeImg.naturalWidth) {
                 compositeDimensions.textContent = `${compositeImg.naturalWidth} × ${compositeImg.naturalHeight}`;
             }
+            if (!stacked) sizeOverlay(compositeImg.naturalWidth, compositeImg.naturalHeight);
         });
 
         // Double-click the overlay image to reveal it on disk, like the Flake
@@ -777,13 +774,6 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         let stacked = false;
         const fit = () => fitImage(compositeImg, imageBox, stacked);
         onFitChange = fit;
-
-        function applyAspectRatio(w, h) {
-            if (!w || !h) return;
-            // Full-width image (#339): the panel sets the width; height follows the
-            // output aspect ratio.
-            compositeImg.style.aspectRatio = `${w} / ${h}`;
-        }
 
         const dataWrap = document.createElement("div");
         css(dataWrap, "display:flex;flex-direction:column;gap:10px;");
@@ -835,9 +825,6 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             shownPreview = selectedPreview();
             const generated = shownPreview ? null : selectedResult();
             currentGenerated = generated;
-            // Match the preview aspect ratio to the output's resolution (#231).
-            applyAspectRatio(data.width, data.height);
-            sizeOverlay(data.width, data.height, "78vh - 150px", 380 + 8 + 40);
             stacked = false;
             fit();
             if (shownPreview) {
@@ -859,6 +846,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 const urlLists = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [[`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`]] : []);
                 stacked = true;
                 fit();
+                sizeOverlay(data.width, data.height);
                 const src = await buildCardStack(urlLists, key, (imageBox.clientWidth || 1) / (imageBox.clientHeight || 1));
                 if (token !== imageToken) return;
                 compositeImg.src = src;
@@ -951,7 +939,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         const imageBox = document.createElement("div");
         css(imageBox, "flex:1;min-height:0;display:flex;overflow:hidden;border-radius:6px;border:1px solid #333;background:#1a1a1a;box-sizing:border-box;");
         const compositeImg = document.createElement("img");
-        css(compositeImg, "display:block;margin:auto;width:100%;height:100%;object-fit:contain;");
+        css(compositeImg, "display:block;margin:auto;flex:none;width:100%;height:100%;max-width:none;object-fit:contain;");
         imageBox.appendChild(compositeImg);
         const compositeLabel = document.createElement("div");
         css(compositeLabel, "font-size:11px;color:#888;text-align:center;");
@@ -972,6 +960,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             if (dimsFromImage && compositeImg.naturalWidth) {
                 compositeDimensions.textContent = `${compositeImg.naturalWidth} × ${compositeImg.naturalHeight}`;
             }
+            if (!stacked) sizeOverlay(compositeImg.naturalWidth, compositeImg.naturalHeight, singleWrap);
         });
 
         // Double-click the overlay image to reveal it on disk, like the Flake
@@ -995,13 +984,6 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         let stacked = false;
         const fit = () => fitImage(compositeImg, imageBox, stacked);
         onFitChange = fit;
-
-        function applyAspectRatioSingle(w, h) {
-            if (!w || !h) return;
-            // Full-width image (#339): the panel sets the width; height follows the
-            // output aspect ratio.
-            compositeImg.style.aspectRatio = `${w} / ${h}`;
-        }
 
         const dataWrap = document.createElement("div");
         css(dataWrap, "display:flex;flex-direction:column;gap:10px;width:100%;");
@@ -1091,10 +1073,6 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             shownPreview = selectedPreview();
             const generated = shownPreview ? null : selectedResult();
             currentGenerated = generated;
-            applyAspectRatioSingle(data.width, data.height);
-            const wide = data.width && data.height && data.width >= data.height;
-            singleWrap.style.maxWidth = wide ? `max(520px, ${imageWidth(data.width, data.height, "72vh - 150px")})` : "520px";
-            sizeOverlay(data.width, data.height, "72vh - 150px", 40);
             stacked = false;
             fit();
             if (shownPreview) {
@@ -1116,6 +1094,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 const urlLists = data.coverUrls.length ? data.coverUrls : (model.fixed.presetName ? [[`/flakes/preset_cover?name=${encodeURIComponent(model.fixed.presetName)}`]] : []);
                 stacked = true;
                 fit();
+                sizeOverlay(data.width, data.height, singleWrap);
                 const src = await buildCardStack(urlLists, key, (imageBox.clientWidth || 1) / (imageBox.clientHeight || 1));
                 if (token !== imageToken) return;
                 compositeImg.src = src;
