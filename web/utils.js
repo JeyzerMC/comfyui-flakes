@@ -1172,9 +1172,10 @@ export function variantDropdownOptions(choices, defaultChoice) {
 }
 
 // Initials of a flake's effective variant choices, formatted "[P, C]" (#298).
-// A "Multiple" group shows its count, e.g. "3×" (#406). Returns "" when
-// nothing is selected.
+// A "Multiple" group shows its count, e.g. "3×" (#406), and All Variants shows
+// "[*]" (#421). Returns "" when nothing is selected.
 export function variantInitials(entry, defaults) {
+    if (entry?._all_variants) return "[*]";
     const initials = Object.values(effectiveVariant(entry?.variant, defaults))
         .map(v => Array.isArray(v) ? `${v.length}×` : String(v).trim().charAt(0).toUpperCase())
         .filter(Boolean);
