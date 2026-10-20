@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-19
+
 ### Added
 
 - LoRAs and Flake Links on model presets (#385, #386).
@@ -38,6 +40,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live sampling previews in the Flake Generate node and overlay (#374).
 - Anima VACE-Depth ControlNet through the ComfyUI-Advanced-ControlNet-Anima
   fork (#378).
+- Flake Combo **Multiple** variant choices with Randomize, and an **All
+  Variants** override that expands a flake into one generation per variant
+  combo, shown as `[*]` on the grid item (#343, #345, #406, #421).
+- Variant choices can contribute LoRAs, ControlNets and flake links, with LoRA
+  name/URL, negative strength and strength overrides in the Stack / Combo
+  dropdowns; flake links override the linked choice's strengths
+  (#299, #404, #413, #414).
+- New nodes: **Flake Inpaint** (#291), **Flake IPAdapter** (FaceID, #289).
+- Flake Generate options: ADetailer Off/Face/A/B (#287, #327), upscaling
+  (#288), `_ad_` / `_up_` output stem suffixes (#325, #326), and ComfyUI
+  workflow metadata embedded in outputs (#344, #346).
+- Flake links: multiple links per flake, a target picker and default overrides
+  (#233, #234, #275).
+- Per-instance model preset overrides (filename, steps, CFG, sampler,
+  scheduler) in Flake Model Preset / Combo (#279, #292).
+- Anima and Flux Klein model families (#286); ControlNet models are inferred
+  from type and family (#246, #254).
+- Flake Stack / Combo: per-item activate checkbox and toggle-all, duplicate
+  button on grid items, drag & drop between nodes, and favorite flakes
+  (#277, #314, #315, #316, #402, #415).
+- Grid file picker with thumbnails and drive tabs for covers, ControlNet and
+  variant images, and preset VAE / text encoder / diffusion model; flake-owned
+  data is moved into the flake folder on save (#391, #392, #395, #396, #399).
+- Double-click an output image in Flake Generate or the Generation Data overlay
+  to reveal it on disk (#329, #340).
+- Generation Data overlay: per-variant cards, image name and dimensions,
+  ADetailer A/B toggle and Fit Output Image in View (#324, #345, #349, #390).
 
 ### Changed
 
@@ -47,6 +76,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cards instead of a split mosaic (#375).
 - New Anima presets default to Euler Ancestral, Normal and the `QWEN_IMAGE`
   encoder type; family defaults now actually seed new presets (#376).
+- Flake Edit uses a single "+ Add field" button, seeds default fields by flake
+  type and adds a Serie field (#269, #272, #330, #331).
+- Sampler and scheduler lists come from core ComfyUI KSampler (#285).
+- Generate overlay layout: landscape outputs widen the panel, metadata collapses
+  behind a toggle and the card stack fills the panel (#407, #408, #410, #411,
+  #412, #417).
+- Model families are defined once in `flake_families.py` instead of being
+  duplicated across eight places in the Python and web layers (#355).
 
 ### Fixed
 
@@ -56,17 +93,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Anima ControlNets took the SDXL path (no effect) when Flake Stack's family
   widget went stale behind a reroute or subgraph; the family now comes from the
   loaded preset (#382).
-- Overlay results, previews and highlights broke when Flake Combo grid items
-  were moved (#383).
-- Combo highlights and overlay results no longer get lost when switching
-  workflow or browser tabs mid-batch; missed results are recovered from history
-  after a reconnect (#373).
 - New model presets default to the extra model path root instead of the
   ComfyUI install folder (#377).
-
 - Z-Image flake ControlNets failed to load: the Fun ControlNet Union is a model
   patch, not a regular ControlNet (#365).
-
 - A UNET-only checkpoint (how Anima, Krea2 and Z-Image are usually distributed,
   even when the file sits in `models/checkpoints/`) no longer fails on the first
   `CLIPTextEncode`. The loader detects the missing text encoder and VAE and takes
@@ -79,11 +109,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   require (#359).
 - Missing files named by a preset now fail with an actionable error instead of
   being silently ignored and generating with the wrong components (#358).
-
-### Changed
-
-- Model families are defined once in `flake_families.py` instead of being
-  duplicated across eight places in the Python and web layers (#355).
+- Bypassed or muted combo nodes are excluded from generation, nested combo
+  batch loops follow graph order and the UI batch count multiplies combinations
+  (#265, #304, #348).
+- ControlNet fixes: models in subdirectories, hint image fits the generation
+  frame, upstream ControlNets are kept when chaining Flake nodes, empty
+  entries no longer crash (#243, #248, #251, #254, #255, #257).
+- Combo highlights and overlay results survive tab switches, reordering and
+  reconnects (#222, #241, #268, #373, #383).
+- Preset editing: edits kept on reopen, base directory selection and extra-path
+  saves preserved (#242, #245, #262, #267).
+- Flake Data Split (Select) / Into Flake Data (Select) nodes could not be added
+  or clicked (#208, #214, #215).
+- Saving a flake whose folder or image is on another drive or junction (#396).
 
 ## [0.1.0] - 2026-05-19
 
@@ -203,5 +241,6 @@ checkpoint loader and sampler.
   rows, overlay width constrained, prompts section height reduced, dropdowns
   scaled with canvas zoom.
 
-[Unreleased]: https://github.com/JeyzerMC/comfyui-flakes/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/JeyzerMC/comfyui-flakes/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/JeyzerMC/comfyui-flakes/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/JeyzerMC/comfyui-flakes/releases/tag/v0.1.0
