@@ -103,6 +103,57 @@ def test_choice_flake_links_applied_with_override():
     assert _strength_of(flake, "drama.safetensors") == 0.9
 
 
+def _host_and_choice_links():
+    _with_flakes({
+        "light": {
+            "name": "Light",
+            "loras": [{"name": "light", "path": "light.safetensors", "strength": 0.5}],
+            "variants": {"tone": {"warm": {"default": True, "positive": "warm"}, "cold": {"positive": "cold"}}},
+        },
+        "ink": {"name": "Ink", "loras": [{"name": "ink", "path": "ink.safetensors", "strength": 0.4}]},
+        "pose": {
+            "name": "Pose",
+            "flake_links": [{"target": "ink"}],
+            "variants": {"style": {
+                "calm": {"default": True},
+                "dramatic": {"flake_links": [{"target": "light", "lora_strengths": [0.9]}]},
+            }},
+        },
+    })
+
+
+def test_variant_link_overrides_apply_to_choice_links():
+    """`variant_link_overrides[group][choice][i]` overrides the choice's link i (#420)."""
+    _host_and_choice_links()
+    flake = fio.resolve({
+        "name": "pose",
+        "variant": {"style": "dramatic"},
+        "variant_link_overrides": {"style": {"dramatic": [{"variant": {"tone": "cold"}, "lora_strengths": [1.3]}]}},
+    })
+    assert _strength_of(flake, "light.safetensors") == 1.3
+    assert "cold" in flake.positive and "warm" not in flake.positive
+    assert _strength_of(flake, "ink.safetensors") == 0.4
+
+
+def test_host_link_overrides_keep_their_index():
+    """Host links keep `flake_link_overrides[i]`; choice links never read it (#420)."""
+    _host_and_choice_links()
+    flake = fio.resolve({
+        "name": "pose",
+        "variant": {"style": "dramatic"},
+        "flake_link_overrides": [{"lora_strengths": [0.2]}, {"lora_strengths": [2.0]}],
+    })
+    assert _strength_of(flake, "ink.safetensors") == 0.2
+    assert _strength_of(flake, "light.safetensors") == 0.9
+
+
+def test_variant_link_overrides_of_other_choice_ignored():
+    _host_and_choice_links()
+    for ovr in ({"style": {"calm": [{"lora_strengths": [1.3]}]}}, "x", {"style": "x"}, {"style": {"dramatic": "x"}}, {"style": {"dramatic": ["x"]}}):
+        flake = fio.resolve({"name": "pose", "variant": {"style": "dramatic"}, "variant_link_overrides": ovr})
+        assert _strength_of(flake, "light.safetensors") == 0.9
+
+
 def test_choice_prompt_still_works():
     _with_flakes({
         "pose": {

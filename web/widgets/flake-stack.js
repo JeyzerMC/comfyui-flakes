@@ -2,7 +2,7 @@ import {
     css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, makeFavoriteStar, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock, flakeDrag, clearFlakeDrag,
     makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, variantInitials, renderFlakeLabel, splitNameAndTags,
-    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, effectiveVariant, variantDropdownOptions, variantDefaultsOf,
+    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, effectiveVariant, variantDropdownOptions, variantDefaultsOf, choiceFlakeLinks,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, invalidateList } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
@@ -183,7 +183,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
     let optionsLoaded = false;
     let hasOptions = false;
     let flakeData = null;
-    let linkedFlakeDataList = [];
+    let linkedFlakes = {};
 
     function rebuildPanel() {
         nativeColumn.replaceChildren();
@@ -273,6 +273,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             avChk.addEventListener("change", () => {
                 entry._all_variants = avChk.checked || undefined;
                 applyAv();
+                rebuildLinkedPanel();
                 onChanged();
                 if (onVariantChange) onVariantChange();
             });
@@ -302,6 +303,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                         if (entry.variant) delete entry.variant[group];
                     }
                     renderVl();
+                    rebuildLinkedPanel();
                     onChanged();
                     if (onVariantChange) onVariantChange();
                 });
@@ -327,7 +329,11 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
     // backend's resolve() reads at execute time.
     function rebuildLinkedPanel() {
         const links = flakeData?.flake_links || (flakeData?.flake_link ? [flakeData.flake_link] : []);
-        if (!links.length || !linkedFlakeDataList.some(Boolean)) {
+        // Then the links of the effective variant choices, under a "<group>: <choice>"
+        // heading and overridden in entry.variant_link_overrides (#420).
+        const choiceLinks = entry._all_variants ? [] : choiceFlakeLinks(flakeData?.variants, entry.variant)
+            .filter(([, , cl]) => cl.some(l => linkedFlakes[l?.target]));
+        if (!links.some(l => linkedFlakes[l?.target]) && !choiceLinks.length) {
             linkedColumn.style.display = "none";
             return;
         }
@@ -339,11 +345,11 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             entry.flake_link_overrides = entry.flake_link_override ? [entry.flake_link_override] : [];
         }
 
-        links.forEach((link, li) => {
-            const linkedFlakeData = linkedFlakeDataList[li];
-            if (!link?.target || !linkedFlakeData) return;
-            entry.flake_link_overrides[li] = entry.flake_link_overrides[li] || { variant: {}, lora_strengths: [] };
-            const ovr = entry.flake_link_overrides[li];
+        const renderLink = (link, overrides, li) => {
+            const linkedFlakeData = linkedFlakes[link?.target];
+            if (!linkedFlakeData) return;
+            overrides[li] = overrides[li] || { variant: {}, lora_strengths: [] };
+            const ovr = overrides[li];
             ovr.variant = ovr.variant || {};
             ovr.lora_strengths = ovr.lora_strengths || [];
             const yamlDefaults = link;
@@ -431,7 +437,16 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                 empty.textContent = "no overrides";
                 linkedColumn.appendChild(empty);
             }
-        });
+        };
+        links.forEach((link, li) => renderLink(link, entry.flake_link_overrides, li));
+        for (const [group, choice, cl] of choiceLinks) {
+            const heading = document.createElement("div");
+            heading.textContent = `${group}: ${choice}`;
+            css(heading, `font-size:9px;opacity:0.8;text-align:center;font-weight:600;padding:2px 0;${linkedColumn.childElementCount ? "border-top:2px solid #444;margin-top:4px;padding-top:6px;" : ""}`);
+            linkedColumn.appendChild(heading);
+            const overrides = (((entry.variant_link_overrides ||= {})[group] ||= {})[choice] ||= []);
+            cl.forEach((link, li) => renderLink(link, overrides, li));
+        }
     }
 
     async function loadOptions() {
@@ -442,10 +457,12 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             hasOptions = variants;
             flakeData = fdata;
             // Also fetch each linked flake's data if the host declares links.
-            const links = fdata?.flake_links || (fdata?.flake_link ? [fdata.flake_link] : []);
-            linkedFlakeDataList = await Promise.all(links.map(l =>
-                l?.target ? fetchFlake(l.target).catch(() => null) : Promise.resolve(null)
-            ));
+            const links = [...(fdata?.flake_links || (fdata?.flake_link ? [fdata.flake_link] : []))];
+            for (const choices of Object.values(fdata?.variants || {})) {
+                for (const choice of Object.values(choices || {})) links.push(...(choice?.flake_links || []));
+            }
+            const targets = [...new Set(links.map(l => l?.target).filter(Boolean))];
+            linkedFlakes = Object.fromEntries(await Promise.all(targets.map(async t => [t, await fetchFlake(t).catch(() => null)])));
             rebuildPanel();
         } catch { /* ignore */ }
     }

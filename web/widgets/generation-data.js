@@ -1,4 +1,4 @@
-import { css, effectiveVariant, expandEntryVariants } from "../utils.js";
+import { css, effectiveVariant, expandEntryVariants, choiceFlakeLinks } from "../utils.js";
 import { openOverlay } from "../modal.js";
 import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults } from "../api.js";
 import { getActiveBatch, subscribeBatch, variantKey } from "../queue.js";
@@ -314,11 +314,15 @@ async function flakeEntryRows(entry) {
     // Linked flake surfacing, one block per link (#234); the overrides mirror
     // flake_io._apply_flake_link.
     const links = hostData?.flake_links || (hostData?.flake_link ? [hostData.flake_link] : []);
-    for (const [li, link] of links.entries()) {
+    const linkOverrides = links.map((link, li) => [link, (Array.isArray(entry.flake_link_overrides) ? entry.flake_link_overrides[li] : li === 0 && entry.flake_link_override) || {}]);
+    // Then the selected choices' links with their per-choice overrides (#420).
+    for (const [g, c, cl] of choiceFlakeLinks(hostData?.variants, entry.variant)) {
+        cl.forEach((link, li) => linkOverrides.push([link, entry.variant_link_overrides?.[g]?.[c]?.[li] || {}]));
+    }
+    for (const [link, ovr] of linkOverrides) {
         if (!link?.target) continue;
         try {
             const linkTarget = link.target;
-            const ovr = (Array.isArray(entry.flake_link_overrides) ? entry.flake_link_overrides[li] : li === 0 && entry.flake_link_override) || {};
             const linked = await fetchFlake(linkTarget);
             const hostLabel = entry.display_name || hostData.name || entry.name.split("/").pop() || entry.name;
             const linkLabel = (linked.name || linkTarget).split("/").pop();

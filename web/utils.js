@@ -1162,6 +1162,14 @@ export function variantDefaultsOf(variants) {
     return out;
 }
 
+// [group, choice, flake_links] of the effective variant choices that link
+// flakes; a "Multiple" (array) group has none (#420).
+export function choiceFlakeLinks(variants, variant) {
+    return Object.entries(effectiveVariant(variant, variantDefaultsOf(variants)))
+        .filter(([g, c]) => typeof c === "string" && variants?.[g]?.[c]?.flake_links?.length)
+        .map(([g, c]) => [g, c, variants[g][c].flake_links]);
+}
+
 // Variant group dropdown options: "None" first, then the choices. The default
 // choice is labeled "<choice> (default)" and maps to "" (follow the default),
 // so "None" is an explicit "__none__" opt-out only when a default exists (#388, #405).

@@ -183,7 +183,9 @@ Move the yaml and its folder together to share or relocate a flake.
   choice, stored per choice in the grid item (`variant_loras`).
 - **Flake links**: the editor's link card and the grid dropdown's linked column
   show sliders for the LoRAs of the linked flake's selected variant choice
-  (`flake_links[i].variant_loras`).
+  (`flake_links[i].variant_loras`). A variant choice's own links (☰ →
+  `Flake Link`) follow under a `<group>: <choice>` heading for the selected
+  choice, overridden per choice in the grid item (`variant_link_overrides`).
 - **ControlNets**: new entries have `img res` on. Picking a ControlNet image uses
   its batch's `_0_cover` image as the flake cover when it has none, and as the
   variant choice's image for a ControlNet inside a choice.

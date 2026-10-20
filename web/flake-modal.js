@@ -8,7 +8,7 @@ import {
 } from "./utils.js";
 import {
     getCoverUrl, getVariantImageUrl, flakeAssetUrl, inputImageUrl, fetchCnTypes, fetchInputs,
-    saveFlakeApi, deleteFlakeApi, fetchFlakeMeta, fetchFlake,
+    saveFlakeApi, deleteFlakeApi, fetchFlakeMeta,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
     fetchLoraVariantSiblingImagePath, invalidateList,
     fetchCnModels,
@@ -16,7 +16,7 @@ import {
 import { openFileBrowser, IMAGE_ROOTS } from "./pickers.js";
 import {
     openFieldMenu, makeScheduleHandle, makeSchedulePanel, pickFlakeTarget,
-    renderLoraList, serializeLoras, normalizeLinks, renderLinkList, serializeLinks,
+    renderLoraList, serializeLoras, normalizeLinks, renderLinkList, renderOneLinkOverrides, serializeLinks,
 } from "./list-editors.js";
 
 // Infer a ControlNet type + sibling cover name from a CN image filename (#306, #318).
@@ -1508,15 +1508,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 css(extrasHost, "display:flex;flex-direction:column;gap:3px;margin-top:6px;");
                                 choiceCard.appendChild(extrasHost);
 
-                                async function pickChoiceTarget() {
-                                    try {
-                                        const list = await (await fetch(`/flakes/list?family=${encodeURIComponent(currentFamily || "")}`)).json();
-                                        const flakes = (list.flakes || []).filter((n) => n !== name);
-                                        const res = await openFileLoadPicker({ flakes, directories: list.directories || [], family: currentFamily || "", displayNames: list.display_names || {}, tagNames: list.tag_names || {}, favorites: list.favorites || [] });
-                                        return res && res.name ? res.name : null;
-                                    } catch { return null; }
-                                }
-
                                 // Add a field to this variant choice (#331). Mirrors the
                                 // old per-section "+ X" button actions, now reached from the
                                 // hamburger handle's dropdown.
@@ -1531,7 +1522,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         co.controlnets.push(await newCn());
                                         renderChoiceExtras();
                                     } else if (key === "flake_link") {
-                                        const t = await pickChoiceTarget();
+                                        const t = await pickFlakeTarget(currentFamily, name);
                                         if (!t) return;
                                         if (!Array.isArray(co.flake_links)) co.flake_links = [];
                                         co.flake_links.push({ target: t, variant: {}, lora_strengths: [] });
@@ -1671,35 +1662,17 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         css(title, "flex:1;font-size:12px;color:#cdd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
                                         header.appendChild(title);
                                         const chg = makeSmallButton("Change");
-                                        chg.addEventListener("click", async () => { const t = await pickChoiceTarget(); if (t) { link.target = t; link.lora_strengths = []; renderChoiceExtras(); } });
+                                        chg.addEventListener("click", async () => { const t = await pickFlakeTarget(currentFamily, name); if (t) { link.target = t; link.variant = {}; link.lora_strengths = []; link.variant_loras = {}; renderChoiceExtras(); } });
                                         header.appendChild(chg);
                                         const rm = makeSmallButton("✕");
                                         rm.addEventListener("click", () => { links.splice(li, 1); if (!links.length) delete co.flake_links; renderChoiceExtras(); });
                                         header.appendChild(rm);
                                         card.appendChild(header);
+                                        // Same variant dropdowns and LoRA sliders as the flake's own links (#420).
                                         const ovr = document.createElement("div");
-                                        css(ovr, "display:flex;flex-direction:column;gap:4px;");
+                                        css(ovr, "display:flex;flex-direction:column;gap:6px;");
                                         card.appendChild(ovr);
-                                        if (link.target) {
-                                            fetchFlake(link.target).then((ld) => {
-                                                const lps = (Array.isArray(ld.loras) && ld.loras.length) ? ld.loras : (ld.path ? [{ name: "", path: ld.path, strength: ld.strength ?? 1.0 }] : []);
-                                                if (!Array.isArray(link.lora_strengths)) link.lora_strengths = [];
-                                                lps.forEach((lr, i) => {
-                                                    const r = document.createElement("div");
-                                                    css(r, "display:flex;gap:6px;align-items:center;");
-                                                    const nm = document.createElement("span");
-                                                    nm.textContent = lr.name || lr.path || `LoRA ${i + 1}`;
-                                                    css(nm, "flex:0 0 120px;font-size:11px;color:#bbb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
-                                                    r.appendChild(nm);
-                                                    const cur = link.lora_strengths[i];
-                                                    const init = (cur === null || cur === undefined) ? (lr.strength ?? 1.0) : cur;
-                                                    const sl = makeComfyValueSlider(init, -10, 10, 0.05, (v) => { while (link.lora_strengths.length <= i) link.lora_strengths.push(null); link.lora_strengths[i] = v; });
-                                                    sl.style.flex = "1";
-                                                    r.appendChild(sl);
-                                                    ovr.appendChild(r);
-                                                });
-                                            }).catch(() => {});
-                                        }
+                                        renderOneLinkOverrides(link, ovr);
                                         if (link.schedule) card.appendChild(makeSchedulePanel(link));
                                         extrasHost.appendChild(card);
                                     });
@@ -2057,17 +2030,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 if (choice.controlnets.length === 0) delete choice.controlnets;
                             }
                             if (Array.isArray(choice.flake_links)) {
-                                choice.flake_links = choice.flake_links
-                                    .filter(l => l && l.target)
-                                    .map(l => {
-                                        const out = { target: l.target };
-                                        const strengths = (l.lora_strengths || []).slice();
-                                        while (strengths.length && (strengths[strengths.length - 1] == null)) strengths.pop();
-                                        if (strengths.length) out.lora_strengths = strengths;
-                                        if (l.variant && Object.keys(l.variant).length) out.variant = l.variant;
-                                        if (l.schedule?.length) out.schedule = l.schedule;
-                                        return out;
-                                    });
+                                choice.flake_links = serializeLinks(choice.flake_links);
                                 if (choice.flake_links.length === 0) delete choice.flake_links;
                             }
                         }

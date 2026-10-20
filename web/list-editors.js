@@ -380,7 +380,7 @@ export function normalizeLinks(data) {
     }));
 }
 
-function renderOneLinkOverrides(link, box) {
+export function renderOneLinkOverrides(link, box) {
     box.replaceChildren();
     if (!link.target) return;
     (async () => {

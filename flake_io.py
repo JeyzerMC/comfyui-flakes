@@ -233,6 +233,9 @@ class FlakeLink:
     variant_loras: dict[str, dict[str, list[float | None]]] = field(default_factory=dict)
     # Multiplies into every LoRA and prompt the linked flake contributes.
     schedule: list[ScheduleKeyframe] = field(default_factory=list)
+    # Set by resolve() on a variant choice's links: the grid item's
+    # variant_link_overrides slot, used instead of flake_link_overrides[i] (#420).
+    choice_override: dict[str, Any] | None = None
 
 
 @dataclass
@@ -1057,6 +1060,9 @@ def resolve(entry: dict[str, Any]) -> Flake:
     variant_loras = entry.get("variant_loras")
     if not isinstance(variant_loras, dict):
         variant_loras = {}
+    variant_link_overrides = entry.get("variant_link_overrides")
+    if not isinstance(variant_link_overrides, dict):
+        variant_link_overrides = {}
     for group, default in variant_defaults(flake).items():
         if not selected.get(group):
             selected[group] = default
@@ -1088,7 +1094,12 @@ def resolve(entry: dict[str, Any]) -> Flake:
                     lr.strength = float(s)
         flake.loras.extend(choice_loras)
         flake.controlnets.extend(_parse_cn_list(variant.get("controlnets"), flake.name))
-        flake.flake_links.extend(_parse_link_list(variant))
+        group_links = variant_link_overrides.get(group)
+        link_ovrs = group_links.get(choice) if isinstance(group_links, dict) else None
+        for li, link in enumerate(_parse_link_list(variant)):
+            ovr = link_ovrs[li] if isinstance(link_ovrs, list) and li < len(link_ovrs) else None
+            link.choice_override = ovr if isinstance(ovr, dict) else {}
+            flake.flake_links.append(link)
 
     # Runtime output_stem override from the option panel (not persisted to disk)
     if "_output_stem_override" in entry:
@@ -1109,7 +1120,8 @@ def _apply_flake_link(host: "Flake", entry: dict[str, Any], _visited: set[str] |
 
     Override precedence (highest wins):
       1. Per-grid placement override (entry["flake_link_overrides"][i], or the
-         legacy single entry["flake_link_override"] applied to the first link)
+         legacy single entry["flake_link_override"] applied to the first link;
+         a variant choice's link uses its link.choice_override instead)
       2. Host yaml flake_links[i].variant / .lora_strengths
       3. Linked flake's own defaults
     """
@@ -1126,7 +1138,9 @@ def _apply_flake_link(host: "Flake", entry: dict[str, Any], _visited: set[str] |
     for i, link in enumerate(links):
         if not link or not link.target or link.target in _visited:
             continue  # cycle guard / empty slot
-        if isinstance(overrides, list):
+        if link.choice_override is not None:
+            grid_override = link.choice_override
+        elif isinstance(overrides, list):
             grid_override = overrides[i] if (i < len(overrides) and isinstance(overrides[i], dict)) else {}
         else:
             grid_override = legacy_override if i == 0 else {}
