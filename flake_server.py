@@ -780,6 +780,25 @@ async def _upload_preset_cover(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "name": name})
 
 
+@routes.post("/flakes/bundle/install")
+async def _install_bundle(request: web.Request) -> web.Response:
+    """Install the flake bundle embedded in a dropped image's workflow (#427)."""
+    try:
+        body = await request.json()
+    except Exception:
+        return _bad_request("invalid JSON body")
+    if not isinstance(body, dict):
+        return _bad_request("body must be a JSON object")
+    try:
+        result = flake_io.install_bundle(body)
+    except ValueError as exc:
+        return _bad_request(str(exc))
+    except Exception as exc:
+        logging.exception("[flakes] failed to install flake bundle")
+        return _server_error(str(exc))
+    return web.json_response(result)
+
+
 # ---------------------------------------------------------------------------
 # File browser (custom directory picker backed by Python)
 # ---------------------------------------------------------------------------

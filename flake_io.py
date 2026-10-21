@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import itertools
 import logging
 import os
 import re
@@ -31,7 +34,8 @@ def _resolve_model_name(category: str, stem_or_name: str) -> str:
     return stem_or_name
 
 
-_NAME_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_\- ]+$")
+# Parentheses allow the "<name> (imported)" names of installed bundles (#427).
+_NAME_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_\-() ]+$")
 
 # Family routing tables. All derived from the flake_families registry (#355) —
 # add a family there, not here.
@@ -1784,3 +1788,148 @@ def load_anim_preset(name: str) -> AnimPreset:
         negative=str(prompt.get("negative", "") or ""),
         loras=_parse_lora_list(raw.get("loras")),
     )
+
+# ---------------------------------------------------------------------------
+# Portable bundles (#427)
+# ---------------------------------------------------------------------------
+
+# Model weights stay out of bundles: the user supplies them.
+_WEIGHT_EXTENSIONS = (".safetensors", ".ckpt", ".pt", ".pth", ".gguf", ".bin")
+
+
+def _bundle_files(yaml_path: str, blobs: dict[str, str]) -> dict[str, str]:
+    """{path relative to the yaml's folder: content hash} of the files a flake
+    or preset owns: the ``<base><ext>`` cover beside it and its ``<base>/``
+    folder, minus model weights and yamls. Each content goes into *blobs*
+    once, so a file shared by several flakes is not duplicated."""
+    folder, base = os.path.split(os.path.splitext(yaml_path)[0])
+    paths = [os.path.join(folder, base + e) for e in _COVER_EXTENSIONS]
+    for dirpath, _, filenames in os.walk(os.path.join(folder, base)):
+        paths += [os.path.join(dirpath, fn) for fn in filenames]
+    files = {}
+    for path in paths:
+        if not os.path.isfile(path) or os.path.splitext(path)[1].lower() in _WEIGHT_EXTENSIONS + (".yaml", ".yml"):
+            continue
+        with open(path, "rb") as f:
+            data = f.read()
+        key = hashlib.sha256(data).hexdigest()
+        blobs.setdefault(key, base64.b64encode(data).decode("ascii"))
+        files[os.path.relpath(path, folder).replace(os.sep, "/")] = key
+    return files
+
+
+def _link_targets(raw: dict[str, Any]) -> list[str]:
+    """Flakes a flake or preset body links to, variant choices included."""
+    variants = raw.get("variants") or raw.get("options") or {}
+    bodies = [raw] + [c for choices in variants.values() if isinstance(choices, dict) for c in choices.values() if isinstance(c, dict)]
+    return [link.target for body in bodies for link in _parse_link_list(body)]
+
+
+def collect_bundle(flakes: list[str], presets: list[str]) -> dict[str, Any]:
+    """The portable bundle of *flakes*, *presets* and every flake they link
+    to: ``{version, files: {hash: base64}, flakes: {name: {yaml, files:
+    {rel: hash}}}, presets: {...}}``. A flake comes before the flakes it
+    links to. Missing link targets are left out, as ``resolve`` skips them."""
+    bundle: dict[str, Any] = {"version": 1, "files": {}, "flakes": {}, "presets": {}}
+
+    def add(kind: str, name: str) -> None:
+        if name in bundle[kind]:
+            return
+        try:
+            path = _resolve_file(name) if kind == "flakes" else _resolve_preset_file(name)
+        except FileNotFoundError:
+            return
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        bundle[kind][name] = {"yaml": text, "files": _bundle_files(path, bundle["files"])}
+        for target in _link_targets(yaml.safe_load(text) or {}):
+            add("flakes", target)
+
+    for name in flakes:
+        add("flakes", name)
+    for name in presets:
+        add("presets", name)
+    return bundle
+
+
+def _retarget_links(data: Any, renames: dict[str, str]) -> Any:
+    if isinstance(data, list):
+        return [_retarget_links(v, renames) for v in data]
+    if not isinstance(data, dict):
+        return data
+    out = {k: _retarget_links(v, renames) for k, v in data.items()}
+    if isinstance(out.get("target"), str):
+        out["target"] = renames.get(out["target"], out["target"])
+    return out
+
+
+def _bundle_yaml(text: str, old_base: str, new_base: str, renames: dict[str, str]) -> str:
+    """*text* with its ``./<old_base>/`` paths and renamed link targets
+    rewritten; the original text when nothing changes."""
+    data = yaml.safe_load(text) or {}
+    new = _retarget_links(_rewrite_prefix(data, f"./{old_base}/", f"./{new_base}/"), renames)
+    return text if new == data else yaml.safe_dump(new, sort_keys=False, allow_unicode=True)
+
+
+def _renamed_rel(rel: str, old_base: str, new_base: str) -> str:
+    """A bundle file path under a new base name: the ``<base>/`` folder or
+    ``<base><ext>`` cover, and the owned ``<base>/<base><ext>`` cover, like
+    ``save_flake`` renames them."""
+    parts = rel.split("/")
+    parts[0] = new_base + parts[0][len(old_base):]
+    if len(parts) == 2 and os.path.splitext(parts[1])[0] == old_base:
+        parts[1] = new_base + parts[1][len(old_base):]
+    return "/".join(parts)
+
+
+def install_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
+    """Install a ``collect_bundle`` bundle without overwriting anything: a name
+    holding an identical yaml is skipped, one holding a different yaml installs
+    as "<name> (imported)" (then "(imported 2)", ...). Returns the installed
+    names and the {old: new} renames of flakes and presets."""
+    if bundle.get("version") != 1:
+        raise ValueError(f"unsupported flake bundle version: {bundle.get('version')!r}")
+    blobs = bundle.get("files") or {}
+    kinds = (("flakes", _primary_root(), _resolve_file), ("presets", _primary_presets_root(), _resolve_preset_file))
+    for kind, _, _ in kinds:
+        for name, item in (bundle.get(kind) or {}).items():
+            _validate_name(name)
+            base = name.rsplit("/", 1)[-1]
+            for rel, key in item["files"].items():
+                parts = rel.split("/")
+                if ("\\" in rel or any(p in ("", ".", "..") for p in parts) or os.path.splitext(parts[0])[0] != base
+                        or os.path.splitext(rel)[1].lower() in _WEIGHT_EXTENSIONS or key not in blobs):
+                    raise ValueError(f"invalid file {rel!r} in bundled {name!r}")
+
+    result: dict[str, Any] = {"installed": [], "flakes": {}, "presets": {}}
+    for kind, root, resolve_file in kinds:
+        # Reversed so linked flakes get their final names before the flakes
+        # (and then presets) whose link targets point at them.
+        for name, item in reversed(list((bundle.get(kind) or {}).items())):
+            base = name.rsplit("/", 1)[-1]
+            for new in itertools.chain([name, f"{name} (imported)"], (f"{name} (imported {n})" for n in itertools.count(2))):
+                new_base = new.rsplit("/", 1)[-1]
+                text = _bundle_yaml(item["yaml"], base, new_base, result["flakes"])
+                try:
+                    with open(resolve_file(new), encoding="utf-8") as f:
+                        if f.read() == text:
+                            break
+                except FileNotFoundError:
+                    target = os.path.join(root, f"{new}.yaml")
+                    _ensure_inside(target, root)
+                    folder = os.path.dirname(target)
+                    os.makedirs(folder, exist_ok=True)
+                    with open(target, "w", encoding="utf-8") as f:
+                        f.write(text)
+                    for rel, key in item["files"].items():
+                        path = os.path.join(folder, _renamed_rel(rel, base, new_base))
+                        _ensure_inside(path, root)
+                        if not os.path.exists(path):
+                            os.makedirs(os.path.dirname(path), exist_ok=True)
+                            with open(path, "wb") as f:
+                                f.write(base64.b64decode(blobs[key]))
+                    result["installed"].append(new)
+                    break
+            if new != name:
+                result[kind][name] = new
+    return result

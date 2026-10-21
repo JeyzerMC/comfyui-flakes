@@ -3,6 +3,7 @@ location (#391) and taking ownership of external data on save (#392). Same loadi
 stub `folder_paths` pointing the flakes root at a temp dir."""
 import contextlib
 import importlib.util
+import json
 import os
 import sys
 import tempfile
@@ -432,6 +433,102 @@ def test_rename_moves_owned_folder():
         assert raw["flake_links"] == [{"target": "chars/other"}]
         assert _exists(root, "solo", "miyamoto", "musashi_hero.safetensors")
         assert fio.read_cover("solo/miyamoto") == (PNG, "image/png")
+
+
+# Portable bundles (#427): a source machine's flakes travel inside the image.
+BUNDLE_MUSASHI = """loras:
+- {name: hero, path: ./musashi/musashi_hero.safetensors}
+controlnets:
+- {type: openpose, model: op.safetensors, image: ./musashi/cnets/pose.png}
+flake_links:
+- {target: chars/horse}
+"""
+BUNDLE_HORSE = "prompt: {positive: horse}\n"
+BUNDLE_PRESET = "checkpoint: base.safetensors\nflake_links:\n- {target: chars/horse}\n"
+
+
+@contextlib.contextmanager
+def _machine():
+    with tempfile.TemporaryDirectory() as tmp:
+        presets = os.path.join(tmp, "model_presets")
+        os.makedirs(presets)
+        fp.folder_names_and_paths["flakes"] = ([tmp], {".yaml", ".yml"})
+        fp.folder_names_and_paths["model_presets"] = ([presets], {".yaml", ".yml"})
+        yield tmp
+
+
+def _source_bundle():
+    with _machine() as root:
+        _write(os.path.join(root, "chars", "musashi.yaml"), BUNDLE_MUSASHI.encode())
+        _write(os.path.join(root, "chars", "musashi", "musashi.png"), PNG)
+        _write(os.path.join(root, "chars", "musashi", "cnets", "pose.png"), b"pose")
+        _write(os.path.join(root, "chars", "musashi", "musashi_hero.safetensors"), b"weights")
+        _write(os.path.join(root, "chars", "musashi", "musashi_hero.civitai.info"), b"{}")
+        _write(os.path.join(root, "chars", "horse.yaml"), BUNDLE_HORSE.encode())
+        _write(os.path.join(root, "chars", "horse", "horse.png"), PNG)
+        _write(os.path.join(root, "model_presets", "img", "sdxl", "base.yaml"), BUNDLE_PRESET.encode())
+        _write(os.path.join(root, "model_presets", "img", "sdxl", "base.png"), b"preset cover")
+        bundle = fio.collect_bundle(["chars/musashi"], ["img/sdxl/base"])
+        # Installing on the machine that made it changes nothing.
+        assert fio.install_bundle(bundle) == {"installed": [], "flakes": {}, "presets": {}}
+    return json.loads(json.dumps(bundle))
+
+
+def test_bundle_round_trip():
+    bundle = _source_bundle()
+    assert list(bundle["flakes"]) == ["chars/musashi", "chars/horse"]
+    assert sorted(bundle["flakes"]["chars/musashi"]["files"]) == [
+        "musashi/cnets/pose.png", "musashi/musashi.png", "musashi/musashi_hero.civitai.info"]
+    assert list(bundle["presets"]["img/sdxl/base"]["files"]) == ["base.png"]
+    # The two flakes' identical covers are stored once.
+    assert len(bundle["files"]) == 4
+    with _machine() as root:
+        result = fio.install_bundle(bundle)
+        assert sorted(result["installed"]) == ["chars/horse", "chars/musashi", "img/sdxl/base"]
+        assert result["flakes"] == result["presets"] == {}
+        with open(os.path.join(root, "chars", "musashi.yaml"), encoding="utf-8") as f:
+            assert f.read() == BUNDLE_MUSASHI
+        assert fio.read_cover("chars/musashi") == (PNG, "image/png")
+        assert fio.read_cover("chars/horse") == (PNG, "image/png")
+        assert fio.read_preset_cover("img/sdxl/base") == (b"preset cover", "image/png")
+        assert fio.resolve({"name": "chars/musashi"}).controlnets[0].image_name ==os.path.join(root, "chars", "musashi", "cnets", "pose.png")
+        assert not _exists(root, "chars", "musashi", "musashi_hero.safetensors")
+        assert fio.install_bundle(bundle) == {"installed": [], "flakes": {}, "presets": {}}
+
+
+def test_bundle_collision_installs_imported_copy():
+    bundle = _source_bundle()
+    with _machine() as root:
+        _write(os.path.join(root, "chars", "horse.yaml"), b"prompt: {positive: pony}\n")
+        result = fio.install_bundle(bundle)
+        renamed = {"chars/horse": "chars/horse (imported)"}
+        assert result["flakes"] == renamed and result["presets"] == {}
+        assert sorted(result["installed"]) == ["chars/horse (imported)", "chars/musashi", "img/sdxl/base"]
+        assert fio.read_flake_raw("chars/horse")["prompt"] == {"positive": "pony"}
+        assert fio.read_flake_raw("chars/horse (imported)")["prompt"] == {"positive": "horse"}
+        assert fio.read_cover("chars/horse (imported)") == (PNG, "image/png")
+        # Links follow the rename, in flakes and presets.
+        assert fio.read_flake_raw("chars/musashi")["flake_links"] == [{"target": "chars/horse (imported)"}]
+        assert fio.read_preset_raw("img/sdxl/base")["flake_links"] == [{"target": "chars/horse (imported)"}]
+        # A second drop of the same image reuses the imported copy.
+        assert fio.install_bundle(bundle) == {"installed": [], "flakes": renamed, "presets": {}}
+
+
+def test_bundle_rejects_paths_outside_the_flake():
+    bundle = _source_bundle()
+    blob = next(iter(bundle["files"]))
+    for rel in ("../evil.png", "musashi/../../evil.png", "/evil.png", "C:/evil.png", "horse/evil.png",
+                "musashi\\evil.png", "musashi/evil.safetensors"):
+        bad = json.loads(json.dumps(bundle))
+        bad["flakes"]["chars/musashi"]["files"][rel] = blob
+        with _machine() as root:
+            assert _raises_value_error(lambda: fio.install_bundle(bad)), rel
+            assert os.listdir(root) == ["model_presets"]
+    for name in ("../evil", "/evil", "chars/../../evil"):
+        bad = json.loads(json.dumps(bundle))
+        bad["flakes"][name] = bad["flakes"].pop("chars/horse")
+        with _machine() as root:
+            assert _raises_value_error(lambda: fio.install_bundle(bad)), name
 
 
 if __name__ == "__main__":

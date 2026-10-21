@@ -148,6 +148,14 @@ def test_generate_points_at_saved_image():
     assert wf["properties"] == {"_images_by_combo": {"": image}, "_images_by_combo_ad": {}, "_adetailer_ab": False, "_last_image": image}
 
 
+def test_bundle_holds_flakes_and_preset_feeding_generate(monkeypatch):
+    prompt, _ = _mod._used_only_metadata(*_fixture())
+    prompt["6"] = {"class_type": "FlakeStack", "inputs": {"flake_data": ["1", 0], "flakes_json": json.dumps([{"name": "Other/unused"}])}}
+    monkeypatch.setattr(_mod.flake_io, "collect_bundle", lambda flakes, presets: (sorted(flakes), presets))
+    assert _mod._flake_bundle(prompt, "5") == (
+        ["Characters/alice", "Places/beach", "Poses/sitting", "Styles/ink"], ["SDXL/preset2"])
+
+
 def test_without_workflow():
     prompt, extra = _fixture()
     meta_prompt, meta_extra = _mod._used_only_metadata(prompt, None)

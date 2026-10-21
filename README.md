@@ -163,6 +163,18 @@ image from that folder needs no move.
 
 Move the yaml and its folder together to share or relocate a flake.
 
+#### Sharing through images
+
+Images saved by Flake Generate carry the flakes and model presets that made
+them (linked flakes included): their yaml, cover and folder files, without the
+model weights. Dropping such an image into ComfyUI installs them, so only the
+checkpoint and LoRA files have to be supplied.
+
+- Nothing is overwritten: a flake or preset already present with the same yaml
+  is reused, a different one with the same name installs as
+  `<name> (imported)` and the loaded nodes point at it.
+- Files go only into the flake's own folder under `models/flakes`.
+
 ### Editor helpers
 
 - **Favorites**: the ☆ next to the editor title marks a flake as favorite

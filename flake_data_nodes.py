@@ -14,7 +14,7 @@ except Exception:
 import folder_paths
 from nodes import KSampler, VAEDecode, SaveImage
 
-from . import flake_compose
+from . import flake_compose, flake_io
 from .full_flake_node import _build_filename_prefix
 
 _ADETAILER_DEFAULT_BBOX = "bbox/face_yolov8m.pt"
@@ -481,6 +481,26 @@ def _set_generate_image(extra_pnginfo, node_id, seed, image):
     props.update(_images_by_combo={"": image}, _images_by_combo_ad={}, _adetailer_ab=False, _last_image=image)
 
 
+def _flake_bundle(prompt, node_id):
+    """The portable bundle (#427) of the flakes and presets feeding prompt node
+    ``node_id``, read from a ``_used_only_metadata`` prompt."""
+    flakes, presets = [], []
+    seen, todo = set(), [str(node_id)]
+    while todo:
+        nid = todo.pop()
+        if nid in seen or nid not in prompt:
+            continue
+        seen.add(nid)
+        inputs = prompt[nid]["inputs"]
+        todo += [str(v[0]) for v in inputs.values() if isinstance(v, list)]
+        cls = prompt[nid].get("class_type")
+        if cls == "FlakeStack":
+            flakes += [e["name"] for e in json.loads(inputs["flakes_json"]) if not e.get("inline") and e.get("name")]
+        elif cls == "FlakeModelPreset" and isinstance(inputs.get("preset"), str):
+            presets.append(inputs["preset"])
+    return flake_io.collect_bundle(flakes, presets)
+
+
 class FlakeGenerate:
     """Takes a FLAKE_DATA input and runs KSampler + VAE Decode + Save Image
     internally. Displays a seed widget, a 2x2 preview grid, and the generated
@@ -592,6 +612,9 @@ class FlakeGenerate:
 
         # Embed only what produced this image in the saved metadata (#346, #426).
         meta_prompt, meta_extra = _used_only_metadata(prompt, extra_pnginfo)
+        # Inside the workflow: the frontend only hands that to extensions on drop.
+        if meta_prompt and isinstance((meta_extra or {}).get("workflow"), dict):
+            meta_extra["workflow"].setdefault("extra", {})["flake_bundle"] = _flake_bundle(meta_prompt, unique_id)
 
         def _save(imgs, is_ad):
             # Stem markers before the increment: _ad_ for ADetailer (#326), _up_ for
