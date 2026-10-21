@@ -1,4 +1,4 @@
-import { css, setWidgetHidden } from "../utils.js";
+import { css, setWidgetHidden, makeImageSection } from "../utils.js";
 import { computeJobCount, getBatchImages, getBatchProgress, getLivePreview } from "../queue.js";
 import { buildModel, openGenerationDataOverlay } from "./generation-data.js";
 
@@ -122,21 +122,6 @@ export function setupFlakeGenerateWidget(node, { video = false } = {}) {
     container.appendChild(topRow);
 
     // ── Image Display ──
-    const imageContainer = document.createElement("div");
-    css(imageContainer, "display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:4px;");
-
-    const imageEl = document.createElement("img");
-    css(imageEl, "max-width:100%;border-radius:4px;display:none;cursor:pointer;");
-    imageEl.title = "Double-click to reveal in file explorer";
-    imageContainer.appendChild(imageEl);
-
-    const videoEl = document.createElement("video");
-    // No native controls: their double-click goes fullscreen instead of revealing (#439).
-    Object.assign(videoEl, { loop: true, muted: true, autoplay: true, title: "Click to play/pause, double-click to reveal in file explorer" });
-    css(videoEl, "max-width:100%;border-radius:4px;display:none;cursor:pointer;");
-    videoEl.addEventListener("click", () => (videoEl.paused ? videoEl.play() : videoEl.pause()));
-    imageContainer.appendChild(videoEl);
-
     // Double-click the output image to reveal it in the OS file explorer (#329).
     let currentImage = null;
     let previewUrl = null; // live sampling preview shown instead of currentImage (#374)
@@ -152,22 +137,7 @@ export function setupFlakeGenerateWidget(node, { video = false } = {}) {
             }),
         }).catch((e) => console.error("[flakes] reveal failed", e));
     };
-    imageEl.addEventListener("dblclick", reveal);
-    videoEl.addEventListener("dblclick", reveal);
-
-    const noImageLabel = document.createElement("div");
-    css(noImageLabel, "font-size:11px;opacity:0.4;text-align:center;padding:8px 0;");
-    noImageLabel.textContent = video ? "No video generated yet" : "No image generated yet";
-    imageContainer.appendChild(noImageLabel);
-
-    // Read-only filename label (filename only, full path in tooltip) + dimensions
-    const filenameLabel = document.createElement("div");
-    css(filenameLabel, "width:100%;box-sizing:border-box;color:#ccc;padding:0 4px;font-size:12px;font-family:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:none;cursor:default;");
-    imageContainer.appendChild(filenameLabel);
-
-    const dimensionsLabel = document.createElement("div");
-    css(dimensionsLabel, "width:100%;box-sizing:border-box;color:#888;padding:0 4px;font-size:11px;font-family:inherit;text-align:center;display:none;");
-    imageContainer.appendChild(dimensionsLabel);
+    const section = makeImageSection({ video, emptyText: video ? "No video generated yet" : "No image generated yet", onReveal: reveal });
 
     function outputRelPath(img) {
         if (!img || (img.type && img.type !== "output")) return "";
@@ -175,48 +145,16 @@ export function setupFlakeGenerateWidget(node, { video = false } = {}) {
         return sub ? `${sub}/${img.filename}` : img.filename;
     }
 
-    function showDimensions(w, h) {
-        dimensionsLabel.textContent = `${w} × ${h}`;
-        dimensionsLabel.style.display = "block";
-    }
-    videoEl.addEventListener("loadedmetadata", () => showDimensions(videoEl.videoWidth, videoEl.videoHeight));
-
     function showImage(img) {
         currentImage = img;
         previewUrl = null;
-        const url = `/view?filename=${encodeURIComponent(img.filename)}&type=${img.type || "output"}&subfolder=${encodeURIComponent(img.subfolder || "")}`;
-        noImageLabel.style.display = "none";
-        imageEl.style.display = video ? "none" : "block";
-        videoEl.style.display = video ? "block" : "none";
-        if (video) {
-            videoEl.src = url;
-        } else {
-            imageEl.src = url;
-        }
         const rel = outputRelPath(img);
-        if (rel) {
-            const fileName = img.filename;
-            filenameLabel.textContent = fileName;
-            filenameLabel.title = rel;
-            filenameLabel.style.display = "block";
-        } else {
-            filenameLabel.style.display = "none";
-        }
-        if (video) return;
-        imageEl.onload = () => {
-            if (imageEl.naturalWidth && imageEl.naturalHeight) showDimensions(imageEl.naturalWidth, imageEl.naturalHeight);
-        };
-        if (imageEl.complete && imageEl.naturalWidth) showDimensions(imageEl.naturalWidth, imageEl.naturalHeight);
+        section.show(`/view?filename=${encodeURIComponent(img.filename)}&type=${img.type || "output"}&subfolder=${encodeURIComponent(img.subfolder || "")}`, rel && img.filename, rel);
     }
 
     function clearImage() {
         previewUrl = null;
-        imageEl.style.display = "none";
-        videoEl.style.display = "none";
-        videoEl.pause();
-        noImageLabel.style.display = "block";
-        filenameLabel.style.display = "none";
-        dimensionsLabel.style.display = "none";
+        section.clear();
     }
 
     // Live sampling preview (#374), shown until the result replaces it.
@@ -224,17 +162,10 @@ export function setupFlakeGenerateWidget(node, { video = false } = {}) {
         if (url === previewUrl) return;
         previewUrl = url;
         currentImage = null;
-        imageEl.onload = null;
-        imageEl.src = url;
-        imageEl.style.display = "block";
-        videoEl.style.display = "none";
-        videoEl.pause();
-        noImageLabel.style.display = "none";
-        filenameLabel.style.display = "none";
-        dimensionsLabel.style.display = "none";
+        section.showPreview(url);
     }
 
-    container.appendChild(imageContainer);
+    container.appendChild(section.el);
 
     // Per-combo results: the live batch state when this workflow ran a batch,
     // else what the saved workflow carried (#373).

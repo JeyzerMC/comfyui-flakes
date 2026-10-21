@@ -2,11 +2,12 @@ import {
     css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, makeFavoriteStar, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock, flakeDrag, clearFlakeDrag,
     makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, variantInitials, renderFlakeLabel, splitNameAndTags,
-    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, effectiveVariant, variantDropdownOptions, variantDefaultsOf, choiceFlakeLinks,
+    _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, effectiveVariant, variantDropdownOptions, variantDefaultsOf, choiceFlakeLinks, makeImageSection,
 } from "../utils.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, invalidateList, importAnimFlakeApi, pickedImageUrl } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker, makeItemImagesButton } from "../pickers.js";
+import { stackImageJobs } from "../queue.js";
 
 // Append the names of any tag-name LoRAs (#274) to a flake's grid display name,
 // e.g. "Askeladd" + a tagged "Some Author Name" -> "Askeladd — Some Author Name".
@@ -711,6 +712,7 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
         }
         if (grid._addBlock) grid.appendChild(grid._addBlock);
         refreshToggleAll();
+        refreshPreview();
     }
 
     // Cross-node drag & drop with other Flake Stack / Flake Combo grids (#415).
@@ -989,6 +991,31 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
         };
     }
 
+    // Flake Animate Stack: the first job's input image under the grid (#442).
+    const preview = kind === "anim" ? makeImageSection({ emptyText: "No input image" }) : null;
+    let previewPath;
+    if (preview) {
+        container.appendChild(preview.el);
+        preview.imageEl.addEventListener("load", () => {
+            node.setSize([node.size[0], Math.max(node.size[1], node.computeSize()[1])]);
+            node.setDirtyCanvas(true, true);
+        });
+    }
+    function refreshPreview() {
+        const path = stackImageJobs(node)[0]?.image ?? null;
+        if (!preview || path === previewPath) return;
+        previewPath = path;
+        if (path) preview.show(pickedImageUrl(path), path.split(/[\\/]/).pop(), path);
+        else preview.clear();
+    }
+    // Image scaled to the widget width (6px padding + 4px margin a side), plus
+    // the filename and dimension labels; the empty label otherwise.
+    function previewHeight() {
+        if (!preview) return 0;
+        const { naturalWidth: w, naturalHeight: h } = preview.imageEl;
+        return previewPath && w ? Math.min(w, node.size[0] - 20) * h / w + 46 : 36;
+    }
+
     // ---- Widget registration ----
     node._flakes_render = render;
     const flakeWidget = node.addDOMWidget("flakes_ui", "div", container, { serialize: false, margin: 4 });
@@ -997,7 +1024,7 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
         // wide node doesn't over-count rows and pad itself with empty space (#317).
         const cols = Math.max(1, Math.floor((node.size[0] - 16) / (itemW + 4)));
         const rows = Math.max(1, Math.ceil((readEntries().length + 1) / cols));
-        return [node.size[0], rows * (itemH + 4) + 55];  // +24 for the toggle-all button (#315)
+        return [node.size[0], rows * (itemH + 4) + 55 + previewHeight()];  // +24 for the toggle-all button (#315)
     };
     writeEntries(readEntries());
     render();

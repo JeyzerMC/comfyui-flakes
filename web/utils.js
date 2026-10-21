@@ -358,6 +358,99 @@ export function makeAccentButton(label, { icon = "" } = {}) {
     return { btn, lbl };
 }
 
+// Image (or video) with its filename (full path in the tooltip) and `w × h`
+// under it: Flake Generate's output (#329) and Flake Animate Stack's first
+// input image (#442). `onReveal` handles a double-click on the media.
+export function makeImageSection({ video = false, emptyText, onReveal = null }) {
+    const el = document.createElement("div");
+    css(el, "display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:4px;");
+
+    const imageEl = document.createElement("img");
+    css(imageEl, "max-width:100%;border-radius:4px;display:none;");
+    el.appendChild(imageEl);
+
+    const videoEl = document.createElement("video");
+    // No native controls: their double-click goes fullscreen instead of revealing (#439).
+    Object.assign(videoEl, { loop: true, muted: true, autoplay: true, title: "Click to play/pause, double-click to reveal in file explorer" });
+    css(videoEl, "max-width:100%;border-radius:4px;display:none;cursor:pointer;");
+    videoEl.addEventListener("click", () => (videoEl.paused ? videoEl.play() : videoEl.pause()));
+    el.appendChild(videoEl);
+
+    if (onReveal) {
+        imageEl.title = "Double-click to reveal in file explorer";
+        imageEl.style.cursor = "pointer";
+        imageEl.addEventListener("dblclick", onReveal);
+        videoEl.addEventListener("dblclick", onReveal);
+    }
+
+    const noImageLabel = document.createElement("div");
+    css(noImageLabel, "font-size:11px;opacity:0.4;text-align:center;padding:8px 0;");
+    noImageLabel.textContent = emptyText;
+    el.appendChild(noImageLabel);
+
+    // Read-only filename label (filename only, full path in tooltip) + dimensions
+    const filenameLabel = document.createElement("div");
+    css(filenameLabel, "width:100%;box-sizing:border-box;color:#ccc;padding:0 4px;font-size:12px;font-family:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:none;cursor:default;");
+    el.appendChild(filenameLabel);
+
+    const dimensionsLabel = document.createElement("div");
+    css(dimensionsLabel, "width:100%;box-sizing:border-box;color:#888;padding:0 4px;font-size:11px;font-family:inherit;text-align:center;display:none;");
+    el.appendChild(dimensionsLabel);
+
+    function showDimensions(w, h) {
+        dimensionsLabel.textContent = `${w} × ${h}`;
+        dimensionsLabel.style.display = "block";
+    }
+    videoEl.addEventListener("loadedmetadata", () => showDimensions(videoEl.videoWidth, videoEl.videoHeight));
+
+    // `name` (with `path` as its tooltip) hides the filename label when empty.
+    function show(url, name, path) {
+        noImageLabel.style.display = "none";
+        imageEl.style.display = video ? "none" : "block";
+        videoEl.style.display = video ? "block" : "none";
+        if (video) {
+            videoEl.src = url;
+        } else {
+            imageEl.src = url;
+        }
+        if (name) {
+            filenameLabel.textContent = name;
+            filenameLabel.title = path;
+            filenameLabel.style.display = "block";
+        } else {
+            filenameLabel.style.display = "none";
+        }
+        if (video) return;
+        imageEl.onload = () => {
+            if (imageEl.naturalWidth && imageEl.naturalHeight) showDimensions(imageEl.naturalWidth, imageEl.naturalHeight);
+        };
+        if (imageEl.complete && imageEl.naturalWidth) showDimensions(imageEl.naturalWidth, imageEl.naturalHeight);
+    }
+
+    function clear() {
+        imageEl.style.display = "none";
+        videoEl.style.display = "none";
+        videoEl.pause();
+        noImageLabel.style.display = "block";
+        filenameLabel.style.display = "none";
+        dimensionsLabel.style.display = "none";
+    }
+
+    // A transient image (e.g. a live sampling preview, #374): no labels.
+    function showPreview(url) {
+        imageEl.onload = null;
+        imageEl.src = url;
+        imageEl.style.display = "block";
+        videoEl.style.display = "none";
+        videoEl.pause();
+        noImageLabel.style.display = "none";
+        filenameLabel.style.display = "none";
+        dimensionsLabel.style.display = "none";
+    }
+
+    return { el, imageEl, show, clear, showPreview };
+}
+
 export function makeIconBtn(text, title, onClick) {
     const b = document.createElement("button");
     b.textContent = text;

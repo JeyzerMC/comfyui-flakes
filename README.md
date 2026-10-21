@@ -290,7 +290,8 @@ Image-to-video with its own presets and nodes: **Flake Animate Preset** /
 **Preset Combo** load an animate preset into a `flake_anim_data` pin, **Flake
 Animate Stack** / **Combo** add flakes, and **Flake Generate Animation** samples
 it and saves an MP4 to `output/anim/<family>/`. Start images belong to the grid
-items (bottom-left `+` / count button); each image queues its own video.
+items (bottom-left `+` / count button); each image queues its own video. Flake
+Animate Stack previews the first active item's first image under its grid.
 
 | Family | Folder | Models | Text encoder type | VAEs |
 |---|---|---|---|---|
