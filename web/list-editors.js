@@ -156,7 +156,7 @@ export async function pickFlakeTarget(family, exclude) {
 // `onFirstPath` is called when the first LoRA's file changes.
 // `loraDir()` gives the folder the LoRA picker opens in (the flake's own
 // path, e.g. img/anima/characters); defaults to the family folder.
-export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, loraDir, showAdd = true } = {}) {
+export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, loraDir, showAdd = true, defaultStrength = 1.0 } = {}) {
     const folder = familyFolder(family);
     function renderLoras() {
         box.replaceChildren();
@@ -345,7 +345,7 @@ export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, l
             addBtn.addEventListener("click", () => {
                 // Open new LoRA entries expanded (name + URL visible).
                 // _editing is runtime-only and stripped on save.
-                loras.push({ name: "", url: "", path: "", strength: 1.0, _editing: true });
+                loras.push({ name: "", url: "", path: "", strength: defaultStrength, _editing: true });
                 renderLoras();
             });
             box.appendChild(addBtn);

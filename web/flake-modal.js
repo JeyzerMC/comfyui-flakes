@@ -188,6 +188,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             Style: ["lora", "prompt"],
             Pose: ["prompt", "controlnets"],
         };
+        const defaultLoraStrength = () => selectedType === "Character" ? 0.8 : 1.0;
         // Seed a type's default optional fields, skipping any already present so
         // user-entered fields are never clobbered. Hoisted so the type dropdown
         // handler (defined above the field state) can call it at event time.
@@ -199,10 +200,10 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
                 if (activeFields.includes(key)) continue;
                 activeFields.push(key);
                 lastAdded = key;
-                if (key === "lora") fieldState.loras = [{ name: "", url: "", path: "", strength: 1.0, _editing: true }];
+                if (key === "lora") fieldState.loras = [{ name: "", url: "", path: "", strength: type === "Character" ? 0.8 : 1.0, _editing: true }];
                 else if (key === "prompt") fieldState.prompts = [{}];
                 else if (key === "controlnets") fieldState.controlnets._ = [];
-                else if (key === "variants") fieldState.variants = type === "Character" ? { outfit: { classic: {} } } : {};
+                else if (key === "variants") fieldState.variants = type === "Character" ? { outfit: { classic: { default: true } } } : {};
             }
             if (lastAdded) { renderFields(); scrollToFieldKey(lastAdded); }
         }
@@ -840,6 +841,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         onTagChange: recomputePrefills,
                         onFirstPath: (path) => setCoverFromLora?.(path),
                         loraDir: flakeDir,
+                        defaultStrength: defaultLoraStrength(),
                     });
                 }
 
@@ -1515,7 +1517,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     const co = fieldState.variants[groupName][choiceName] || (fieldState.variants[groupName][choiceName] = {});
                                     if (key === "lora") {
                                         if (!Array.isArray(co.loras)) co.loras = [];
-                                        co.loras.push({ name: "", url: "", path: "", strength: 1.0, _editing: true });
+                                        co.loras.push({ name: "", url: "", path: "", strength: defaultLoraStrength(), _editing: true });
                                         renderChoiceExtras();
                                     } else if (key === "controlnets") {
                                         if (!Array.isArray(co.controlnets)) co.controlnets = [];
@@ -1733,6 +1735,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     // Inherit the fields the group's choices have (#401).
                                     const siblings = Object.values(group).map(c => c || {});
                                     const choiceData = { positive: "" };
+                                    if (selectedType === "Character" && !siblings.length) choiceData.default = true;
                                     if (siblings.some(c => "negative" in c)) choiceData.negative = "";
                                     const cnSrc = siblings.find(c => c.controlnets?.length)?.controlnets[0];
                                     if (cnSrc) {
@@ -1740,7 +1743,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         choiceData.controlnets = [{ ...cnSettings, image: "" }];
                                     }
                                     if (siblings.some(c => c.loras)) {
-                                        const strength = siblings.find(c => c.loras?.length)?.loras[0].strength ?? 1.0;
+                                        const strength = siblings.find(c => c.loras?.length)?.loras[0].strength ?? defaultLoraStrength();
                                         choiceData.loras = [{ name: "", path: "", strength }];
                                     }
                                     const stemmed = Object.entries(group).filter(([, c]) => c?.output_stem);
