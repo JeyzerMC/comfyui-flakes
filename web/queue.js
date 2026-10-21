@@ -1,5 +1,5 @@
 import { app } from "../../scripts/app.js";
-import { collectChain } from "./widgets/generation-data.js";
+import { collectChain, MODEL_COMBO_TYPES } from "./widgets/generation-data.js";
 import { serializeModelOverrides, expandEntryVariants } from "./utils.js";
 import { fetchFlakeMeta, variantComboCount } from "./api.js";
 
@@ -75,7 +75,7 @@ export function computeJobCount(graph) {
                 axis += f._all_variants ? Math.max(1, variantComboCount(f.name)) : expandEntryVariants(f).length;
             }
             if (axis > 0) count *= axis;
-        } else if (node.type === "FlakeModelCombo") {
+        } else if (MODEL_COMBO_TYPES.includes(node.type)) {
             const n = activeComboPresets(node).length;
             if (n > 0) count *= n;
         } else if (node.type === "FlakeStack") {
@@ -151,7 +151,7 @@ function renderHighlights(state) {
     if (activeState() !== state) return;
     for (const n of app.graph.nodes) {
         if (n.type === "FlakeCombo") n._combo_render?.();
-        else if (n.type === "FlakeModelCombo") n._model_combo_render?.();
+        else if (MODEL_COMBO_TYPES.includes(n.type)) n._model_combo_render?.();
     }
 }
 
@@ -455,12 +455,12 @@ function setupBatchTracking(state, combinations, comboKeys) {
 // from any FlakeGenerate (orphans) are appended in creation order so
 // disconnected graphs keep working.
 function orderedComboNodes() {
-    const isCombo = (n) => n.type === "FlakeCombo" || n.type === "FlakeModelCombo";
+    const isCombo = (n) => n.type === "FlakeCombo" || MODEL_COMBO_TYPES.includes(n.type);
     const ordered = [];
     const seen = new Set();
     for (const gen of app.graph.nodes) {
-        if (gen.type !== "FlakeGenerate") continue;
-        const fdInput = gen.inputs?.find(i => i.name === "flake_data");
+        if (gen.type !== "FlakeGenerate" && gen.type !== "FlakeGenerateAnimation") continue;
+        const fdInput = gen.inputs?.find(i => i.name === "flake_data" || i.name === "flake_anim_data");
         if (fdInput?.link == null) continue;
         const link = app.graph.links?.[fdInput.link];
         if (!link) continue;
@@ -539,7 +539,7 @@ app.queuePrompt = async function(number, batchCount = 1) {
         } else {
             const presets = getComboPresets(node);
             if (presets.length === 0) {
-                window.alert("FlakeModelCombo node has no presets selected.");
+                window.alert(`${node.type} node has no presets selected.`);
                 return;
             }
             const bypassed = new Set(node.properties?._combo_bypassed || []);
@@ -547,7 +547,7 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 .map((preset, i) => ({ preset, i }))
                 .filter(({ preset }) => !bypassed.has(preset));
             if (activePresets.length === 0) {
-                window.alert("FlakeModelCombo node has no active (non-bypassed) presets.");
+                window.alert(`${node.type} node has no active (non-bypassed) presets.`);
                 return;
             }
             // index picks the preset's overrides when its combination is queued.

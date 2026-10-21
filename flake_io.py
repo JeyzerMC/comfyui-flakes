@@ -197,6 +197,7 @@ class AnimPreset:
     duration: float
     resolution: str
     display_name: str = ""
+    filename_prefix: str = ""
     # Wan 2.2 loads a high- and a low-noise model; MiniMax H3 a single one.
     diffusion_model: str | None = None
     diffusion_model_high: str | None = None
@@ -1765,6 +1766,7 @@ def load_anim_preset(name: str) -> AnimPreset:
         name=name,
         family=spec.folder,
         display_name=str(raw.get("display_name", "") or ""),
+        filename_prefix=str(raw.get("filename_prefix", "") or ""),
         diffusion_model=raw.get("diffusion_model") or None,
         diffusion_model_high=raw.get("diffusion_model_high") or None,
         diffusion_model_low=raw.get("diffusion_model_low") or None,

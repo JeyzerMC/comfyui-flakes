@@ -5,18 +5,41 @@ import {
     makeTextarea, makeHoverRemoveWrapper, attachAutoGrow,
     familyFolder, familyFromFolder, familySpec, ensureFamilies,
 } from "./utils.js";
-import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchEmbeddings, inputImageUrl } from "./api.js";
+import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchEmbeddings, inputImageUrl, fetchAnimFamilies, fetchAnimFamily } from "./api.js";
 import { openFileBrowser, IMAGE_ROOTS } from "./pickers.js";
 import { pickFlakeTarget, renderLoraList, serializeLoras, normalizeLinks, renderLinkList, serializeLinks } from "./list-editors.js";
 import { app } from "../../scripts/app.js";
 
-export async function openPresetEditModal({ mode, name, data, family = "SDXL/Base" }) {
+// Animate preset fields per family folder: model files [key, label, browse type]
+// and the numbers shown when the family has a default for them.
+const ANIM_MODEL_FIELDS = {
+    wan22: [["diffusion_model_high", "High-noise Model", "diffusion_models"], ["diffusion_model_low", "Low-noise Model", "diffusion_models"]],
+    mh3: [["diffusion_model", "Diffusion Model", "diffusion_models"], ["audio_vae", "Audio VAE", "vae"]],
+};
+const ANIM_NUMBER_FIELDS = [
+    ["shift_high", "Shift High", 0, 30, 0.1], ["shift_low", "Shift Low", 0, 30, 0.1], ["refiner_step", "Refiner Step", 0, 150, 1],
+    ["shift_video", "Shift Video", 0, 30, 0.1], ["shift_audio", "Shift Audio", 0, 30, 0.1],
+    ["fps", "FPS", 1, 60, 1], ["duration", "Duration (s)", 0.5, 30, 0.5],
+];
+
+export async function openPresetEditModal({ mode, name, data, family = "SDXL/Base", kind = "img" }) {
+    // Animate presets show the family's fields, blanks filled from its
+    // defaults (the loader falls back to them the same way).
+    const anim = kind === "anim";
+    const animSpec = anim ? await fetchAnimFamily(family) : null;
+    const animResolutions = anim ? (await fetchAnimFamilies()).resolutions || [] : [];
+    if (animSpec) {
+        data = data || {};
+        for (const k of ["steps", "cfg", "sampler", "scheduler", "resolution", ...ANIM_NUMBER_FIELDS.map(f => f[0])]) {
+            if (data[k] === undefined || data[k] === null || data[k] === "") data[k] = animSpec[k];
+        }
+    }
     // Seed a brand-new preset from the family's defaults (#360) — 8 steps at
     // cfg 1 with res_multistep for Z-Image, 30 at cfg 4 for Anima base, etc.
     // Done before the widgets are built because the sliders are write-once.
     // Only fills blanks, so an explicitly supplied value always wins, and an
     // existing preset being edited is never touched.
-    if (mode === "create") {
+    if (mode === "create" && !anim) {
         await ensureFamilies();
         const spec = familySpec(family);
         if (spec) {
@@ -42,7 +65,7 @@ export async function openPresetEditModal({ mode, name, data, family = "SDXL/Bas
 
         const title = document.createElement("h3");
         css(title, "margin:0 0 8px;font-size:16px;color:#fff;font-weight:500;");
-        title.textContent = mode === "create" ? "New Model Preset" : `Edit ${name}`;
+        title.textContent = mode === "create" ? (anim ? "New Animate Preset" : "New Model Preset") : `Edit ${name}`;
         content.appendChild(title);
 
         let pathInput = null;
@@ -61,7 +84,7 @@ export async function openPresetEditModal({ mode, name, data, family = "SDXL/Bas
 
         function stripPresetPrefix(p) {
             const parts = p.replace(/\\/g, "/").split("/");
-            if (parts[0] === "img" && parts.length >= 3 && FAMILY_FROM_FOLDER[parts[1]]) return parts.slice(2).join("/");
+            if (parts.length >= 3 && ((parts[0] === "img" && FAMILY_FROM_FOLDER[parts[1]]) || parts[0] === "anim")) return parts.slice(2).join("/");
             if (parts.length >= 2 && FAMILY_FROM_FOLDER[parts[0]]) return parts.slice(1).join("/");
             return p;
         }
@@ -115,8 +138,8 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
             const rootIdx = parseInt(baseRootSelect?.value || "0", 10);
             const root = (availableRoots.find(r => r.index === rootIdx)) || availableRoots[0];
             const rootPart = root ? (root.path || "").replace(/\\/g, "/").replace(/\/+$/, "") + "/" : "C:/<comfy>/model_presets/";
-            const folder = familyFolderLocal(family);
-            const familyPrefix = folder ? `img/${folder}/` : "";
+            const folder = anim ? animSpec?.folder : familyFolderLocal(family);
+            const familyPrefix = folder ? `${kind}/${folder}/` : "";
             const fullPath = `${rootPart}${familyPrefix}${raw}.yaml`;
             resolvedPathLabel.textContent = fullPath;
         }
@@ -317,9 +340,24 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         ckptLabelRow.appendChild(ckptUrlToggle);
         // New presets expand the URL field by default (#295) — point the toggle up.
         if (mode === "create") ckptUrlToggle.textContent = "▲";
-        ckptCol.appendChild(ckptLabelRow);
-
-        ckptCol.appendChild(ckptUrlInput);
+        const animModels = {};
+        if (anim) {
+            const animModelRow = document.createElement("div");
+            css(animModelRow, "display:flex;gap:8px;align-items:flex-start;");
+            for (const [key, label, type] of ANIM_MODEL_FIELDS[animSpec?.folder] || []) {
+                const col = document.createElement("div");
+                css(col, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
+                col.appendChild(makeComfyLabel(label));
+                animModels[key] = makeSearchableDropdown([], data[key] || "", `Select ${label}...`);
+                col.appendChild(animModels[key].container);
+                attachModelPicker(animModels[key], type, `Select ${label}`);
+                animModelRow.appendChild(col);
+            }
+            ckptCol.appendChild(animModelRow);
+        } else {
+            ckptCol.appendChild(ckptLabelRow);
+            ckptCol.appendChild(ckptUrlInput);
+        }
 
         const ckptWrap = makeSearchableDropdown([], data.checkpoint || "", "Select checkpoint...");
 
@@ -327,8 +365,10 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         css(ckptBox, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;");
         ckptBox.textContent = data.checkpoint ? data.checkpoint.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "Select Checkpoint";
 
-        ckptCol.appendChild(ckptBox);
-        ckptCol.appendChild(ckptWrap.container);
+        if (!anim) {
+            ckptCol.appendChild(ckptBox);
+            ckptCol.appendChild(ckptWrap.container);
+        }
         ckptWrap.container.style.display = "none";
         (async () => {
             try {
@@ -403,7 +443,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         css(vaeSampRow, "display:flex;gap:8px;align-items:flex-start;");
         const vaeColWrap = document.createElement("div");
         css(vaeColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-        vaeColWrap.appendChild(makeComfyLabel("VAE (optional)"));
+        vaeColWrap.appendChild(makeComfyLabel(anim ? "VAE" : "VAE (optional)"));
         const vaeWrap = makeSearchableDropdown([], data.vae || "", "Select VAE...");
         vaeColWrap.appendChild(vaeWrap.container);
         attachModelPicker(vaeWrap, "vae", "Select VAE");
@@ -420,7 +460,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         css(teSchedRow, "display:flex;gap:8px;align-items:flex-start;");
         const teColWrap = document.createElement("div");
         css(teColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
-        teColWrap.appendChild(makeComfyLabel("Text Encoder (optional)"));
+        teColWrap.appendChild(makeComfyLabel(anim ? "Text Encoder" : "Text Encoder (optional)"));
         const teWrap = makeSearchableDropdown([], data.text_encoder || "", "Select text encoder...");
         teColWrap.appendChild(teWrap.container);
         attachModelPicker(teWrap, "text_encoders", "Select Text Encoder");
@@ -446,7 +486,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         dmColWrap.appendChild(dmWrap.container);
         attachModelPicker(dmWrap, "diffusion_models", "Select Diffusion Model");
         dmWrap.container.previousSibling.title = "Use instead of Checkpoint for models shipped as a bare UNET. Requires a Text Encoder and VAE.";
-        dmRow.appendChild(dmColWrap);
+        if (!anim) dmRow.appendChild(dmColWrap);
         const ctColWrap = document.createElement("div");
         css(ctColWrap, "flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;");
         ctColWrap.appendChild(makeComfyLabel("Text Encoder Type"));
@@ -504,19 +544,19 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         wWrap.appendChild(makeComfyLabel("Width"));
         const wSlider = makeComfySlider(data.width ?? 1024, 64, 4096, 64);
         wWrap.appendChild(wSlider);
-        numRow.appendChild(wWrap);
+        if (!anim) numRow.appendChild(wWrap);
         const hWrap = document.createElement("div");
         css(hWrap, "flex:1;min-width:0;");
         hWrap.appendChild(makeComfyLabel("Height"));
         const hSlider = makeComfySlider(data.height ?? 1024, 64, 4096, 64);
         hWrap.appendChild(hSlider);
-        numRow.appendChild(hWrap);
+        if (!anim) numRow.appendChild(hWrap);
         const csWrap = document.createElement("div");
         css(csWrap, "flex:1;min-width:0;");
         csWrap.appendChild(makeComfyLabel("Clip Skip"));
         const csSlider = makeComfySlider(Math.abs(data.clip_skip ?? -2), 1, 24, 1);
         csWrap.appendChild(csSlider);
-        numRow.appendChild(csWrap);
+        if (!anim) numRow.appendChild(csWrap);
         const stepsWrap = document.createElement("div");
         css(stepsWrap, "flex:1;min-width:0;");
         stepsWrap.appendChild(makeComfyLabel("Steps"));
@@ -530,6 +570,29 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         cfgWrap.appendChild(cfgSlider);
         numRow.appendChild(cfgWrap);
         content.appendChild(numRow);
+
+        const animNumbers = {};
+        let resolutionDD = null;
+        if (anim) {
+            const animNumRow = document.createElement("div");
+            css(animNumRow, "display:flex;gap:8px;align-items:flex-start;");
+            for (const [key, label, min, max, step] of ANIM_NUMBER_FIELDS) {
+                if (animSpec?.[key] == null) continue;
+                const col = document.createElement("div");
+                css(col, "flex:1;min-width:0;");
+                col.appendChild(makeComfyLabel(label));
+                animNumbers[key] = makeComfySlider(data[key], min, max, step);
+                col.appendChild(animNumbers[key]);
+                animNumRow.appendChild(col);
+            }
+            const resCol = document.createElement("div");
+            css(resCol, "flex:1;min-width:0;");
+            resCol.appendChild(makeComfyLabel("Resolution"));
+            resolutionDD = makeComfyDropdown(animResolutions.map(r => ({ value: r, label: r })), data.resolution);
+            resCol.appendChild(resolutionDD.container);
+            animNumRow.appendChild(resCol);
+            content.appendChild(animNumRow);
+        }
 
         // Clip Skip only means something on a CLIP text encoder. Anima, Krea2
         // and Z-Image encode with Qwen3 / Qwen3-VL, so hide it there rather
@@ -558,7 +621,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
         const negEmbWrap = makeChipMultiSelect({ selected: data.embeddings?.negative || [], placeholder: "add embedding…" });
         negEmbCol.appendChild(negEmbWrap.container);
         embRow.appendChild(negEmbCol);
-        content.appendChild(embRow);
+        if (!anim) content.appendChild(embRow);
         (async () => {
             try {
                 const embs = await fetchEmbeddings();
@@ -652,8 +715,8 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
             content.appendChild(box);
             return box;
         }
-        renderLoraList(addListSection("LoRAs"), presetLoras, { family });
-        renderLinkList(addListSection("Flake Links"), presetLinks, () => pickFlakeTarget(family));
+        renderLoraList(addListSection("LoRAs"), presetLoras, { family, lowFile: animSpec?.folder === "wan22" });
+        if (!anim) renderLinkList(addListSection("Flake Links"), presetLinks, () => pickFlakeTarget(family));
 
         if (mode === "edit") {
             const delBtn = makeButton("Delete");
@@ -679,7 +742,22 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
 
         saveBtn.addEventListener("click", async () => {
             const flakeLinks = serializeLinks(presetLinks);
-            const ordered = {
+            const ordered = anim ? {
+                display_name: (nameInput.value || "").trim() || undefined,
+                filename_prefix: (filenamePrefixInput.value || "").trim() || undefined,
+                ...Object.fromEntries(Object.entries(animModels).map(([k, w]) => [k, w.element.value || null])),
+                text_encoder: teWrap.element.value || null,
+                clip_type: ctDD.element.value || null,
+                vae: vaeWrap.element.value || null,
+                steps: stepsSlider.getValue(),
+                cfg: cfgSlider.getValue(),
+                sampler: samplerDD.element.value,
+                scheduler: schedDD.element.value,
+                ...Object.fromEntries(Object.entries(animNumbers).map(([k, sl]) => [k, sl.getValue()])),
+                resolution: resolutionDD.element.value,
+                prompt: { positive: promptState.positive, negative: promptState.negative ?? "" },
+                loras: presetLoras.length ? serializeLoras(presetLoras) : undefined,
+            } : {
                 display_name: (nameInput.value || "").trim() || undefined,
                 filename_prefix: (filenamePrefixInput.value || "").trim() || undefined,
                 checkpoint: ckptWrap.element.value,
@@ -716,6 +794,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                     family: family || undefined,
                     base_root_index: Number.isFinite(baseRootIndex) ? baseRootIndex : 0,
                     output_path: outputPath,
+                    kind,
                 };
                 if (mode !== "create") body.old_name = name;
                 const r = await fetch("/flakes/presets/save", {
@@ -743,41 +822,32 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
     });
 }
 
-export async function refreshPresetOptions(family = "") {
+const ANIM_PRESET_NODES = ["FlakeAnimPreset", "FlakeAnimPresetCombo"];
+const PRESET_NODES = ["FlakeModelPreset", "FlakeModelCombo", ...ANIM_PRESET_NODES];
+
+// /flakes/presets query for a preset node: its kind and family.
+function presetQuery(n) {
+    const anim = ANIM_PRESET_NODES.includes(n.type);
+    const family = n.widgets?.find(w => w.name === (anim ? "family" : "model_family"))?.value || "";
+    return new URLSearchParams({ kind: anim ? "anim" : "img", ...(family ? { family } : {}) }).toString();
+}
+
+export async function refreshPresetOptions() {
     try {
-        // Fetch presets for all unique families used by nodes, plus the requested family
-        const familyMap = new Map();
-        for (const n of app.graph.nodes) {
-            if (n.type !== "FlakeModelPreset" && n.type !== "FlakeModelCombo") continue;
-            const fw = n.widgets?.find(w => w.name === "model_family");
-            const nodeFamily = fw?.value || family || "";
-            if (!familyMap.has(nodeFamily)) {
-                const query = nodeFamily ? `?family=${encodeURIComponent(nodeFamily)}` : "";
-                const r = await fetch(`/flakes/presets${query}`, { cache: "no-store" });
-                const d = await r.json();
-                const names = d.presets || [];
-                const newValues = names.length ? ["Select a preset...", ...names] : ["No model preset is selected"];
-                familyMap.set(nodeFamily, newValues);
-            }
-        }
-
-        // Also fetch for the explicitly requested family if no nodes exist yet
-        if (family && !familyMap.has(family)) {
-            const query = `?family=${encodeURIComponent(family)}`;
-            const r = await fetch(`/flakes/presets${query}`, { cache: "no-store" });
-            const d = await r.json();
+        const nodes = app.graph.nodes.filter(n => PRESET_NODES.includes(n.type));
+        const valuesByQuery = new Map();
+        for (const n of nodes) {
+            const query = presetQuery(n);
+            if (valuesByQuery.has(query)) continue;
+            const d = await (await fetch(`/flakes/presets?${query}`, { cache: "no-store" })).json();
             const names = d.presets || [];
-            const newValues = names.length ? ["Select a preset...", ...names] : ["No model preset is selected"];
-            familyMap.set(family, newValues);
+            valuesByQuery.set(query, names.length ? ["Select a preset...", ...names] : ["No model preset is selected"]);
         }
 
-        for (const n of app.graph.nodes) {
-            if (n.type !== "FlakeModelPreset" && n.type !== "FlakeModelCombo") continue;
+        for (const n of nodes) {
             const pw = n.widgets?.find(w => w.name === "preset");
             if (!pw || !pw.options) continue;
-            const fw = n.widgets?.find(w => w.name === "model_family");
-            const nodeFamily = fw?.value || "";
-            const newValues = familyMap.get(nodeFamily) || familyMap.get("") || ["No model preset is selected"];
+            const newValues = valuesByQuery.get(presetQuery(n));
             pw.options.values = newValues;
 
             // Update the widget value list that ComfyUI/LiteGraph uses internally
@@ -917,7 +987,7 @@ export async function handlePresetButton(e) {
                 embeddings: [],
             },
         });
-        if (result) refreshPresetOptions(currentFamily);
+        if (result) refreshPresetOptions();
     } else {
         let data;
         try {
@@ -932,6 +1002,6 @@ export async function handlePresetButton(e) {
             data,
             family: currentFamily,
         });
-        if (result) refreshPresetOptions(currentFamily);
+        if (result) refreshPresetOptions();
     }
 }

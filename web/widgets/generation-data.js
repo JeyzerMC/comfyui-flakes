@@ -58,10 +58,14 @@ function _resolveComfyApi() {
 
 const ACCENT = "#4a9eff";
 
+// Preset source nodes: the image ones and their Flake Animate counterparts.
+const PRESET_TYPES = ["FlakeModelPreset", "FlakeAnimPreset"];
+export const MODEL_COMBO_TYPES = ["FlakeModelCombo", "FlakeAnimPresetCombo"];
+
 // ── Upstream chain ─────────────────────────────────────────────────────────
 // Walk the flake_data input upstream from the Flake Generate node and collect,
 // in pipeline order, every node that contributes generation data:
-//   - FlakeModelPreset / FlakeModelCombo (terminal source)
+//   - PRESET_TYPES / MODEL_COMBO_TYPES (terminal source)
 //   - FlakeStack (common, non-combinatorial flakes)
 //   - FlakeCombo (combinatorial flakes)
 export function collectChain(startNode) {
@@ -78,7 +82,7 @@ export function collectChain(startNode) {
             const link = current.graph?.links?.[fdInput.link];
             if (!link) break;
             current = current.graph?.getNodeById(link.origin_id);
-        } else if (t === "FlakeModelPreset" || t === "FlakeModelCombo") {
+        } else if (PRESET_TYPES.includes(t) || MODEL_COMBO_TYPES.includes(t)) {
             chain.push({ type: t, node: current });
             break;
         } else {
@@ -110,13 +114,13 @@ export async function buildModel(startNode) {
     const fixed = { presetName: null, stackFlakes: [] };
 
     for (const { type, node } of chain) {
-        if (type === "FlakeModelPreset") {
+        if (PRESET_TYPES.includes(type)) {
             const w = node.widgets?.find(w => w.name === "preset");
             const v = w?.value;
             if (v && v !== "Select a preset..." && v !== "No model preset is selected") {
                 fixed.presetName = v;
             }
-        } else if (type === "FlakeModelCombo") {
+        } else if (MODEL_COMBO_TYPES.includes(type)) {
             const allPresets = node.properties?._combo_presets || [];
             const uids = node.properties._combo_uids;
             const bypassed = new Set(node.properties?._combo_bypassed || []);

@@ -3,9 +3,10 @@ import { fetchPreset } from "../api.js";
 import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
 import { openPresetPicker } from "../pickers.js";
 
-export function setupFlakeModelPresetWidget(node) {
+// kind "anim": a Flake Animate Preset node (family widget, animate presets).
+export function setupFlakeModelPresetWidget(node, { kind = "img" } = {}) {
     const presetWidget = node.widgets?.find(w => w.name === "preset");
-    const familyWidget = node.widgets?.find(w => w.name === "model_family");
+    const familyWidget = node.widgets?.find(w => w.name === (kind === "anim" ? "family" : "model_family"));
     if (!presetWidget) return;
 
     // Hide the original ComfyUI combo widget
@@ -66,7 +67,7 @@ export function setupFlakeModelPresetWidget(node) {
         e.stopPropagation();
         e.preventDefault();
         try {
-            const result = await openPresetPicker({ selected: presetWidget.value, family: getFamily() });
+            const result = await openPresetPicker({ selected: presetWidget.value, family: getFamily(), kind });
             if (result && result.name) {
                 presetWidget.value = result.name;
                 render();
@@ -89,6 +90,7 @@ export function setupFlakeModelPresetWidget(node) {
             const result = await openPresetEditModal({
                 mode: "create",
                 family: getFamily(),
+                kind,
                 data: {
                     checkpoint: "",
                     checkpoint_url: "",
@@ -100,7 +102,7 @@ export function setupFlakeModelPresetWidget(node) {
             });
             if (result && result.name) {
                 presetWidget.value = result.name;
-                await refreshPresetOptions(getFamily());
+                await refreshPresetOptions();
                 render();
             }
         } catch (err) {
@@ -144,7 +146,7 @@ export function setupFlakeModelPresetWidget(node) {
     replacePresetBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
         try {
-            const result = await openPresetPicker({ selected: presetWidget.value, family: getFamily() });
+            const result = await openPresetPicker({ selected: presetWidget.value, family: getFamily(), kind });
             if (result && result.name) {
                 presetWidget.value = result.name;
                 render();
@@ -173,7 +175,7 @@ export function setupFlakeModelPresetWidget(node) {
             window.alert(`Failed to load preset '${current}': ${err.message || err}`);
             return;
         }
-        const result = await openPresetEditModal({ mode: "edit", name: current, data, family: getFamily() });
+        const result = await openPresetEditModal({ mode: "edit", name: current, data, family: getFamily(), kind });
         if (result) {
             await refreshPresetOptions();
             render();
@@ -214,7 +216,7 @@ export function setupFlakeModelPresetWidget(node) {
             window.alert(`Failed to load preset '${current}': ${err.message || err}`);
             return;
         }
-        const result = await openPresetEditModal({ mode: "edit", name: current, data, family: getFamily() });
+        const result = await openPresetEditModal({ mode: "edit", name: current, data, family: getFamily(), kind });
         if (result) {
             await refreshPresetOptions();
             render();
@@ -360,7 +362,7 @@ export function setupFlakeModelPresetWidget(node) {
         const origCallback = familyWidget.callback;
         familyWidget.callback = function (value) {
             const r = origCallback?.apply(this, arguments);
-            refreshPresetOptions(value);
+            refreshPresetOptions();
             render();
             return r;
         };

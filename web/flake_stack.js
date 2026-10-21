@@ -78,12 +78,14 @@ app.registerExtension({
                 return r;
             };
         }
-        if (nodeData.name === "FlakeModelPreset") {
+        if (nodeData.name === "FlakeModelPreset" || nodeData.name === "FlakeAnimPreset") {
+            const kind = nodeData.name === "FlakeAnimPreset" ? "anim" : "img";
+            const hidden = [kind === "anim" ? "family" : "model_family", "preset"];
             const origOnNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
-                setupFlakeModelPresetWidget(this);
-                removeHiddenInputs(this, ["model_family", "preset"]);
+                setupFlakeModelPresetWidget(this, { kind });
+                removeHiddenInputs(this, hidden);
                 if (!this._configured) {
                     setDefaultSize(this, 300);
                 }
@@ -94,7 +96,7 @@ app.registerExtension({
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
                 this._configured = true;
-                removeHiddenInputs(this, ["model_family", "preset"]);
+                removeHiddenInputs(this, hidden);
                 this._preset_render?.();
                 return r;
             };
@@ -121,12 +123,14 @@ app.registerExtension({
                 return r;
             };
         }
-        if (nodeData.name === "FlakeModelCombo") {
+        if (nodeData.name === "FlakeModelCombo" || nodeData.name === "FlakeAnimPresetCombo") {
+            const kind = nodeData.name === "FlakeAnimPresetCombo" ? "anim" : "img";
+            const hidden = [kind === "anim" ? "family" : "model_family", "preset"];
             const origOnNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
-                setupFlakeModelComboWidget(this);
-                removeHiddenInputs(this, ["model_family", "preset"]);
+                setupFlakeModelComboWidget(this, { kind });
+                removeHiddenInputs(this, hidden);
                 if (!this._configured) {
                     setDefaultSize(this, 300);
                 }
@@ -137,7 +141,7 @@ app.registerExtension({
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
                 this._configured = true;
-                removeHiddenInputs(this, ["model_family", "preset"]);
+                removeHiddenInputs(this, hidden);
                 this._model_combo_render?.();
                 return r;
             };

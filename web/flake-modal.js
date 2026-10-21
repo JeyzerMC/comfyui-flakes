@@ -102,7 +102,7 @@ function inferCnFromImage(filename, types = []) {
 // no ControlNets and Wan 2.2 LoRAs take a LOW file too.
 export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Base", kind = "img" }) {
     const animFamily = kind === "anim"
-        ? (await fetchAnimFamilies()).find(f => mode === "edit" && name ? f.folder === name.split("/")[1] : f.label === family)
+        ? (await fetchAnimFamilies()).families.find(f => mode === "edit" && name ? f.folder === name.split("/")[1] : f.label === family)
         : null;
     const lowFile = animFamily?.folder === "wan22";
     return new Promise((resolve) => {

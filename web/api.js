@@ -64,13 +64,6 @@ export async function deleteFlakeApi(name) {
     invalidateList();
 }
 
-// Animate families with their preset defaults (#429).
-let ANIM_FAMILIES_PROMISE = null;
-export function fetchAnimFamilies() {
-    if (!ANIM_FAMILIES_PROMISE) ANIM_FAMILIES_PROMISE = fetch("/flakes/anim/families").then(r => r.json()).then(d => d.families || []);
-    return ANIM_FAMILIES_PROMISE;
-}
-
 // --- Autocomplete / assets ---
 
 let LORAS_PROMISE = null;
@@ -151,6 +144,17 @@ export async function fetchPresets(family = "") {
         throw new Error(err.error || `HTTP ${r.status}`);
     }
     return (await r.json()).presets || [];
+}
+
+// { families: [{label, folder, steps, ...}], resolutions } for animate presets.
+let ANIM_FAMILIES_PROMISE = null;
+export function fetchAnimFamilies() {
+    if (!ANIM_FAMILIES_PROMISE) ANIM_FAMILIES_PROMISE = fetch("/flakes/anim/families").then(r => r.json());
+    return ANIM_FAMILIES_PROMISE;
+}
+
+export async function fetchAnimFamily(label) {
+    return ((await fetchAnimFamilies()).families || []).find(f => f.label === label) || null;
 }
 
 // --- Cover ---

@@ -133,9 +133,10 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
     return block;
 }
 
-export function setupFlakeModelComboWidget(node) {
+// kind "anim": a Flake Animate Preset Combo node (family widget, animate presets).
+export function setupFlakeModelComboWidget(node, { kind = "img" } = {}) {
     const presetWidget = node.widgets?.find(w => w.name === "preset");
-    const familyWidget = node.widgets?.find(w => w.name === "model_family");
+    const familyWidget = node.widgets?.find(w => w.name === (kind === "anim" ? "family" : "model_family"));
     const overridesWidget = node.widgets?.find(w => w.name === "overrides_json");
     if (!presetWidget) return;
 
@@ -311,7 +312,7 @@ export function setupFlakeModelComboWidget(node) {
                     render();
                 },
                 onReplace: async (idx) => {
-                    const result = await openPresetPicker({ family: getFamily() });
+                    const result = await openPresetPicker({ family: getFamily(), kind });
                     if (!result || !result.name) return;
                     const arr = readPresets();
                     arr[idx] = result.name;
@@ -328,7 +329,7 @@ export function setupFlakeModelComboWidget(node) {
                     if (!presetName) return;
                     const { openPresetEditModal } = await import("../preset-modal.js");
                     const data = await fetchPreset(presetName);
-                    const result = await openPresetEditModal({ mode: "edit", name: presetName, data, family: getFamily() });
+                    const result = await openPresetEditModal({ mode: "edit", name: presetName, data, family: getFamily(), kind });
                     if (result) {
                         const name = await fetchDisplayName(presetName);
                         node.properties._combo_display_names[presetName] = name;
@@ -411,17 +412,18 @@ export function setupFlakeModelComboWidget(node) {
                 const result = await openPresetEditModal({
                     mode: "create",
                     family: getFamily(),
+                    kind,
                     data: {
                         checkpoint: "", checkpoint_url: "", clip_skip: -2, vae: "",
                         prompt: { positive: "", negative: "" }, embeddings: [],
                     },
                 });
                 if (!result || !result.name) return;
-                await refreshPresetOptions(getFamily());
+                await refreshPresetOptions();
                 await pushPreset(result.name);
             },
             onLoad: async () => {
-                const result = await openPresetPicker({ family: getFamily() });
+                const result = await openPresetPicker({ family: getFamily(), kind });
                 if (!result || !result.name) return;
                 await pushPreset(result.name);
             },

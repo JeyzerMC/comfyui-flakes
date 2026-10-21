@@ -1,6 +1,6 @@
 import { openOverlay } from "./modal.js";
 import { css, makeButton, makeComfyInput, makeComfyValueSlider, familyFolder, renderFlakeLabel } from "./utils.js";
-import { getCoverUrl, getVariantImageUrl, fetchBrowse, fetchLoras, fetchCheckpoints } from "./api.js";
+import { getCoverUrl, getVariantImageUrl, fetchBrowse, fetchLoras, fetchCheckpoints, fetchAnimFamily } from "./api.js";
 
 const BROWSE_TYPE_LABELS = {
     checkpoints: "models/checkpoints",
@@ -31,20 +31,22 @@ export async function openFileLoadPicker({ flakes, directories, family = "", dis
     });
 }
 
-export async function openPresetPicker({ selected = "", family = "" } = {}) {
+export async function openPresetPicker({ selected = "", family = "", kind = "img" } = {}) {
     let presets = [];
     let displayNames = {};
     try {
-        const query = family ? `?family=${encodeURIComponent(family)}` : "";
-        const d = await (await fetch(`/flakes/presets${query}`, { cache: "no-store" })).json();
+        const query = new URLSearchParams({ kind, ...(family ? { family } : {}) });
+        const d = await (await fetch(`/flakes/presets?${query}`, { cache: "no-store" })).json();
         presets = d.presets || [];
         displayNames = d.display_names || {};
     } catch (err) {
         console.error("[flakes] failed to load presets for picker:", err);
     }
+    // Animate presets open in anim/<folder>; image ones derive img/<folder> from the family.
+    const animFolder = kind === "anim" ? (await fetchAnimFamily(family).catch(() => null))?.folder : null;
     return openNamePicker({
         title: "Select a Preset", kind: "presets", noun: "preset", base: "model_presets/",
-        names: presets, family, selected,
+        names: presets, family, selected, startFolder: animFolder ? `anim/${animFolder}` : null,
         coverUrl: (name) => `/flakes/preset_cover?name=${encodeURIComponent(name)}`,
         renderLabel: (el, name) => { el.textContent = displayNames[name] || name.replace(/\\/g, "/").split("/").pop(); },
     });
@@ -55,7 +57,7 @@ export async function openPresetPicker({ selected = "", family = "" } = {}) {
 // when the names span several drives. One drive is shown at a time, an extra
 // model path's by default. Without `directories`, folders come from the names.
 // Resolves to {name} or null.
-function openNamePicker({ title, kind, noun, base, names, directories = null, family, selected = "", coverUrl, renderLabel, favorites = [], folderCovers = {} }) {
+function openNamePicker({ title, kind, noun, base, names, directories = null, family, startFolder = null, selected = "", coverUrl, renderLabel, favorites = [], folderCovers = {} }) {
     return new Promise((resolve) => {
         const { content, footer, close, handlers } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
@@ -109,7 +111,7 @@ function openNamePicker({ title, kind, noun, base, names, directories = null, fa
         content.appendChild(grid);
 
         const folder = familyFolder(family);
-        let currentFolder = folder ? `img/${folder}` : "";
+        let currentFolder = startFolder ?? (folder ? `img/${folder}` : "");
         let selectedName = selected || null;
         let selectedEl = null;
 
