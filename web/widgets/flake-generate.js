@@ -131,8 +131,10 @@ export function setupFlakeGenerateWidget(node, { video = false } = {}) {
     imageContainer.appendChild(imageEl);
 
     const videoEl = document.createElement("video");
-    Object.assign(videoEl, { controls: true, loop: true, muted: true, autoplay: true, title: imageEl.title });
-    css(videoEl, "max-width:100%;border-radius:4px;display:none;");
+    // No native controls: their double-click goes fullscreen instead of revealing (#439).
+    Object.assign(videoEl, { loop: true, muted: true, autoplay: true, title: "Click to play/pause, double-click to reveal in file explorer" });
+    css(videoEl, "max-width:100%;border-radius:4px;display:none;cursor:pointer;");
+    videoEl.addEventListener("click", () => (videoEl.paused ? videoEl.play() : videoEl.pause()));
     imageContainer.appendChild(videoEl);
 
     // Double-click the output image to reveal it in the OS file explorer (#329).

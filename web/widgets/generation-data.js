@@ -569,11 +569,13 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         imageBox.style.overflow = fill ? "hidden" : "auto";
     }
     // Flake Generate Animation results play in a <video> in place of the
-    // composite <img>; previews and covers stay images (#434).
+    // composite <img>; previews and covers stay images (#434). No native
+    // controls: their double-click goes fullscreen instead of revealing (#439).
     function addCompositeVideo(imageBox, img, onSize) {
         const v = document.createElement("video");
-        Object.assign(v, { controls: true, loop: true, muted: true, autoplay: true, title: img.title });
-        css(v, img.style.cssText + "display:none;");
+        Object.assign(v, { loop: true, muted: true, autoplay: true, title: "Click to play/pause, double-click to reveal in file explorer" });
+        css(v, img.style.cssText + "display:none;cursor:pointer;");
+        v.addEventListener("click", () => (v.paused ? v.play() : v.pause()));
         v.addEventListener("loadedmetadata", () => onSize(v.videoWidth, v.videoHeight));
         imageBox.appendChild(v);
         return v;
