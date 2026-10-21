@@ -176,7 +176,7 @@ def test_mh3_pipeline_decodes_audio():
 
 
 def test_headroom_applies_only_while_sampling():
-    _run(_data("mh3"), headroom=2.0, upscale_model="4x.pth")
+    _run(_data("mh3"), use_headroom=True, headroom=2.0, upscale=True, upscale_model="4x.pth")
     assert _call("KSampler")[0][3] == 100 + 2 * 1024 ** 3
     assert _call("VAEDecodeAudio")[0][3] == 100 + 2 * 1024 ** 3
     assert _call("ImageUpscaleWithModel")[0][3] == 100
@@ -184,11 +184,25 @@ def test_headroom_applies_only_while_sampling():
 
 
 def test_upscale_and_interpolation_double_the_fps():
-    _run(_data("wan22"), upscale_model="4x.pth", interpolation_model="rife.pth")
+    _run(_data("wan22"), upscale=True, upscale_model="4x.pth", interpolate=True, interpolation_model="rife.pth")
     assert _call("UpscaleModelLoader")[0][1] == ("4x.pth",)
     assert _call("ImageUpscaleWithModel")[0][1] == ("UpscaleModelLoader", "VAEDecode")
     assert _call("FrameInterpolate")[0][1] == ("FrameInterpolationModelLoader", "ImageUpscaleWithModel", 2)
     assert _call("CreateVideo")[0][1] == ("FrameInterpolate", 32, None)
+
+
+def test_toggles_off_ignore_their_models_and_headroom():
+    _run(_data("wan22"), upscale_model="4x.pth", interpolation_model="rife.pth", headroom=2.0)
+    assert _call("KSamplerAdvanced")[0][3] == 100
+    assert not _call("UpscaleModelLoader") and not _call("FrameInterpolationModelLoader")
+    assert _call("CreateVideo")[0][1] == ("VAEDecode", 16, None)
+
+
+@pytest.mark.parametrize("toggle", ["upscale", "interpolate"])
+def test_toggle_on_without_a_model_is_a_clear_error(toggle):
+    with pytest.raises(ValueError, match="is on but no"):
+        _run(_data("wan22"), **{toggle: True})
+    assert CALLS == []
 
 
 def test_missing_image_is_a_clear_error():

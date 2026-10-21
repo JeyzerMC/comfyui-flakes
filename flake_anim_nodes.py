@@ -284,9 +284,12 @@ class FlakeGenerateAnimation:
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True}),
             },
             "optional": {
-                "upscale_model": (["None"] + folder_paths.get_filename_list("upscale_models"), {"default": "None"}),
-                "interpolation_model": (["None"] + folder_paths.get_filename_list("frame_interpolation"), {
-                    "default": "None", "tooltip": "Doubles the frame count and the fps."}),
+                "upscale": ("BOOLEAN", {"default": False, "label_on": "Upscale", "label_off": "Upscale off"}),
+                "upscale_model": ([""] + folder_paths.get_filename_list("upscale_models"), {"default": ""}),
+                "interpolate": ("BOOLEAN", {"default": False, "label_on": "Interpolate", "label_off": "Interpolate off"}),
+                "interpolation_model": ([""] + folder_paths.get_filename_list("frame_interpolation"), {
+                    "default": "", "tooltip": "Doubles the frame count and the fps."}),
+                "use_headroom": ("BOOLEAN", {"default": False, "label_on": "Headroom", "label_off": "Headroom off"}),
                 "headroom": ("FLOAT", {
                     "default": 0.0, "min": 0.0, "max": 64.0, "step": 0.5,
                     "tooltip": "GB of VRAM kept free while sampling and decoding, on top of ComfyUI's reserve."}),
@@ -303,28 +306,32 @@ class FlakeGenerateAnimation:
     DESCRIPTION = "Generate a video from FLAKE_ANIM_DATA and its start image, then save it as MP4. Displays the result inline."
     OUTPUT_NODE = True
 
-    def execute(self, flake_anim_data, seed, upscale_model="None", interpolation_model="None", headroom=0.0,
-                prompt=None, extra_pnginfo=None):
+    def execute(self, flake_anim_data, seed, upscale=False, upscale_model="", interpolate=False, interpolation_model="",
+                use_headroom=False, headroom=0.0, prompt=None, extra_pnginfo=None):
         data = flake_anim_data
         if data["image"] is None:
             raise ValueError("Flake Generate Animation has no start image — connect an image to a Flake Animate Stack/Combo.")
+        if upscale and not upscale_model:
+            raise ValueError("Flake Generate Animation: Upscale is on but no upscale_model is selected.")
+        if interpolate and not interpolation_model:
+            raise ValueError("Flake Generate Animation: Interpolate is on but no interpolation_model is selected.")
         family, preset = data["family"], data["preset"]
         width, height = _video_size(data["image"], preset["resolution"], 16 if data["family"] == "wan22" else 32)
         length, fps = _timing(family, preset)
         sample = _sample_wan22 if family == "wan22" else _sample_mh3
 
         reserved = comfy.model_management.EXTRA_RESERVED_VRAM
-        comfy.model_management.EXTRA_RESERVED_VRAM = reserved + int(headroom * 1024 ** 3)
+        comfy.model_management.EXTRA_RESERVED_VRAM = reserved + (int(headroom * 1024 ** 3) if use_headroom else 0)
         try:
             images, audio = sample(data, seed, width, height, length)
         finally:
             comfy.model_management.EXTRA_RESERVED_VRAM = reserved
 
         m = nodes.NODE_CLASS_MAPPINGS
-        if upscale_model != "None":
+        if upscale:
             model = m["UpscaleModelLoader"].execute(upscale_model).result[0]
             images = m["ImageUpscaleWithModel"].execute(model, images).result[0]
-        if interpolation_model != "None":
+        if interpolate:
             model = m["FrameInterpolationModelLoader"].execute(interpolation_model).result[0]
             images = m["FrameInterpolate"].execute(model, images, 2).result[0]
             fps *= 2

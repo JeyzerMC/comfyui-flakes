@@ -9,20 +9,27 @@ const ACCENT = "#4a9eff";
 export function setupFlakeGenerateWidget(node, { video = false } = {}) {
     if (!node.properties) node.properties = {};
 
-    // Conditional optional widgets (#306): the ADetailer/Upscale sub-widgets only
-    // show when their toggle is on.
+    // Conditional optional widgets (#306): each toggle's sub-widgets only show
+    // when it is on. The animation node has its own toggles (#438).
     const findWidget = (name) => node.widgets?.find((x) => x.name === name);
-    const ADETAILER_DEPS = ["adetailer_denoise", "adetailer_steps", "adetailer_bbox"];
-    const UPSCALE_DEPS = ["upscale_model", "upscale_factor"];
+    const DEPS = video ? {
+        upscale: ["upscale_model"],
+        interpolate: ["interpolation_model"],
+        use_headroom: ["headroom"],
+    } : {
+        adetailer: ["adetailer_denoise", "adetailer_steps", "adetailer_bbox"],
+        upscale: ["upscale_model", "upscale_factor"],
+    };
     function syncOptionalWidgets() {
-        const adOn = (findWidget("adetailer")?.value || "Off") !== "Off";
-        const upOn = !!findWidget("upscale")?.value;
-        for (const n of ADETAILER_DEPS) setWidgetHidden(findWidget(n), !adOn);
-        for (const n of UPSCALE_DEPS) setWidgetHidden(findWidget(n), !upOn);
+        for (const [toggle, deps] of Object.entries(DEPS)) {
+            const value = findWidget(toggle)?.value;
+            const on = toggle === "adetailer" ? (value || "Off") !== "Off" : !!value;
+            for (const n of deps) setWidgetHidden(findWidget(n), !on);
+        }
         node.setSize([node.size[0], node.computeSize()[1]]);
         node.graph?.setDirtyCanvas(true, true);
     }
-    for (const toggle of ["adetailer", "upscale"]) {
+    for (const toggle of Object.keys(DEPS)) {
         const tw = findWidget(toggle);
         if (!tw) continue;
         const cb = tw.callback;

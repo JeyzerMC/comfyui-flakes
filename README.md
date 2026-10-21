@@ -304,10 +304,13 @@ Flake Generate Animation:
 
 - The video's short edge comes from the preset's resolution (480p / 580p /
   720p) and its aspect from the start image; both sides round to a multiple of 32.
-- **upscale_model** (`models/upscale_models/`) upscales every frame.
-- **interpolation_model** (`models/frame_interpolation/`, RIFE or FILM) doubles
-  the frame count and the fps.
-- **headroom** keeps that many GB of VRAM free while sampling and decoding.
+- **upscale** + **upscale_model** (`models/upscale_models/`) upscales every frame.
+- **interpolate** + **interpolation_model** (`models/frame_interpolation/`, RIFE
+  or FILM) doubles the frame count and the fps.
+- **use_headroom** + **headroom** keeps that many GB of VRAM free while sampling
+  and decoding.
+- Each field shows only while its toggle is on; a toggle on with no model
+  selected is an error.
 
 ---
 
