@@ -211,6 +211,31 @@ async def _delete_flake(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "name": name})
 
 
+@routes.post("/flakes/anim/import")
+async def _import_anim_flake(request: web.Request) -> web.Response:
+    """Copy an image flake into an animate family (#433)."""
+    try:
+        body = await request.json()
+    except Exception:
+        return _bad_request("invalid JSON body")
+    if not isinstance(body, dict):
+        return _bad_request("body must be a JSON object")
+    source = (body.get("source") or "").strip()
+    family = (body.get("family") or "").strip()
+    if not source or not family:
+        return _bad_request("missing 'source' or 'family'")
+    try:
+        name = flake_io.import_anim_flake(source, family)
+    except FileNotFoundError as exc:
+        return _not_found(str(exc))
+    except ValueError as exc:
+        return _bad_request(str(exc))
+    except Exception as exc:
+        logging.exception("[flakes] failed to import %s", source)
+        return _server_error(str(exc))
+    return web.json_response({"ok": True, "name": name})
+
+
 # ---------------------------------------------------------------------------
 # Autocomplete sources (Phase 2)
 # ---------------------------------------------------------------------------

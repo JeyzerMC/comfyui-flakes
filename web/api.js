@@ -55,6 +55,21 @@ export async function saveFlakeApi(name, data, family = "", baseRootIndex = null
     return result.name || name;
 }
 
+// Copy image flake `source` into animate `family` (#433); resolves to the new name.
+export async function importAnimFlakeApi(source, family) {
+    const r = await fetch("/flakes/anim/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source, family }),
+    });
+    if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${r.status}`);
+    }
+    invalidateList();
+    return (await r.json()).name;
+}
+
 export async function deleteFlakeApi(name) {
     const r = await fetch(`/flakes/delete?name=${encodeURIComponent(name)}`, { method: "DELETE" });
     if (!r.ok) {

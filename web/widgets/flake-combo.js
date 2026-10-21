@@ -4,7 +4,7 @@ import {
     makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut, effectiveVariant, variantDropdownOptions, variantDefaultsOf, choiceFlakeLinks,
 } from "../utils.js";
-import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults } from "../api.js";
+import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, importAnimFlakeApi } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker, openVariantMultiPicker } from "../pickers.js";
 import { getGeneratingUid, newItemUid } from "../queue.js";
@@ -886,6 +886,30 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
         const { flakes, directories, display_names, tag_names, favorites, folder_covers } = await fetchList(getFamily(), kind);
         const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), kind, displayNames: display_names, tagNames: tag_names, favorites, folderCovers: folder_covers });
         if (!result || !result.name) return;
+        await addFlake(result.name);
+    }
+
+    // Animate grids: copy a picked image flake into the node's family, edit
+    // the copy, then add it like a loaded flake (#433).
+    async function handleImport() {
+        const { flakes, directories, display_names, tag_names, favorites, folder_covers } = await fetchList("", "img");
+        const picked = await openFileLoadPicker({ flakes, directories, displayNames: display_names, tagNames: tag_names, favorites, folderCovers: folder_covers });
+        if (!picked || !picked.name) return;
+        let name;
+        let data;
+        try {
+            name = await importAnimFlakeApi(picked.name, getFamily());
+            data = await fetchFlake(name);
+        } catch (err) {
+            window.alert(`Failed to import ${picked.name}: ${err.message || err}`);
+            return;
+        }
+        const result = await openEditModal({ mode: "edit", name, data, dirs: (await fetchList(getFamily(), kind)).directories, kind });
+        if (result?.deleted) return;
+        await addFlake(result?.name || name);
+    }
+
+    async function addFlake(name) {
         const arr = readAllFlakes();
         let has_lora = false;
         let display_name = null;
@@ -894,7 +918,7 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
         let loras = [];
         let tags = [];
         try {
-            const d = await fetchFlake(result.name);
+            const d = await fetchFlake(name);
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
             display_name = d.name || null;
             flake_type = d.flake_type || null;
@@ -903,12 +927,12 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite, tags });
+        arr.push({ name, loras, variant: {}, has_lora, display_name, flake_type, favorite, tags });
         writeAllFlakes(arr);
         render();
     }
 
-    grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad });
+    grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad, onImport: kind === "anim" ? handleImport : null });
 
     grid._addBlock.addEventListener("dragover", (e) => {
         if (dragSrcIdx === null && !isForeignDrag()) return;

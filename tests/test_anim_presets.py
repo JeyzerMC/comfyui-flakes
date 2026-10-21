@@ -1,5 +1,5 @@
-"""Tests for the animate families, preset storage (#429) and flake storage
-(#431). Same loading
+"""Tests for the animate families, preset storage (#429), flake storage
+(#431) and importing image flakes (#433). Same loading
 approach as test_portable_flakes.py, with the stub `folder_paths` pointing the
 flakes and model_presets roots at temp dirs."""
 import contextlib
@@ -209,3 +209,76 @@ def test_anim_flake_lists_cover_and_delete():
         assert fio.read_cover(wan) == (b"png", "image/png")
         fio.delete_flake(wan)
         assert fio.list_flakes(kind="anim") == [mh3]
+
+
+HERO = b"""
+name: Fennec Hero
+flake_type: character
+serie: Fennec
+output_stem: hero/
+resolution: [832, 1216]
+prompt: {positive: a fennec girl with a big fluffy tail, negative: blurry}
+loras:
+  - {name: hero, path: ./hero/hero_hero.safetensors, strength: 0.8}
+controlnets:
+  - {type: openpose, model: op.safetensors, image: ./hero/cnets/pose.png}
+flake_links:
+  - {target: img/sdxl/style}
+variants:
+  outfit:
+    armor:
+      positive: shiny armor
+      negative: rust
+      output_stem: armor
+      default: true
+      image: ./hero/hero_outfit_armor.png
+      loras: [{name: armor, path: ./hero/armor.safetensors}]
+      controlnets: [{type: depth, model: d.safetensors, image: ./hero/cnets/depth.png}]
+      flake_links: [{target: img/sdxl/style}]
+    dress: {positive: blue dress}
+"""
+
+
+def test_import_anim_flake_copies_prompts_and_files():
+    with _roots() as (root, _):
+        src_dir = os.path.join(root, "img", "sdxl", "chars")
+        _write(os.path.join(src_dir, "hero.yaml"), HERO)
+        _write(os.path.join(src_dir, "hero", "hero.png"), b"cover")
+        _write(os.path.join(src_dir, "hero", "hero_outfit_armor.png"), b"armor")
+        before = sorted(os.path.join(d, f) for d, _, fs in os.walk(src_dir) for f in fs)
+
+        name = fio.import_anim_flake("img/sdxl/chars/hero", "Wan 2.2")
+        assert name == "anim/wan22/chars/hero"
+        assert fio.read_flake_raw(name) == {
+            "name": "Fennec Hero",
+            "prompt": {"positive": "a fennec girl with a big fluffy tail", "negative": "blurry"},
+            "output_stem": "hero/",
+            "flake_type": "character",
+            "serie": "Fennec",
+            "variants": {"outfit": {
+                "armor": {"positive": "shiny armor", "negative": "rust", "output_stem": "armor", "default": True,
+                          "image": "./hero/hero_outfit_armor.png"},
+                "dress": {"positive": "blue dress"},
+            }},
+        }
+        assert fio.read_cover(name) == (b"cover", "image/png")
+        assert fio.read_variant_image(name, "outfit", "armor") == (b"armor", "image/png")
+        assert fio.list_flakes(kind="anim") == [name]
+        # The source flake and its files are untouched.
+        assert sorted(os.path.join(d, f) for d, _, fs in os.walk(src_dir) for f in fs) == before
+        with open(os.path.join(src_dir, "hero.yaml"), "rb") as f:
+            assert f.read() == HERO
+
+
+def test_import_anim_flake_collision_naming():
+    with _roots() as (root, _):
+        _write(os.path.join(root, "img", "sdxl", "hero.yaml"), b"name: Hero")
+        _write(os.path.join(root, "img", "pony", "hero.yaml"), b"name: Pony Hero")
+        assert fio.import_anim_flake("img/sdxl/hero", "Wan 2.2") == "anim/wan22/hero"
+        assert fio.import_anim_flake("img/pony/hero", "Wan 2.2") == "anim/wan22/hero (2)"
+        # A deleted flake's kept owned folder still takes the name.
+        _write(os.path.join(root, "anim", "wan22", "hero (3)", "hero (3).png"), b"old")
+        assert fio.import_anim_flake("img/sdxl/hero", "Wan 2.2") == "anim/wan22/hero (4)"
+        assert fio.import_anim_flake("img/sdxl/hero", "MiniMax H3") == "anim/mh3/hero"
+        assert fio.read_flake_raw("anim/wan22/hero (2)") == {"name": "Pony Hero"}
+        assert _raises_value_error(lambda: fio.import_anim_flake("img/sdxl/hero", "SDXL/Base"))

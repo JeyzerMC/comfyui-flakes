@@ -1388,7 +1388,8 @@ export function _hideAllDropIndicators() {
     }
 }
 
-export function makeAddBlock({ onNew, onLoad, addLabel = "Add flake", newLabel = "+ New flake", loadLabel = "↑ Load flake" }) {
+// `onImport` adds an "Import flake" entry above "New flake" (animate grids, #433).
+export function makeAddBlock({ onNew, onLoad, onImport = null, addLabel = "Add flake", newLabel = "+ New flake", loadLabel = "↑ Load flake" }) {
     const block = document.createElement("div");
     css(block, `position:relative;height:80px;background:#2a2a2a;border:1px dashed #555;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;color:#999;user-select:none;box-sizing:border-box;`);
 
@@ -1412,6 +1413,16 @@ export function makeAddBlock({ onNew, onLoad, addLabel = "Add flake", newLabel =
     loadBtn.textContent = loadLabel;
     css(loadBtn, "width:100%;padding:6px 8px;background:#2a2a2a;color:#ddd;border:1px solid #444;border-radius:3px;cursor:pointer;font-size:12px;text-align:left;");
 
+    if (onImport) {
+        const importBtn = document.createElement("button");
+        importBtn.textContent = "⇣ Import flake";
+        css(importBtn, newBtn.style.cssText);
+        importBtn.addEventListener("click", () => {
+            hideMenu();
+            onImport();
+        });
+        menu.appendChild(importBtn);
+    }
     menu.appendChild(newBtn);
     menu.appendChild(loadBtn);
     block.appendChild(menu);

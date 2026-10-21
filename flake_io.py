@@ -916,6 +916,60 @@ def delete_flake(name: str) -> None:
     _delete_cover(name, legacy_only=True)
 
 
+_IMPORT_KEYS = ("name", "prompt", "prompts", "output_stem", "flake_type", "serie")
+_IMPORT_CHOICE_KEYS = ("positive", "negative", "output_stem", "image", "default")
+
+
+def import_anim_flake(source: str, family: str) -> str:
+    """Copy image flake *source* into animate *family* as
+    ``anim/<folder>/<source path minus img/<folder>/>`` (then " (2)", ...) and
+    return the new name (#433). Its name, prompts, output stem, type, serie,
+    variant choice prompts/stems/defaults, cover and choice images come along;
+    LoRAs, ControlNets, flake links and resolution belong to the image model
+    and don't. Files are copied into the new owned folder, so the source stays
+    intact."""
+    raw = read_flake_raw(source)
+    parts = source.split("/")
+    rel = "/".join(parts[2:]) if parts[0] == "img" and len(parts) > 2 else source
+    stem = f"anim/{_anim_family_folder(family)}/{rel}"
+    root = _primary_root()
+    taken = set(list_flakes(kind="anim"))
+    # A deleted flake keeps its owned folder: don't copy into it.
+    name = next(n for n in itertools.chain([stem], (f"{stem} ({i})" for i in itertools.count(2)))
+                if n not in taken and not os.path.exists(os.path.join(root, n)))
+    base = name.rsplit("/", 1)[-1]
+    owned = os.path.join(root, name)
+
+    def src_file(value: Any) -> str | None:
+        path = _owned_file_path(value, source) if isinstance(value, str) and value.startswith("./") else _external_image(value, {})
+        return path if path and os.path.isfile(path) else None
+
+    def copy(src: str, dest_stem: str) -> str:
+        os.makedirs(owned, exist_ok=True)
+        dest = os.path.join(owned, dest_stem + os.path.splitext(src)[1].lower())
+        shutil.copy2(src, dest)
+        return f"./{base}/{os.path.basename(dest)}"
+
+    def import_choice(group: str, choice: str, choice_data: dict[str, Any]) -> dict[str, Any]:
+        kept = {k: choice_data[k] for k in _IMPORT_CHOICE_KEYS if k in choice_data}
+        image = src_file(kept.pop("image", None))
+        if image:
+            kept["image"] = copy(image, f"{base}_{_file_safe(group)}_{_file_safe(choice)}")
+        return kept
+
+    data = {k: raw[k] for k in _IMPORT_KEYS if k in raw}
+    variants = raw.get("variants") or raw.get("options")
+    if variants:
+        data["variants"] = {
+            group: {choice: import_choice(group, choice, c) for choice, c in choices.items()}
+            for group, choices in variants.items()
+        }
+    cover = _cover_path(source) or src_file(raw.get("cover_image"))
+    if cover:
+        copy(cover, base)
+    return save_flake(name, data, family=family, kind="anim")
+
+
 def _parse_schedule(raw: Any) -> list[ScheduleKeyframe]:
     """Parse a `schedule:` keyframe list, sorted by start with start clamped to
     [0, 1]. A repeated start keeps the last keyframe."""
