@@ -1,5 +1,5 @@
 import { app } from "../../scripts/app.js";
-import { collectChain, MODEL_COMBO_TYPES } from "./widgets/generation-data.js";
+import { collectChain, MODEL_COMBO_TYPES, STACK_TYPES, FLAKE_COMBO_TYPES } from "./widgets/generation-data.js";
 import { serializeModelOverrides, expandEntryVariants } from "./utils.js";
 import { fetchFlakeMeta, variantComboCount } from "./api.js";
 
@@ -66,7 +66,7 @@ export function computeJobCount(graph) {
     if (!g) return 1;
     let count = 1;
     for (const node of g.nodes) {
-        if (node.type === "FlakeCombo") {
+        if (FLAKE_COMBO_TYPES.includes(node.type)) {
             // Each active flake is one axis item; an "All Variants" flake expands
             // into one item per variant combination (#343), a "Multiple" one
             // into one per checked choice set (#406).
@@ -78,7 +78,7 @@ export function computeJobCount(graph) {
         } else if (MODEL_COMBO_TYPES.includes(node.type)) {
             const n = activeComboPresets(node).length;
             if (n > 0) count *= n;
-        } else if (node.type === "FlakeStack") {
+        } else if (STACK_TYPES.includes(node.type)) {
             // Stack flakes flagged "All Variants" are extra axes (#343).
             for (const { flake } of stackAllVariantsFlakes(node)) {
                 count *= Math.max(1, variantComboCount(flake.name));
@@ -150,7 +150,7 @@ export function subscribeBatch(fn) {
 function renderHighlights(state) {
     if (activeState() !== state) return;
     for (const n of app.graph.nodes) {
-        if (n.type === "FlakeCombo") n._combo_render?.();
+        if (FLAKE_COMBO_TYPES.includes(n.type)) n._combo_render?.();
         else if (MODEL_COMBO_TYPES.includes(n.type)) n._model_combo_render?.();
     }
 }
@@ -455,7 +455,7 @@ function setupBatchTracking(state, combinations, comboKeys) {
 // from any FlakeGenerate (orphans) are appended in creation order so
 // disconnected graphs keep working.
 function orderedComboNodes() {
-    const isCombo = (n) => n.type === "FlakeCombo" || MODEL_COMBO_TYPES.includes(n.type);
+    const isCombo = (n) => FLAKE_COMBO_TYPES.includes(n.type) || MODEL_COMBO_TYPES.includes(n.type);
     const ordered = [];
     const seen = new Set();
     for (const gen of app.graph.nodes) {
@@ -487,7 +487,7 @@ app.queuePrompt = async function(number, batchCount = 1) {
     // independent of any combo nodes (#343).
     const stackAxes = [];
     for (const node of app.graph.nodes) {
-        if (node.type !== "FlakeStack" || node.mode === 2 || node.mode === 4) continue;
+        if (!STACK_TYPES.includes(node.type) || node.mode === 2 || node.mode === 4) continue;
         for (const { flake, index } of stackAllVariantsFlakes(node)) {
             const meta = await fetchFlakeMeta(flake.name);
             const combos = enumerateVariantCombos(meta);
@@ -508,15 +508,15 @@ app.queuePrompt = async function(number, batchCount = 1) {
     const optionsArrays = [];
 
     for (const node of orderedNodes) {
-        if (node.type === "FlakeCombo") {
+        if (FLAKE_COMBO_TYPES.includes(node.type)) {
             const flakes = getComboFlakes(node);
             if (flakes.length === 0) {
-                window.alert("FlakeCombo node has no flakes selected.");
+                window.alert(`${node.type} node has no flakes selected.`);
                 return;
             }
             const activeFlakes = flakes.filter(flake => !flake.bypassed);
             if (activeFlakes.length === 0) {
-                window.alert("FlakeCombo node has no active (non-bypassed) flakes.");
+                window.alert(`${node.type} node has no active (non-bypassed) flakes.`);
                 return;
             }
             // Expand "All Variants" flakes into one axis item per variant combo,

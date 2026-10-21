@@ -1,13 +1,18 @@
 """Tests for the Flake Animate Preset node's loading (#430): which file each
 core loader gets, LoRA routing to the high/low models, and per-instance
-overrides. The core loaders and the LoRA loader are stubbed to record calls;
+overrides; and for the Flake Animate Stack composing animate flakes on top
+(#432). The core loaders and the LoRA loader are stubbed to record calls;
 flake_io and full_flake_node are the real modules, loaded like
 test_anim_presets.py / test_filename_prefix.py."""
+import contextlib
 import importlib.util
 import json
 import os
 import sys
+import tempfile
 import types
+
+import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PKG = "_fpkg_anim_nodes"
@@ -128,3 +133,74 @@ def test_overrides_apply_to_preset_and_stems():
     assert (d["preset"]["steps"], d["preset"]["cfg"], d["preset"]["scheduler"]) == (8, 1.0, "beta")
     assert d["filename_state"]["stems"] == ["anim/mh3/", "take2"]
     assert _data(p)["preset"]["steps"] == 4
+
+
+@contextlib.contextmanager
+def _flakes(files):
+    """Temp flakes root holding ``files`` ({name: yaml data})."""
+    with tempfile.TemporaryDirectory() as tmp:
+        fio.folder_paths.folder_names_and_paths["flakes"] = ([tmp], {".yaml", ".yml"})
+        for name, data in files.items():
+            path = os.path.join(tmp, f"{name}.yaml")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(data, f)
+        yield
+
+
+def _anim_data(models, stems):
+    return {
+        "family": "wan22", "preset": {}, "models": models, "clip": "clip", "vae": "vae", "audio_vae": None,
+        "image": None, "pos_text": "a fennec girl", "neg_text": "blurry",
+        "filename_state": {"preset": "", "stems": stems, "loras": [{"name": "speed"}], "model_family": "Wan 2.2"},
+    }
+
+
+def _stack(data, entries, image=None):
+    return anim.FlakeAnimStack().execute("Wan 2.2", data, json.dumps(entries), image)[0]
+
+
+def test_stack_routes_flake_loras_and_joins_prompts():
+    files = {
+        "anim/wan22/tail": {
+            "prompt": {"positive": "swishing her fluffy tail", "negative": "static"},
+            "output_stem": "tail",
+            "loras": [{"name": "swish", "path": "swish_hi", "path_low": "swish_lo", "strength": 1.0}],
+            "variants": {"mood": {"happy": {"positive": "smiling", "output_stem": "happy",
+                                            "loras": [{"path": "smile_hi", "strength": 0.6}]}}},
+        },
+        "anim/wan22/off": {"prompt": {"positive": "never"}, "loras": [{"path": "never"}]},
+    }
+    data = _anim_data({"high": ("H",), "low": ("L",)}, ["anim/wan22/"])
+    with _flakes(files):
+        out = _stack(data, [
+            {"inline": True, "content": {"prompt": {"positive": "blue eyes"}}},
+            {"name": "anim/wan22/tail", "loras": [0.5], "variant": {"mood": "happy"}},
+            {"name": "anim/wan22/off", "bypassed": True},
+        ])
+    assert out["models"] == {"high": ("H", ("swish_hi", 0.5), ("smile_hi", 0.6)), "low": ("L", ("swish_lo", 0.5))}
+    assert out["pos_text"] == "a fennec girl BREAK blue eyes BREAK swishing her fluffy tail, smiling"
+    assert out["neg_text"] == "blurry, static"
+    fs = out["filename_state"]
+    assert fs["stems"] == ["anim/wan22/", "tail_happy"]
+    assert [lr["name"] for lr in fs["loras"]] == ["speed", "swish", "smile_hi"]
+    assert (out["clip"], out["image"], fs["model_family"]) == ("clip", None, "Wan 2.2")
+    # The incoming data is left as it was.
+    assert data["models"] == {"high": ("H",), "low": ("L",)}
+    assert (data["filename_state"]["stems"], len(data["filename_state"]["loras"])) == (["anim/wan22/"], 1)
+
+
+def test_stack_single_model_follows_flake_links_and_replaces_image():
+    files = {
+        "anim/mh3/host": {"loras": [{"path": "host", "path_low": "ignored", "strength": 0.8}],
+                          "flake_links": [{"target": "anim/mh3/style"}]},
+        "anim/mh3/style": {"prompt": {"positive": "watercolor"}, "loras": [{"path": "style", "strength": 0.4}]},
+    }
+    data = {**_anim_data({"model": ("M",)}, []), "image": "upstream"}
+    with _flakes(files):
+        out = _stack(data, [{"name": "anim/mh3/host"}], image="start")
+        kept = _stack(data, [])
+    assert out["models"] == {"model": ("M", ("host", 0.8), ("style", 0.4))}
+    assert out["pos_text"] == "a fennec girl BREAK watercolor"
+    assert out["image"] == "start" and kept["image"] == "upstream"
+    assert kept["models"] == data["models"] and kept["pos_text"] == "a fennec girl"

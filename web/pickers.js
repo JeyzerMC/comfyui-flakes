@@ -21,10 +21,13 @@ const withoutPresets = (names) => names.filter(n => {
     return !norm.startsWith("model_presets/") && norm !== "model_presets";
 });
 
-export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {}, tagNames = {}, favorites = [], folderCovers = {} }) {
+// `kind` "anim" picks animate flakes: `family` is an animate family label and
+// the picker opens in its anim/<folder>.
+export async function openFileLoadPicker({ flakes, directories, family = "", kind = "img", displayNames = {}, tagNames = {}, favorites = [], folderCovers = {} }) {
+    const animFolder = kind === "anim" ? (await fetchAnimFamily(family).catch(() => null))?.folder : null;
     return openNamePicker({
-        title: "Load existing flake", kind: "flakes", noun: "flake", base: "models/flakes/",
-        names: withoutPresets(flakes), directories: withoutPresets(directories), family,
+        title: "Load existing flake", kind: "flakes", drivesKind: kind === "anim" ? "anim" : "flakes", noun: "flake", base: "models/flakes/",
+        names: withoutPresets(flakes), directories: withoutPresets(directories), family, startFolder: animFolder ? `anim/${animFolder}` : null,
         coverUrl: getCoverUrl, favorites, folderCovers,
         // Stacked label with a dimmer tag line, matching the grid (#297).
         renderLabel: (el, name) => renderFlakeLabel(el, { name: displayNames[name] || name.split("/").pop(), tags: tagNames[name] || [] }),
@@ -56,8 +59,9 @@ export async function openPresetPicker({ selected = "", family = "", kind = "img
 // natural case-insensitive order, 7 tiles per row, and drive tabs (C:, D:, ...)
 // when the names span several drives. One drive is shown at a time, an extra
 // model path's by default. Without `directories`, folders come from the names.
+// `drivesKind` is the /flakes/drives kind when it isn't `kind`.
 // Resolves to {name} or null.
-function openNamePicker({ title, kind, noun, base, names, directories = null, family, startFolder = null, selected = "", coverUrl, renderLabel, favorites = [], folderCovers = {} }) {
+function openNamePicker({ title, kind, drivesKind = kind, noun, base, names, directories = null, family, startFolder = null, selected = "", coverUrl, renderLabel, favorites = [], folderCovers = {} }) {
     return new Promise((resolve) => {
         const { content, footer, close, handlers } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
@@ -246,7 +250,7 @@ function openNamePicker({ title, kind, noun, base, names, directories = null, fa
         renderGrid();
         searchInput.addEventListener("input", () => renderGrid(searchInput.value));
         searchInput.focus();
-        fetch(`/flakes/drives?kind=${kind}&family=${encodeURIComponent(family || "")}`).then(r => r.json()).then((d) => {
+        fetch(`/flakes/drives?kind=${drivesKind}&family=${encodeURIComponent(family || "")}`).then(r => r.json()).then((d) => {
             drives = d;
             currentDrive = d.default || "";
             renderDriveTabs();

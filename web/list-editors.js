@@ -144,6 +144,7 @@ export async function pickFlakeTarget(family, exclude, kind = "img") {
             flakes,
             directories: list.directories || [],
             family: family || "",
+            kind,
             displayNames: list.display_names || {},
             tagNames: list.tag_names || {},
             favorites: list.favorites || [],

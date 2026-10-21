@@ -61,13 +61,15 @@ const ACCENT = "#4a9eff";
 // Preset source nodes: the image ones and their Flake Animate counterparts.
 const PRESET_TYPES = ["FlakeModelPreset", "FlakeAnimPreset"];
 export const MODEL_COMBO_TYPES = ["FlakeModelCombo", "FlakeAnimPresetCombo"];
+export const STACK_TYPES = ["FlakeStack", "FlakeAnimStack"];
+export const FLAKE_COMBO_TYPES = ["FlakeCombo", "FlakeAnimCombo"];
 
 // ── Upstream chain ─────────────────────────────────────────────────────────
-// Walk the flake_data input upstream from the Flake Generate node and collect,
-// in pipeline order, every node that contributes generation data:
+// Walk the flake_data / flake_anim_data input upstream from the Flake Generate
+// node and collect, in pipeline order, every node that contributes generation data:
 //   - PRESET_TYPES / MODEL_COMBO_TYPES (terminal source)
-//   - FlakeStack (common, non-combinatorial flakes)
-//   - FlakeCombo (combinatorial flakes)
+//   - STACK_TYPES (common, non-combinatorial flakes)
+//   - FLAKE_COMBO_TYPES (combinatorial flakes)
 export function collectChain(startNode) {
     const chain = [];
     const visited = new Set();
@@ -75,9 +77,9 @@ export function collectChain(startNode) {
     while (current && !visited.has(current.id)) {
         visited.add(current.id);
         const t = current.type;
-        if (t === "FlakeStack" || t === "FlakeCombo") {
+        if (STACK_TYPES.includes(t) || FLAKE_COMBO_TYPES.includes(t)) {
             chain.push({ type: t, node: current });
-            const fdInput = current.inputs?.find(i => i.name === "flake_data");
+            const fdInput = current.inputs?.find(i => i.name === "flake_data" || i.name === "flake_anim_data");
             if (!fdInput?.link) break;
             const link = current.graph?.links?.[fdInput.link];
             if (!link) break;
@@ -138,7 +140,7 @@ export async function buildModel(startNode) {
                     itemKey: uid,
                 })),
             });
-        } else if (type === "FlakeStack") {
+        } else if (STACK_TYPES.includes(type)) {
             for (const { e, i } of stackEntries(node)) {
                 // An "All Variants" stack flake is an axis of its own, like in
                 // queue.js (#343).
@@ -152,7 +154,7 @@ export async function buildModel(startNode) {
                     fixed.stackFlakes.push(e);
                 }
             }
-        } else if (type === "FlakeCombo") {
+        } else if (FLAKE_COMBO_TYPES.includes(type)) {
             const allFlakes = node.properties?._combo_flakes || [];
             const flakes = Array.isArray(allFlakes) ? allFlakes.filter(e => !e.inline && !e.bypassed && e.name) : [];
             if (flakes.length === 0) continue;

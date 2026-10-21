@@ -56,12 +56,14 @@ app.registerExtension({
         try { await ensureFamilies(); } catch { /* falls back to the literals */ }
     },
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name === "FlakeStack") {
+        if (nodeData.name === "FlakeStack" || nodeData.name === "FlakeAnimStack") {
+            const kind = nodeData.name === "FlakeAnimStack" ? "anim" : "img";
+            const hidden = [kind === "anim" ? "family" : "model_family", "flakes_json"];
             const origOnNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
-                setupFlakeWidget(this);
-                removeHiddenInputs(this, ["model_family", "flakes_json"]);
+                setupFlakeWidget(this, { kind });
+                removeHiddenInputs(this, hidden);
                 if (!this._configured) {
                     setDefaultSize(this, 340);
                 }
@@ -72,7 +74,7 @@ app.registerExtension({
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
                 this._configured = true;
-                removeHiddenInputs(this, ["model_family", "flakes_json"]);
+                removeHiddenInputs(this, hidden);
                 _recoverShiftedWidgets(this, "flakes_json");
                 this._flakes_render?.();
                 return r;
@@ -101,12 +103,14 @@ app.registerExtension({
                 return r;
             };
         }
-        if (nodeData.name === "FlakeCombo") {
+        if (nodeData.name === "FlakeCombo" || nodeData.name === "FlakeAnimCombo") {
+            const kind = nodeData.name === "FlakeAnimCombo" ? "anim" : "img";
+            const hidden = [kind === "anim" ? "family" : "model_family", "flakes_json"];
             const origOnNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
-                setupFlakeComboWidget(this);
-                removeHiddenInputs(this, ["model_family", "flakes_json"]);
+                setupFlakeComboWidget(this, { kind });
+                removeHiddenInputs(this, hidden);
                 if (!this._configured) {
                     setDefaultSize(this, 340);
                 }
@@ -117,7 +121,7 @@ app.registerExtension({
             nodeType.prototype.onConfigure = function () {
                 const r = origOnConfigure?.apply(this, arguments);
                 this._configured = true;
-                removeHiddenInputs(this, ["model_family", "flakes_json"]);
+                removeHiddenInputs(this, hidden);
                 _recoverShiftedWidgets(this, "flakes_json");
                 this._combo_render?.();
                 return r;

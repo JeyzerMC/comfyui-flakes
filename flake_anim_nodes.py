@@ -10,7 +10,7 @@ import nodes
 from . import flake_families, flake_io
 from .flake_compose import _load_lora
 from .flake_io import _resolve_model_name
-from .full_flake_node import _apply_preset_overrides
+from .full_flake_node import _apply_preset_overrides, _join_prompts, _resolve_flakes
 
 _PLACEHOLDERS = ("Select a preset...", "No model preset is selected")
 
@@ -28,10 +28,26 @@ def _model_file(category: str, preset, field: str) -> str:
     return _resolve_model_name(category, ref)
 
 
+def _apply_anim_loras(models: dict, loras: list[flake_io.LoraEntry]) -> tuple[dict, list[dict]]:
+    """Patch a copy of ``models`` with ``loras``, model-only: on Wan 2.2
+    ``path`` goes to the high-noise model and ``path_low`` to the low-noise
+    one; a single-model family takes ``path``. Also returns the applied
+    LoRAs' filename_state entries."""
+    models = dict(models)
+    lora_entries = []
+    for lr in loras:
+        targets = {"high": lr.path, "low": lr.path_low} if "high" in models else {"model": lr.path}
+        applied = {key: path for key, path in targets.items() if path}
+        for key, path in applied.items():
+            models[key] = _load_lora(models[key], None, path, lr.strength, 0)[0]
+        if applied:
+            lora_entries.append({"name": lr.name or lr.path or lr.path_low, "path": lr.path, "path_low": lr.path_low, "strength": lr.strength})
+    return models, lora_entries
+
+
 def _load_anim_preset_data(preset_name: str) -> dict:
     """Load an animate preset's models, text encoder and VAEs with the core
-    loaders and apply its LoRAs: on Wan 2.2 ``path`` patches the high-noise
-    model and ``path_low`` the low-noise one."""
+    loaders and apply its LoRAs (``_apply_anim_loras``)."""
     p = flake_io.load_anim_preset(preset_name)
     spec = flake_families.ANIM_BY_FOLDER[p.family]
     loaders = nodes.NODE_CLASS_MAPPINGS
@@ -45,14 +61,7 @@ def _load_anim_preset_data(preset_name: str) -> dict:
     vae = vae_loader.load_vae(_model_file("vae", p, "vae"))[0]
     audio_vae = vae_loader.load_vae(_model_file("vae", p, "audio_vae"))[0] if p.family == "mh3" else None
 
-    lora_entries = []
-    for lr in p.loras:
-        targets = {"high": lr.path, "low": lr.path_low} if "high" in models else {"model": lr.path}
-        applied = {key: path for key, path in targets.items() if path}
-        for key, path in applied.items():
-            models[key] = _load_lora(models[key], None, path, lr.strength, 0)[0]
-        if applied:
-            lora_entries.append({"name": lr.name or lr.path or lr.path_low, "path": lr.path, "path_low": lr.path_low, "strength": lr.strength})
+    models, lora_entries = _apply_anim_loras(models, p.loras)
 
     stems = [f"anim/{p.family}/"]
     if p.filename_prefix.strip():
@@ -150,4 +159,58 @@ class FlakeAnimPreset:
 class FlakeAnimPresetCombo(FlakeAnimPreset):
     """Same backend as FlakeAnimPreset; the frontend rotates the ``preset``
     widget over its list when queueing, like FlakeModelCombo."""
+    pass
+
+
+class FlakeAnimStack:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "family": ([f.label for f in flake_families.ANIM_FAMILIES],),
+                "flake_anim_data": ("FLAKE_ANIM_DATA",),
+                "flakes_json": ("STRING", {
+                    "multiline": True,
+                    "default": "[]",
+                    "tooltip": "JSON-encoded list of animate flake entries. Managed by the Flake widget.",
+                }),
+            },
+            "optional": {
+                "image": ("IMAGE", {"tooltip": "Start image; replaces the one set upstream."}),
+            },
+        }
+
+    RETURN_TYPES = ("FLAKE_ANIM_DATA",)
+    RETURN_NAMES = ("flake_anim_data",)
+    FUNCTION = "execute"
+    CATEGORY = "flakes"
+    DESCRIPTION = (
+        "Compose animate flakes on top of an incoming flake_anim_data: applies their LoRAs to the "
+        "diffusion model(s) and appends their prompts. Prompts are encoded in Flake Generate Animation."
+    )
+
+    def execute(self, family: str, flake_anim_data: dict, flakes_json: str, image=None):
+        flakes = _resolve_flakes(flakes_json)
+        # LoRA schedules are cond hooks and nothing is encoded here, so
+        # animate flake LoRAs apply at their plain strength.
+        models, lora_entries = _apply_anim_loras(flake_anim_data["models"], [lr for f in flakes for lr in f.loras])
+        pos_text, neg_text = _join_prompts(flake_anim_data["pos_text"], flake_anim_data["neg_text"], flakes)
+        filename_state = flake_anim_data["filename_state"]
+        return ({
+            **flake_anim_data,
+            "models": models,
+            "image": flake_anim_data["image"] if image is None else image,
+            "pos_text": pos_text,
+            "neg_text": neg_text,
+            "filename_state": {
+                **filename_state,
+                "stems": filename_state["stems"] + [f.output_stem for f in flakes if f.output_stem],
+                "loras": filename_state["loras"] + lora_entries,
+            },
+        },)
+
+
+class FlakeAnimCombo(FlakeAnimStack):
+    """Same backend as FlakeAnimStack; the frontend keeps one active flake in
+    ``flakes_json`` per queued combination, like FlakeCombo."""
     pass

@@ -424,6 +424,38 @@ class FlakeModelPreset:
         return ((model_bundle, generation_data, sampling_preset),)
 
 
+def _resolve_flakes(flakes_json: str) -> list[flake_io.Flake]:
+    """Resolve the active (non-bypassed) entries of a Flake Stack / Combo
+    ``flakes_json`` list, skipping malformed ones."""
+    try:
+        entries = json.loads(flakes_json) if flakes_json else []
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"flakes_json is not valid JSON: {exc}") from exc
+
+    if not isinstance(entries, list):
+        raise ValueError("flakes_json must be a JSON list")
+
+    normalized: list[dict] = []
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            logging.warning("[FlakeStack] skipping non-object entry %d: %r", i, entry)
+            continue
+        if entry.get("inline") or entry.get("name"):
+            normalized.append(entry)
+        else:
+            logging.warning("[FlakeStack] skipping entry %d (needs 'name' or 'inline')", i)
+
+    return [flake_io.resolve(e) for e in normalized if not e.get("bypassed")]
+
+
+def _join_prompts(pos_text: str, neg_text: str, flakes: list[flake_io.Flake]) -> tuple[str, str]:
+    """Incoming prompt text followed by each flake's: positives joined with
+    " BREAK ", negatives with ", "."""
+    pos_parts = [t.strip() for t in [pos_text, *(f.positive for f in flakes)] if t and t.strip()]
+    neg_parts = [t.strip() for t in [neg_text, *(f.negative for f in flakes)] if t and t.strip()]
+    return " BREAK ".join(pos_parts), ", ".join(neg_parts)
+
+
 class FlakeStack:
     @classmethod
     def INPUT_TYPES(cls):
@@ -470,28 +502,7 @@ class FlakeStack:
         # family it actually loaded (#382).
         model_family = filename_state.get("model_family") or model_family
 
-        # --- Parse flakes_json --------------------------------------------------
-        try:
-            entries = json.loads(flakes_json) if flakes_json else []
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"flakes_json is not valid JSON: {exc}") from exc
-
-        if not isinstance(entries, list):
-            raise ValueError("flakes_json must be a JSON list")
-
-        normalized: list[dict] = []
-        for i, entry in enumerate(entries):
-            if not isinstance(entry, dict):
-                logging.warning("[FlakeStack] skipping non-object entry %d: %r", i, entry)
-                continue
-            if entry.get("inline") or entry.get("name"):
-                normalized.append(entry)
-            else:
-                logging.warning("[FlakeStack] skipping entry %d (needs 'name' or 'inline')", i)
-
-        # --- Resolve flakes (skip bypassed) --------------------------------------
-        active_entries = [e for i, e in enumerate(normalized) if not e.get("bypassed")]
-        flakes = [flake_io.resolve(e) for e in active_entries]
+        flakes = _resolve_flakes(flakes_json)
 
         from .flake_compose import (
             _load_cn_image, _fit_cn_image, anima_cn_choice, apply_anima_vace, apply_loras, apply_model_patch_cn,
@@ -501,23 +512,7 @@ class FlakeStack:
         # --- Apply LoRAs --------------------------------------------------------
         model, clip, lora_entries, hook_groups = apply_loras(model, clip, flakes)
 
-        # --- Build prompt text (existing → flakes) ------------------------------
-        pos_parts: list[str] = []
-        neg_parts: list[str] = []
-
-        if pos_text and pos_text.strip():
-            pos_parts.append(pos_text.strip())
-        if neg_text and neg_text.strip():
-            neg_parts.append(neg_text.strip())
-
-        for f in flakes:
-            if f.positive and f.positive.strip():
-                pos_parts.append(f.positive.strip())
-            if f.negative and f.negative.strip():
-                neg_parts.append(f.negative.strip())
-
-        new_pos_text = " BREAK ".join(pos_parts) if pos_parts else ""
-        new_neg_text = ", ".join(neg_parts) if neg_parts else ""
+        new_pos_text, new_neg_text = _join_prompts(pos_text, neg_text, flakes)
 
         # --- Re-encode prompts --------------------------------------------------
         # Re-encoding produces fresh conditioning that drops the ControlNet

@@ -526,9 +526,13 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
     return { toggleOptionsPanel };
 }
 
-export function setupFlakeWidget(node) {
+// kind "anim": a Flake Animate Stack node (family widget, flake_anim_data
+// input, animate flakes).
+export function setupFlakeWidget(node, { kind = "img" } = {}) {
+    const familyName = kind === "anim" ? "family" : "model_family";
+    const dataInput = kind === "anim" ? "flake_anim_data" : "flake_data";
     const flakesHidden = node.widgets?.find(w => w.name === "flakes_json");
-    const familyWidget = node.widgets?.find(w => w.name === "model_family");
+    const familyWidget = node.widgets?.find(w => w.name === familyName);
     if (!flakesHidden) return;
 
     // Hide flakes_json STRING widget permanently, with serialize=true
@@ -548,17 +552,17 @@ export function setupFlakeWidget(node) {
     // (computeSize, type, hidden, draw, options, DOM element display).
     let _familyHidden = false;
     function _inferUpstreamFamily() {
-        const flakeDataInput = node.inputs?.find(i => i.name === "flake_data");
+        const flakeDataInput = node.inputs?.find(i => i.name === dataInput);
         if (!flakeDataInput || flakeDataInput.link == null) return null;
         const link = node.graph?.links?.[flakeDataInput.link];
         if (!link) return null;
         const upstreamNode = node.graph.getNodeById(link.origin_id);
         if (!upstreamNode) return null;
-        const upstreamFamily = upstreamNode.widgets?.find(w => w.name === "model_family");
+        const upstreamFamily = upstreamNode.widgets?.find(w => w.name === familyName);
         return upstreamFamily?.value || null;
     }
     function _isFlakeDataConnected() {
-        const flakeDataInput = node.inputs?.find(i => i.name === "flake_data");
+        const flakeDataInput = node.inputs?.find(i => i.name === dataInput);
         return !!(flakeDataInput && flakeDataInput.link != null);
     }
     function _updateFamilyVisibility() {
@@ -650,7 +654,7 @@ export function setupFlakeWidget(node) {
                 onDuplicate: handleDuplicate,
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
-                    Object.assign(flakeDrag, { node, entry: entries[idx], take: () => takeDragged(idx) });
+                    Object.assign(flakeDrag, { node, entry: entries[idx], take: () => takeDragged(idx), kind });
                     e.dataTransfer.effectAllowed = "move";
                     el.style.opacity = "0.4";
                 },
@@ -693,7 +697,7 @@ export function setupFlakeWidget(node) {
 
     // Cross-node drag & drop with other Flake Stack / Flake Combo grids (#415).
     function isForeignDrag() {
-        return flakeDrag.node !== null && flakeDrag.node !== node;
+        return flakeDrag.node !== null && flakeDrag.node !== node && flakeDrag.kind === kind;
     }
 
     // The source block leaves the DOM on re-render, so its dragend may never fire.
@@ -737,12 +741,15 @@ export function setupFlakeWidget(node) {
             }
         }
 
-        const { directories } = await fetchList(getFamily());
+        const { directories } = await fetchList(getFamily(), kind);
         const result = await openEditModal({
             mode: isDefault ? "default" : "edit",
             name: entry.name,
             data,
             dirs: directories,
+            // The inline Default animate flake takes its family from the node.
+            family: kind === "anim" ? getFamily() : undefined,
+            kind,
         });
 
         if (!result) return;
@@ -812,8 +819,8 @@ export function setupFlakeWidget(node) {
 
     async function handleReplace(idx) {
         if (idx === 0) return;
-        const { flakes, directories, display_names, tag_names, favorites, folder_covers } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names, favorites, folderCovers: folder_covers });
+        const { flakes, directories, display_names, tag_names, favorites, folder_covers } = await fetchList(getFamily(), kind);
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), kind, displayNames: display_names, tagNames: tag_names, favorites, folderCovers: folder_covers });
         if (!result || !result.name) return;
         const arr = readEntries();
         let has_lora = false;
@@ -836,12 +843,13 @@ export function setupFlakeWidget(node) {
     }
 
     async function handleNew() {
-        const { directories } = await fetchList(getFamily());
+        const { directories } = await fetchList(getFamily(), kind);
         const result = await openEditModal({
             mode: "create",
             data: {},
             dirs: directories,
             family: getFamily(),
+            kind,
         });
         if (!result || !result.created) return;
         invalidateList(); // ensure the load picker sees the newly created flake
@@ -877,8 +885,8 @@ export function setupFlakeWidget(node) {
     }
 
     async function handleLoad() {
-        const { flakes, directories, display_names, tag_names, favorites, folder_covers } = await fetchList(getFamily());
-        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), displayNames: display_names, tagNames: tag_names, favorites, folderCovers: folder_covers });
+        const { flakes, directories, display_names, tag_names, favorites, folder_covers } = await fetchList(getFamily(), kind);
+        const result = await openFileLoadPicker({ flakes, directories, family: getFamily(), kind, displayNames: display_names, tagNames: tag_names, favorites, folderCovers: folder_covers });
         if (!result || !result.name) return;
         const arr = readEntries();
         let has_lora = false;
