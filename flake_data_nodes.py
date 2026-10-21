@@ -391,54 +391,94 @@ class PreviewFlakeData:
         }
 
 
-def _strip_unused_flakes(prompt, extra_pnginfo):
-    """Return deep copies of ``prompt`` and ``extra_pnginfo`` in which every
-    FlakeStack/FlakeCombo node's ``flakes_json`` is reduced to the *active*
-    flakes only — dropping ``bypassed`` and ``inline`` entries (#346).
+def _wf_node(extra_pnginfo, nid):
+    """The workflow node of prompt node ``nid``, or None. Nodes inside subgraphs
+    have path ids ("<instance id>:<inner id>") and live in the workflow's
+    ``definitions.subgraphs``, keyed by the instance node's type."""
+    workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+    if not isinstance(workflow, dict):
+        return None
+    subgraphs = {sg.get("id"): sg for sg in (workflow.get("definitions") or {}).get("subgraphs") or []}
+    nodes = workflow.get("nodes") or []
+    *path, last = str(nid).split(":")
+    for part in path:
+        inst = next((n for n in nodes if str(n.get("id")) == part), None)
+        sg = subgraphs.get(inst.get("type")) if inst else None
+        if sg is None:
+            return None
+        nodes = sg.get("nodes") or []
+    return next((n for n in nodes if str(n.get("id")) == last), None)
 
-    Combo nodes already carry a single flake per generation (queue.js sets that
-    at queue time), so the filter is a no-op there; stacks keep only their active
-    flakes. The originals are never mutated; the stripped copies are what gets
-    embedded in the saved PNG so a drag-drop restore reflects what was used.
+
+# The Flake Stack widget's index 0 (web/utils.js makeDefaultEntry).
+_STACK_DEFAULT_ENTRY = {"inline": True, "content": {"prompt": {"positive": ""}}, "loras": [], "strength": 1.0, "option": {}}
+
+
+def _used_entry(entry):
+    """A stack entry as it ran: All Variants / Multiple collapsed to the variant
+    queue.js queued, combo-only fields dropped."""
+    entry = {k: v for k, v in entry.items() if k not in ("_uid", "_all_variants")}
+    if "variant" in entry:
+        entry["variant"] = {g: c[0] if isinstance(c, list) else c for g, c in entry["variant"].items()}
+    return entry
+
+
+def _used_only_metadata(prompt, extra_pnginfo):
+    """Deep copies of ``prompt`` and ``extra_pnginfo`` describing only what
+    produced this run, so a drag-dropped image restores just that (#346, #426):
+    Flake Model Combo -> Flake Model Preset with the used preset and overrides,
+    Flake Combo -> Flake Stack holding the used entry, stacks minus bypassed
+    entries. queue.js sets every combo node to a single item per queued
+    prompt, so the prompt inputs already hold the used ones.
     """
     if not prompt:
         return prompt, extra_pnginfo
     prompt = copy.deepcopy(prompt)
     extra_pnginfo = copy.deepcopy(extra_pnginfo) if extra_pnginfo else extra_pnginfo
 
-    wf_nodes = {}
-    workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
-    if isinstance(workflow, dict):
-        for n in (workflow.get("nodes") or []):
-            if isinstance(n, dict):
-                wf_nodes[str(n.get("id"))] = n
-
-    items = prompt.items() if isinstance(prompt, dict) else []
-    for nid, node in items:
-        if not isinstance(node, dict) or node.get("class_type") not in ("FlakeStack", "FlakeCombo"):
+    for nid, node in prompt.items():
+        cls = node.get("class_type")
+        if cls not in ("FlakeStack", "FlakeCombo", "FlakeModelCombo"):
             continue
-        inputs = node.get("inputs")
-        raw = inputs.get("flakes_json") if isinstance(inputs, dict) else None
-        if not isinstance(raw, str):
+        inputs = node["inputs"]
+        wf = _wf_node(extra_pnginfo, nid)
+        if cls != "FlakeStack":
+            node["class_type"] = "FlakeStack" if cls == "FlakeCombo" else "FlakeModelPreset"
+        if wf:
+            wf["type"] = node["class_type"]
+            props = {k: v for k, v in (wf.get("properties") or {}).items() if not k.startswith("_combo_")}
+            if props.get("Node name for S&R") == cls:
+                props["Node name for S&R"] = node["class_type"]
+            if cls == "FlakeModelCombo":
+                # The Preset widget re-serialises overrides_json from _overrides.
+                props["_overrides"] = json.loads(inputs.get("overrides_json") or "{}")
+            wf["properties"] = props
+        if cls == "FlakeModelCombo":
             continue
-        try:
-            arr = json.loads(raw)
-        except Exception:
-            continue
-        if not isinstance(arr, list):
-            continue
-        filtered = [f for f in arr if isinstance(f, dict) and not f.get("bypassed") and not f.get("inline")]
-        new_raw = json.dumps(filtered)
-        if new_raw == raw:
-            continue
+        raw = inputs["flakes_json"]
+        entries = [_used_entry(e) for e in json.loads(raw) if not e.get("bypassed")]
+        if cls == "FlakeCombo":
+            entries.insert(0, dict(_STACK_DEFAULT_ENTRY))
+        new_raw = json.dumps(entries)
         inputs["flakes_json"] = new_raw
         # Mirror into the workflow node's positional widgets_values by matching
         # the original flakes_json string (robust to widget ordering).
-        wf = wf_nodes.get(str(nid))
-        if wf and isinstance(wf.get("widgets_values"), list):
-            wf["widgets_values"] = [new_raw if v == raw else v for v in wf["widgets_values"]]
+        if wf:
+            wf["widgets_values"] = [new_raw if v == raw else v for v in wf.get("widgets_values") or []]
 
     return prompt, extra_pnginfo
+
+
+def _set_generate_image(extra_pnginfo, node_id, seed, image):
+    """Point the workflow's Flake Generate node at one saved image: its seed,
+    control fixed, and an overlay showing only that image (#426)."""
+    wf = _wf_node(extra_pnginfo, node_id)
+    if wf is None:
+        return
+    wf["widgets_values"][:2] = [seed, "fixed"]
+    props = wf.setdefault("properties", {})
+    props.pop("_last_image_ad", None)
+    props.update(_images_by_combo={"": image}, _images_by_combo_ad={}, _adetailer_ab=False, _last_image=image)
 
 
 class FlakeGenerate:
@@ -473,6 +513,7 @@ class FlakeGenerate:
             "hidden": {
                 "prompt": "PROMPT",
                 "extra_pnginfo": "EXTRA_PNGINFO",
+                "unique_id": "UNIQUE_ID",
             },
         }
 
@@ -485,7 +526,7 @@ class FlakeGenerate:
     def execute(self, flake_data, seed, adetailer="Off", adetailer_denoise=0.4,
                 adetailer_steps=0, adetailer_bbox="bbox/face_yolov8m.pt",
                 upscale=False, upscale_model="", upscale_factor=1.5,
-                prompt=None, extra_pnginfo=None):
+                prompt=None, extra_pnginfo=None, unique_id=None):
         parts = _split_flake_data(flake_data)
         model = parts["model"]
         clip = parts["clip"]
@@ -549,8 +590,8 @@ class FlakeGenerate:
         saver = SaveImage()
         output_dir = folder_paths.get_output_directory()
 
-        # Embed only the used flakes in the saved metadata (#346).
-        meta_prompt, meta_extra = _strip_unused_flakes(prompt, extra_pnginfo)
+        # Embed only what produced this image in the saved metadata (#346, #426).
+        meta_prompt, meta_extra = _used_only_metadata(prompt, extra_pnginfo)
 
         def _save(imgs, is_ad):
             # Stem markers before the increment: _ad_ for ADetailer (#326), _up_ for
@@ -562,6 +603,12 @@ class FlakeGenerate:
                 from .flake_postprocess import upscale_images
                 out_imgs = upscale_images(imgs, upscale_model, upscale_factor)
                 marker += "_up"
+            # The name SaveImage will give the first image, after the rename below.
+            _, name, counter, subfolder, _ = folder_paths.get_save_image_path(
+                filename_prefix + marker, output_dir, out_imgs[0].shape[1], out_imgs[0].shape[0])
+            _set_generate_image(meta_extra, unique_id, seed, {
+                "filename": f"{name.replace('%batch_num%', '0')}_{counter:05}.png",
+                "subfolder": subfolder, "type": "output"})
             res = saver.save_images(out_imgs, filename_prefix=filename_prefix + marker,
                                     prompt=meta_prompt, extra_pnginfo=meta_extra)
             ui_imgs = res.get("ui", {}).get("images", [])
