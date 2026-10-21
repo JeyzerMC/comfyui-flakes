@@ -136,9 +136,9 @@ export function makeSchedulePanel(entry) {
 
 // Open the load picker (search bar + folders + flakes) and return the chosen
 // flake name, or null. `exclude` keeps a flake from linking to itself.
-export async function pickFlakeTarget(family, exclude) {
+export async function pickFlakeTarget(family, exclude, kind = "img") {
     try {
-        const list = await (await fetch(`/flakes/list?family=${encodeURIComponent(family || "")}`)).json();
+        const list = await (await fetch(`/flakes/list?${new URLSearchParams({ family: family || "", kind })}`)).json();
         const flakes = (list.flakes || []).filter(n => n !== exclude);
         const res = await openFileLoadPicker({
             flakes,
@@ -157,8 +157,91 @@ export async function pickFlakeTarget(family, exclude) {
 // `onFirstPath` is called when the first LoRA's file changes.
 // `loraDir()` gives the folder the LoRA picker opens in (the flake's own
 // path, e.g. img/anima/characters); defaults to the family folder.
-export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, loraDir, showAdd = true, defaultStrength = 1.0 } = {}) {
+// `lowFile` adds a LOW file (`path_low`) under the HIGH one, sharing the
+// strength (Wan 2.2 animate flakes, #431).
+export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, loraDir, showAdd = true, defaultStrength = 1.0, lowFile = false } = {}) {
     const folder = familyFolder(family);
+    // File row for `lora[key]`; only the first LoRA's `path` calls onFirstPath.
+    function makePathRow(lora, i, key, label) {
+        const pathRow = document.createElement("div");
+        css(pathRow, "display:flex;gap:4px;align-items:center;");
+        if (label) {
+            const tag = document.createElement("span");
+            tag.textContent = label;
+            css(tag, "flex:0 0 32px;font-size:10px;color:#888;");
+            pathRow.appendChild(tag);
+        }
+        const fileLabel = (v) => v ? v.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
+        const firstPath = (v) => { if (i === 0 && key === "path" && v) onFirstPath?.(v); };
+
+        const loraWrap = makeSearchableDropdown([], lora[key] || "", "Select LoRA...");
+        loraWrap.container.style.display = "none";
+        (async () => {
+            try {
+                const names = await fetchLoras();
+                for (const l of names) loraWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: l }));
+            } catch { /* ignore */ }
+        })();
+
+        const pathBox = document.createElement("div");
+        css(pathBox, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:32px;box-sizing:border-box;display:flex;align-items:center;");
+        pathBox.textContent = fileLabel(lora[key]);
+        pathBox.title = lora[key] || "";
+
+        const pathEditBtn = makeSmallButton("...");
+        pathEditBtn.title = "Type manually";
+
+        pathBox.addEventListener("click", async () => {
+            const result = await openFileBrowser({ type: "loras", defaultPath: loraDir?.() || (folder ? `img/${folder}` : "") });
+            if (result && result.file) {
+                lora[key] = result.file;
+                pathBox.textContent = fileLabel(lora[key]);
+                pathBox.title = lora[key] || "";
+                loraWrap.element.value = lora[key];
+                firstPath(lora[key]);
+            }
+        });
+
+        pathEditBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            pathBox.style.display = "none";
+            pathEditBtn.style.display = "none";
+            loraWrap.container.style.display = "block";
+            loraWrap.element.focus();
+        });
+
+        const commitTyped = () => {
+            const val = loraWrap.element.value;
+            lora[key] = val;
+            pathBox.textContent = fileLabel(val);
+            pathBox.title = val;
+            pathBox.style.display = "block";
+            pathEditBtn.style.display = "inline-block";
+            loraWrap.container.style.display = "none";
+            firstPath(val);
+        };
+        loraWrap.element.addEventListener("change", commitTyped);
+        loraWrap.element.addEventListener("blur", () => setTimeout(commitTyped, 200));
+
+        pathRow.appendChild(pathBox);
+        pathRow.appendChild(pathEditBtn);
+        pathRow.appendChild(loraWrap.container);
+
+        if (lora[key]) {
+            const clearBtn = makeSmallButton("✕");
+            css(clearBtn, "color:#f88;");
+            clearBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                lora[key] = "";
+                pathBox.textContent = "No LoRA selected";
+                pathBox.title = "";
+                loraWrap.element.value = "";
+            });
+            pathRow.appendChild(clearBtn);
+        }
+        return pathRow;
+    }
+
     function renderLoras() {
         box.replaceChildren();
         for (let i = 0; i < loras.length; i++) {
@@ -223,6 +306,12 @@ export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, l
                 });
                 editRow.appendChild(makeLabel("Name"));
                 editRow.appendChild(nameInput);
+                if (lowFile) {
+                    const lowNameInput = makeComfyInput(lora.name_low || "", "Display name of the LOW file");
+                    lowNameInput.addEventListener("change", () => { lora.name_low = lowNameInput.value; });
+                    editRow.appendChild(makeLabel("LOW name"));
+                    editRow.appendChild(lowNameInput);
+                }
                 if (onTagChange) {
                     // Tag-name checkbox (#274): append this LoRA's name to the
                     // output stem, output path, and grid display name.
@@ -250,87 +339,8 @@ export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, l
                 card.appendChild(editRow);
             }
 
-            const pathRow = document.createElement("div");
-            css(pathRow, "display:flex;gap:4px;align-items:center;");
-
-            const loraWrap = makeSearchableDropdown([], lora.path || "", "Select LoRA...");
-            loraWrap.container.style.display = "none";
-            (async () => {
-                try {
-                    const names = await fetchLoras();
-                    for (const l of names) loraWrap.datalist.appendChild(Object.assign(document.createElement("option"), { value: l }));
-                } catch { /* ignore */ }
-            })();
-
-            const pathBox = document.createElement("div");
-            css(pathBox, "flex:1;background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:32px;box-sizing:border-box;display:flex;align-items:center;");
-            pathBox.textContent = lora.path ? lora.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
-            pathBox.title = lora.path || "";
-
-            const pathEditBtn = makeSmallButton("...");
-            pathEditBtn.title = "Type manually";
-
-            pathBox.addEventListener("click", async () => {
-                const result = await openFileBrowser({ type: "loras", defaultPath: loraDir?.() || (folder ? `img/${folder}` : "") });
-                if (result && result.file) {
-                    lora.path = result.file;
-                    pathBox.textContent = lora.path ? lora.path.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
-                    pathBox.title = lora.path || "";
-                    loraWrap.element.value = lora.path;
-                    if (i === 0) onFirstPath?.(lora.path);
-                }
-            });
-
-            pathEditBtn.addEventListener("click", (e) => {
-                e.stopPropagation();
-                pathBox.style.display = "none";
-                pathEditBtn.style.display = "none";
-                loraWrap.container.style.display = "block";
-                loraWrap.element.focus();
-            });
-
-            loraWrap.element.addEventListener("change", () => {
-                const val = loraWrap.element.value;
-                lora.path = val;
-                pathBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
-                pathBox.title = val;
-                pathBox.style.display = "block";
-                pathEditBtn.style.display = "inline-block";
-                loraWrap.container.style.display = "none";
-                if (i === 0 && val) onFirstPath?.(val);
-            });
-
-            loraWrap.element.addEventListener("blur", () => {
-                setTimeout(() => {
-                    const val = loraWrap.element.value;
-                    lora.path = val;
-                    pathBox.textContent = val ? val.replace(/\.safetensors?$/i, "").split(/[\\/]/).pop() : "No LoRA selected";
-                    pathBox.title = val;
-                    pathBox.style.display = "block";
-                    pathEditBtn.style.display = "inline-block";
-                    loraWrap.container.style.display = "none";
-                    if (i === 0 && val) onFirstPath?.(val);
-                }, 200);
-            });
-
-            pathRow.appendChild(pathBox);
-            pathRow.appendChild(pathEditBtn);
-            pathRow.appendChild(loraWrap.container);
-
-            if (lora.path) {
-                const clearBtn = makeSmallButton("\u2715");
-                css(clearBtn, "color:#f88;");
-                clearBtn.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    lora.path = "";
-                    pathBox.textContent = "No LoRA selected";
-                    pathBox.title = "";
-                    loraWrap.element.value = "";
-                });
-                pathRow.appendChild(clearBtn);
-            }
-
-            card.appendChild(pathRow);
+            card.appendChild(makePathRow(lora, i, "path", lowFile ? "HIGH" : ""));
+            if (lowFile) card.appendChild(makePathRow(lora, i, "path_low", "LOW"));
 
             const strSlider = makeComfyValueSlider(lora.strength ?? 1.0, -10, 10, 0.05, (v) => {
                 lora.strength = v;
@@ -360,6 +370,8 @@ export function serializeLoras(loras) {
         name: l.name || "",
         url: l.url || "",
         path: l.path || "",
+        ...(l.name_low ? { name_low: l.name_low } : {}),
+        ...(l.path_low ? { path_low: l.path_low } : {}),
         strength: l.strength ?? 1.0,
         ...(l.tag_name ? { tag_name: true } : {}),
         ...(l.schedule?.length ? { schedule: l.schedule } : {}),

@@ -1,15 +1,17 @@
 // ---------- API ----------
 
 let LIST_PROMISE = null;
-let LIST_FAMILY = null;
+let LIST_KEY = null;
 
-export function invalidateList() { LIST_PROMISE = null; LIST_FAMILY = null; }
+export function invalidateList() { LIST_PROMISE = null; LIST_KEY = null; }
 
-export async function fetchList(family = "") {
-    const query = family ? `?family=${encodeURIComponent(family)}` : "";
-    if (!LIST_PROMISE || LIST_FAMILY !== family) {
-        LIST_FAMILY = family;
-        LIST_PROMISE = fetch(`/flakes/list${query}`).then(r => r.json()).then(d => ({
+// `kind` "anim" lists the animate flakes under anim/ (#431); `family` is then
+// an animate family label.
+export async function fetchList(family = "", kind = "img") {
+    const query = new URLSearchParams({ family: family || "", kind });
+    if (!LIST_PROMISE || LIST_KEY !== `${kind}:${family}`) {
+        LIST_KEY = `${kind}:${family}`;
+        LIST_PROMISE = fetch(`/flakes/list?${query}`).then(r => r.json()).then(d => ({
             flakes: Array.isArray(d.flakes) ? d.flakes : [],
             directories: Array.isArray(d.directories) ? d.directories : [],
             display_names: d.display_names || {},
@@ -32,8 +34,8 @@ export async function fetchFlake(name) {
     return (await r.json()).data || {};
 }
 
-export async function saveFlakeApi(name, data, family = "", baseRootIndex = null, outputPath = null, oldName = null) {
-    const body = { name, data, family: family || undefined };
+export async function saveFlakeApi(name, data, family = "", baseRootIndex = null, outputPath = null, oldName = null, kind = "img") {
+    const body = { name, data, family: family || undefined, kind };
     if (baseRootIndex != null) body.base_root_index = baseRootIndex;
     if (outputPath != null) body.output_path = outputPath;
     if (oldName != null) body.old_name = oldName;
@@ -60,6 +62,13 @@ export async function deleteFlakeApi(name) {
         throw new Error(err.error || `HTTP ${r.status}`);
     }
     invalidateList();
+}
+
+// Animate families with their preset defaults (#429).
+let ANIM_FAMILIES_PROMISE = null;
+export function fetchAnimFamilies() {
+    if (!ANIM_FAMILIES_PROMISE) ANIM_FAMILIES_PROMISE = fetch("/flakes/anim/families").then(r => r.json()).then(d => d.families || []);
+    return ANIM_FAMILIES_PROMISE;
 }
 
 // --- Autocomplete / assets ---

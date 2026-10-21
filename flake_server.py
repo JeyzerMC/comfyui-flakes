@@ -35,12 +35,15 @@ def _server_error(msg: str) -> web.Response:
 async def _list_flakes(request: web.Request) -> web.Response:
     family = request.query.get("family", "").strip() or None
     try:
-        names = flake_io.list_flakes(family=family)
-        dirs = flake_io.list_dirs(family=family)
-        display_names = flake_io.list_flake_display_names(family=family)
-        tag_names = flake_io.list_flake_tag_names(family=family)
-        favorites = flake_io.list_flake_favorites(family=family)
+        kind = _route_kind(request.query.get("kind"))
+        names = flake_io.list_flakes(family=family, kind=kind)
+        dirs = flake_io.list_dirs(family=family, kind=kind)
+        display_names = flake_io.list_flake_display_names(family=family, kind=kind)
+        tag_names = flake_io.list_flake_tag_names(family=family, kind=kind)
+        favorites = flake_io.list_flake_favorites(family=family, kind=kind)
         folder_covers = flake_io.list_folder_covers(names, dirs, favorites)
+    except ValueError as exc:
+        return _bad_request(str(exc))
     except Exception as exc:
         logging.exception("[flakes] failed to list flakes")
         return _server_error(str(exc))
@@ -49,9 +52,9 @@ async def _list_flakes(request: web.Request) -> web.Response:
 
 @routes.get("/flakes/drives")
 async def _flake_drives(request: web.Request) -> web.Response:
-    """Drives holding each flake and folder (or each preset with
-    kind=presets), so the load picker can show one drive at a time like the
-    file picker."""
+    """Drives holding each flake and folder (each animate flake and folder
+    with kind=anim, each preset with kind=presets), so the load picker can show
+    one drive at a time like the file picker."""
     family = request.query.get("family", "").strip() or None
     if request.query.get("kind") == "presets":
         presets: dict[str, list[str]] = {}
@@ -63,13 +66,14 @@ async def _flake_drives(request: web.Request) -> web.Response:
             "presets": presets, "drives": drives,
             "default": _default_drive(drives) if drives else "",
         })
+    kind = "anim" if request.query.get("kind") == "anim" else "img"
     flakes: dict[str, list[str]] = {}
     dirs: dict[str, list[str]] = {}
     for root in folder_paths.get_folder_paths("flakes"):
         drive = _drive(root)
-        for name in flake_io.list_flakes(family=family, roots=[root]):
+        for name in flake_io.list_flakes(family=family, roots=[root], kind=kind):
             flakes.setdefault(name, []).append(drive)
-        for name in flake_io.list_dirs(family=family, roots=[root]):
+        for name in flake_io.list_dirs(family=family, roots=[root], kind=kind):
             dirs.setdefault(name, []).append(drive)
     drives = sorted({d for ds in (*flakes.values(), *dirs.values()) for d in ds})
     return web.json_response({
@@ -82,7 +86,9 @@ async def _flake_drives(request: web.Request) -> web.Response:
 async def _list_series(request: web.Request) -> web.Response:
     family = request.query.get("family", "").strip() or None
     try:
-        series = flake_io.list_series(family=family)
+        series = flake_io.list_series(family=family, kind=_route_kind(request.query.get("kind")))
+    except ValueError as exc:
+        return _bad_request(str(exc))
     except Exception as exc:
         logging.exception("[flakes] failed to list series")
         return _server_error(str(exc))
@@ -178,6 +184,7 @@ async def _save_flake(request: web.Request) -> web.Response:
             base_root_index=base_root_index,
             output_path=output_path,
             old_name=old_name,
+            kind=_route_kind(body.get("kind")),
         )
     except ValueError as exc:
         return _bad_request(str(exc))
@@ -445,9 +452,9 @@ async def _delete_cover_route(request: web.Request) -> web.Response:
 # Presets (Phase 4)
 # ---------------------------------------------------------------------------
 
-def _preset_kind(value: str | None) -> str:
-    """``kind`` of a preset route: "img" (default) or "anim" for animate
-    presets. Becomes a path segment, so anything else is rejected."""
+def _route_kind(value: str | None) -> str:
+    """``kind`` of a flake or preset route: "img" (default) or "anim" for
+    animate ones. Becomes a path segment, so anything else is rejected."""
     kind = (value or "").strip() or "img"
     if kind not in ("img", "anim"):
         raise ValueError("kind must be 'img' or 'anim'")
@@ -458,7 +465,7 @@ def _preset_kind(value: str | None) -> str:
 async def _list_presets(request: web.Request) -> web.Response:
     family = request.query.get("family", "").strip() or None
     try:
-        kind = _preset_kind(request.query.get("kind"))
+        kind = _route_kind(request.query.get("kind"))
         names = flake_io.list_presets(family=family, kind=kind)
         display_names = flake_io.list_preset_display_names(family=family, kind=kind)
     except ValueError as exc:
@@ -520,7 +527,7 @@ async def _save_preset(request: web.Request) -> web.Response:
             base_root_index=base_root_index,
             output_path=output_path,
             old_name=old_name,
-            kind=_preset_kind(body.get("kind")),
+            kind=_route_kind(body.get("kind")),
         )
     except ValueError as exc:
         return _bad_request(str(exc))

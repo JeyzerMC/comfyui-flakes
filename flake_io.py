@@ -240,6 +240,9 @@ class LoraEntry:
     path: str = ""
     strength: float = 1.0
     schedule: list[ScheduleKeyframe] = field(default_factory=list)
+    # Wan 2.2 animate flakes: the low-noise file, applied at the same strength.
+    name_low: str = ""
+    path_low: str = ""
 
 
 @dataclass
@@ -420,7 +423,16 @@ def _resolve_file(name: str) -> str:
 _NON_IMAGE_DIRS = ("model_presets", "anim")
 
 
-def list_flakes(family: str | None = None, roots: list[str] | None = None) -> list[str]:
+def _in_listing(rel: str, family: str | None, kind: str) -> bool:
+    """Whether flake path *rel* belongs to a ``kind`` listing: "img" (outside
+    ``_NON_IMAGE_DIRS``, filtered by family) or "anim" (``anim/``, narrowed to
+    ``anim/<folder>/`` by an animate ``family``)."""
+    if kind == "anim":
+        return rel.startswith(f"anim/{_anim_family_folder(family)}/" if family else "anim/")
+    return rel.split("/", 1)[0] not in _NON_IMAGE_DIRS and (family is None or _is_flake_compatible(rel, family))
+
+
+def list_flakes(family: str | None = None, roots: list[str] | None = None, kind: str = "img") -> list[str]:
     names: set[str] = set()
     for root in roots or _flakes_roots():
         if not os.path.isdir(root):
@@ -433,15 +445,13 @@ def list_flakes(family: str | None = None, roots: list[str] | None = None) -> li
                 rel_dir = os.path.relpath(dirpath, root)
                 rel = stem if rel_dir in ("", ".") else os.path.join(rel_dir, stem)
                 rel_norm = rel.replace(os.sep, "/")
-                if rel_norm.split("/", 1)[0] in _NON_IMAGE_DIRS:
-                    continue
-                if family is None or _is_flake_compatible(rel_norm, family):
+                if _in_listing(rel_norm, family, kind):
                     names.add(rel_norm)
     return sorted(names)
 
 
-def list_flake_display_names(family: str | None = None) -> dict[str, str]:
-    names = list_flakes(family=family)
+def list_flake_display_names(family: str | None = None, kind: str = "img") -> dict[str, str]:
+    names = list_flakes(family=family, kind=kind)
     display_names: dict[str, str] = {}
     for name in names:
         try:
@@ -454,7 +464,7 @@ def list_flake_display_names(family: str | None = None) -> dict[str, str]:
     return display_names
 
 
-def list_flake_tag_names(family: str | None = None) -> dict[str, list[str]]:
+def list_flake_tag_names(family: str | None = None, kind: str = "img") -> dict[str, list[str]]:
     """Map of flake name -> tag-name LoRA names to surface on the flake item.
 
     Lets the Load picker show the same tag line as the grid (#297) without each
@@ -462,7 +472,7 @@ def list_flake_tag_names(family: str | None = None) -> dict[str, list[str]]:
     appear in the result.
     """
     result: dict[str, list[str]] = {}
-    for name in list_flakes(family=family):
+    for name in list_flakes(family=family, kind=kind):
         try:
             raw = read_flake_raw(name)
         except Exception:
@@ -480,10 +490,10 @@ def list_flake_tag_names(family: str | None = None) -> dict[str, list[str]]:
     return result
 
 
-def list_flake_favorites(family: str | None = None) -> list[str]:
+def list_flake_favorites(family: str | None = None, kind: str = "img") -> list[str]:
     """Names of flakes saved with ``favorite: true`` (#402)."""
     result: list[str] = []
-    for name in list_flakes(family=family):
+    for name in list_flakes(family=family, kind=kind):
         try:
             raw = read_flake_raw(name)
         except Exception:
@@ -516,10 +526,10 @@ def list_folder_covers(names: list[str], dirs: list[str], favorites: list[str]) 
     return {d: c for d in dirs if (c := cover(d))}
 
 
-def list_series(family: str | None = None) -> list[str]:
+def list_series(family: str | None = None, kind: str = "img") -> list[str]:
     """Distinct, non-empty `serie` values across flakes (sorted)."""
     series: set[str] = set()
-    for name in list_flakes(family=family):
+    for name in list_flakes(family=family, kind=kind):
         try:
             raw = read_flake_raw(name)
         except Exception:
@@ -530,7 +540,7 @@ def list_series(family: str | None = None) -> list[str]:
     return sorted(series)
 
 
-def list_dirs(family: str | None = None, roots: list[str] | None = None) -> list[str]:
+def list_dirs(family: str | None = None, roots: list[str] | None = None, kind: str = "img") -> list[str]:
     dirs: set[str] = set()
     for root in roots or _flakes_roots():
         if not os.path.isdir(root):
@@ -541,9 +551,7 @@ def list_dirs(family: str | None = None, roots: list[str] | None = None) -> list
             for d in dirnames:
                 full = os.path.join(dirpath, d)
                 rel = os.path.relpath(full, root).replace(os.sep, "/")
-                if rel.split("/", 1)[0] in _NON_IMAGE_DIRS:
-                    continue
-                if family is None or _is_flake_compatible(rel + "/dummy", family):
+                if _in_listing(rel + "/dummy", family, kind):
                     dirs.add(rel)
     return sorted(dirs)
 
@@ -582,12 +590,14 @@ def save_flake(
     base_root_index: int | None = None,
     output_path: str | None = None,
     old_name: str | None = None,
+    kind: str = "img",
 ) -> str:
     """Persist ``data`` to ``<root>/<name>.yaml`` and return the resolved name
     that callers should use to reference the flake.
 
     See :func:`save_preset` for the role of ``base_root_index`` /
-    ``output_path`` / ``old_name``.
+    ``output_path`` / ``old_name`` / ``kind``; unlike presets, ``output_path``
+    is the full name, prefix included.
     """
     if not isinstance(data, dict):
         raise ValueError("flake data must be an object")
@@ -616,9 +626,9 @@ def save_flake(
         _validate_name(canonical)
     else:
         _validate_name(name)
-        folder = _family_folder(family)
-        if folder and not name.replace("\\", "/").startswith(f"img/{folder}/"):
-            canonical = f"img/{folder}/{name}"
+        folder = _anim_family_folder(family) if kind == "anim" else _family_folder(family)
+        if folder and not name.startswith(f"{kind}/{folder}/"):
+            canonical = f"{kind}/{folder}/{name}"
         else:
             canonical = name
 
@@ -842,6 +852,8 @@ def _take_ownership(data: dict[str, Any], target: str) -> None:
         for lora in loras if isinstance(loras, list) else ():
             if isinstance(lora, dict):
                 lora["path"] = own_lora(lora.get("path"), lora.get("name"))
+                if "path_low" in lora:
+                    lora["path_low"] = own_lora(lora["path_low"], lora.get("name_low") or f"{lora.get('name') or ''}_low")
         for cn in cns if isinstance(cns, list) else ():
             src = _external_image(cn.get("image"), moved) if isinstance(cn, dict) else None
             if not src:
@@ -969,6 +981,8 @@ def _parse_lora_list(raw_loras: Any, name: str | None = None) -> list["LoraEntry
                 path=_owned_file_path(str(lr.get("path", "")), name),
                 strength=float(lr.get("strength", 1.0)),
                 schedule=_parse_schedule(lr.get("schedule")),
+                name_low=str(lr.get("name_low", "")),
+                path_low=_owned_file_path(str(lr.get("path_low", "")), name),
             ))
     return out
 

@@ -1,4 +1,5 @@
-"""Tests for the animate families and preset storage (#429). Same loading
+"""Tests for the animate families, preset storage (#429) and flake storage
+(#431). Same loading
 approach as test_portable_flakes.py, with the stub `folder_paths` pointing the
 flakes and model_presets roots at temp dirs."""
 import contextlib
@@ -161,3 +162,50 @@ def test_image_flake_lists_exclude_anim():
         _write(os.path.join(root, "model_presets", "img", "sdxl", "base.yaml"), b"{}")
         assert fio.list_flakes() == ["img/sdxl/hero"]
         assert fio.list_dirs() == ["img", "img/sdxl"]
+
+
+def test_anim_flake_round_trip_with_low_lora():
+    with _roots() as (root, _):
+        name = fio.save_flake("chars/fennec", {
+            "name": "Fennec",
+            "prompt": {"positive": "a fennec girl swishes her fluffy tail"},
+            "loras": [{"name": "swish", "path": "wan/swish_high.safetensors",
+                       "name_low": "swish low", "path_low": "wan/swish_low.safetensors", "strength": 0.7}],
+        }, family="Wan 2.2", kind="anim")
+        assert name == "anim/wan22/chars/fennec"
+        assert os.path.isfile(os.path.join(root, "anim", "wan22", "chars", "fennec.yaml"))
+        assert fio.read_flake_raw(name)["loras"][0]["path_low"] == "wan/swish_low.safetensors"
+
+        flake = fio.resolve({"name": name})
+        assert flake.positive == "a fennec girl swishes her fluffy tail"
+        lora = flake.loras[0]
+        assert (lora.path, lora.path_low, lora.name_low, lora.strength) == (
+            "wan/swish_high.safetensors", "wan/swish_low.safetensors", "swish low", 0.7)
+        # Image flakes keep an empty LOW file.
+        img = fio.save_flake("hero", {"loras": [{"path": "hero.safetensors"}]}, family="SDXL/Base")
+        assert (fio.load_flake(img).loras[0].path_low, fio.load_flake(img).loras[0].name_low) == ("", "")
+
+
+def test_anim_flake_lists_cover_and_delete():
+    with _roots() as (root, _):
+        img = fio.save_flake("hero", {"favorite": True, "serie": "Heroes"}, family="SDXL/Base")
+        wan = fio.save_flake("chars/wave", {"name": "Wave", "favorite": True, "serie": "Fennec"}, family="Wan 2.2", kind="anim")
+        mh3 = fio.save_flake("clip", {}, family="MiniMax H3", kind="anim")
+
+        assert fio.list_flakes() == [img]
+        assert fio.list_dirs() == ["img", "img/sdxl"]
+        assert fio.list_flake_favorites() == [img]
+        assert fio.list_series() == ["Heroes"]
+        assert fio.list_flakes(kind="anim") == [mh3, wan]
+        assert fio.list_flakes(family="Wan 2.2", kind="anim") == [wan]
+        assert fio.list_dirs(kind="anim") == ["anim", "anim/mh3", "anim/wan22", "anim/wan22/chars"]
+        assert fio.list_dirs(family="MiniMax H3", kind="anim") == ["anim/mh3"]
+        assert fio.list_flake_display_names(kind="anim") == {wan: "Wave"}
+        assert fio.list_flake_favorites(kind="anim") == [wan]
+        assert fio.list_series(kind="anim") == ["Fennec"]
+        assert _raises_value_error(lambda: fio.list_flakes(family="SDXL/Base", kind="anim"))
+
+        _write(os.path.join(root, "anim", "wan22", "chars", "wave", "wave.png"), b"png")
+        assert fio.read_cover(wan) == (b"png", "image/png")
+        fio.delete_flake(wan)
+        assert fio.list_flakes(kind="anim") == [mh3]

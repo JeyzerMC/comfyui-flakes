@@ -11,7 +11,7 @@ import {
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
     fetchLoraVariantSiblingImagePath, invalidateList,
-    fetchCnModels,
+    fetchCnModels, fetchAnimFamilies,
 } from "./api.js";
 import { openFileBrowser, IMAGE_ROOTS } from "./pickers.js";
 import {
@@ -97,7 +97,14 @@ function inferCnFromImage(filename, types = []) {
     return { inferredType, sibling, siblings };
 }
 
-export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) {
+// `kind` "anim" edits an animate flake (#431): `family` is an animate family
+// label (an edited flake's comes from its anim/<folder>/ name), the flake has
+// no ControlNets and Wan 2.2 LoRAs take a LOW file too.
+export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Base", kind = "img" }) {
+    const animFamily = kind === "anim"
+        ? (await fetchAnimFamilies()).find(f => mode === "edit" && name ? f.folder === name.split("/")[1] : f.label === family)
+        : null;
+    const lowFile = animFamily?.folder === "wan22";
     return new Promise((resolve) => {
         let { content, footer, close, handlers, panel } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
@@ -197,7 +204,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             if (!keys) return;
             let lastAdded = null;
             for (const key of keys) {
-                if (activeFields.includes(key)) continue;
+                if (activeFields.includes(key) || (key === "controlnets" && animFamily)) continue;
                 activeFields.push(key);
                 lastAdded = key;
                 if (key === "lora") fieldState.loras = [{ name: "", url: "", path: "", strength: type === "Character" ? 0.8 : 1.0, _editing: true }];
@@ -229,12 +236,14 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         }
 
         function getOutputPrefix() {
+            if (animFamily) return `anim/${animFamily.folder}/`;
             const folder = familyFolder(currentFamily);
             return folder ? `img/${folder}/` : "img/";
         }
 
         function stripOutputPrefix(val) {
             if (!val) return val;
+            if (animFamily) return val.split("/").slice(2).join("/");
             const prefixes = ["img/sdxl/", "img/illustrious/", "img/pony/", "img/zib/", "img/zit/", "img/anima/", "img/flux_klein/", "img/common/", "img/"];
             for (const p of prefixes) {
                 if (val.toLowerCase().startsWith(p)) return val.slice(p.length);
@@ -325,7 +334,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             // Populate the serie suggestions from existing flakes' series.
             (async () => {
                 try {
-                    const r = await fetch("/flakes/series");
+                    const r = await fetch(`/flakes/series?kind=${kind}`);
                     const d = await r.json();
                     for (const s of (d.series || [])) {
                         serieDD.datalist.appendChild(Object.assign(document.createElement("option"), { value: s }));
@@ -453,7 +462,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
         let setCoverFromLora = null;
         let setCoverFromCn = null;
 
-        let currentFamily = family;
+        let currentFamily = animFamily?.label ?? family;
 
         function inferFamilyFromPath(path) {
             // Derives the family from an `img/<folder>/` prefix using the shared
@@ -464,7 +473,7 @@ export function openEditModal({ mode, name, data, dirs, family = "SDXL/Base" }) 
             return familyFromFolder(parts[1]) || family;
         }
 
-        if (mode === "edit" && name) {
+        if (mode === "edit" && name && !animFamily) {
             currentFamily = inferFamilyFromPath(name);
         }
 
@@ -842,6 +851,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         onFirstPath: (path) => setCoverFromLora?.(path),
                         loraDir: flakeDir,
                         defaultStrength: defaultLoraStrength(),
+                        lowFile,
                     });
                 }
 
@@ -1214,7 +1224,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     e.stopPropagation();
                                     openFieldMenu(dragHandle, [
                                         { label: "LoRA", onClick: () => addChoiceField("lora") },
-                                        { label: "ControlNet", onClick: () => addChoiceField("controlnets") },
+                                        ...(animFamily ? [] : [{ label: "ControlNet", onClick: () => addChoiceField("controlnets") }]),
                                         { label: "Flake Link", onClick: () => addChoiceField("flake_link") },
                                     ]);
                                 });
@@ -1524,7 +1534,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         co.controlnets.push(await newCn());
                                         renderChoiceExtras();
                                     } else if (key === "flake_link") {
-                                        const t = await pickFlakeTarget(currentFamily, name);
+                                        const t = await pickFlakeTarget(currentFamily, name, kind);
                                         if (!t) return;
                                         if (!Array.isArray(co.flake_links)) co.flake_links = [];
                                         co.flake_links.push({ target: t, variant: {}, lora_strengths: [] });
@@ -1549,7 +1559,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         const loraList = document.createElement("div");
                                         css(loraList, "display:flex;flex-direction:column;gap:6px;margin-top:3px;");
                                         loraHost.appendChild(loraList);
-                                        renderLoraList(loraList, co.loras, { family: currentFamily, loraDir: flakeDir, showAdd: false });
+                                        renderLoraList(loraList, co.loras, { family: currentFamily, loraDir: flakeDir, showAdd: false, lowFile });
                                     }
                                     // ---- ControlNets ----
                                     const cnets = Array.isArray(co.controlnets) ? co.controlnets : [];
@@ -1664,7 +1674,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         css(title, "flex:1;font-size:12px;color:#cdd;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
                                         header.appendChild(title);
                                         const chg = makeSmallButton("Change");
-                                        chg.addEventListener("click", async () => { const t = await pickFlakeTarget(currentFamily, name); if (t) { link.target = t; link.variant = {}; link.lora_strengths = []; link.variant_loras = {}; renderChoiceExtras(); } });
+                                        chg.addEventListener("click", async () => { const t = await pickFlakeTarget(currentFamily, name, kind); if (t) { link.target = t; link.variant = {}; link.lora_strengths = []; link.variant_loras = {}; renderChoiceExtras(); } });
                                         header.appendChild(chg);
                                         const rm = makeSmallButton("✕");
                                         rm.addEventListener("click", () => { links.splice(li, 1); if (!links.length) delete co.flake_links; renderChoiceExtras(); });
@@ -1841,7 +1851,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     fieldWrap.appendChild(linkBox);
 
                     if (!Array.isArray(fieldState.flake_links)) fieldState.flake_links = [];
-                    renderLinkList(linkBox, fieldState.flake_links, () => pickFlakeTarget(currentFamily, name));
+                    renderLinkList(linkBox, fieldState.flake_links, () => pickFlakeTarget(currentFamily, name, kind));
                 }
 
                 optionalBox.appendChild(fieldWrap);
@@ -1869,7 +1879,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
             { key: "resolution", label: "Resolution override" },
             { key: "variants", label: "Variants" },
             { key: "lora", label: "LoRA" },
-            { key: "controlnets", label: "ControlNets" },
+            ...(animFamily ? [] : [{ key: "controlnets", label: "ControlNets" }]),
             { key: "flake_link", label: "Flake link" },
         ];
         for (const ft of fieldTypes) {
@@ -1898,7 +1908,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     const imgBox = optionalBox.querySelector('[data-field-key="controlnets"] [data-cn-main-img]');
                     if (imgBox) imgBox.click();
                 } else if (ft.key === "flake_link") {
-                    const target = await pickFlakeTarget(currentFamily, name);
+                    const target = await pickFlakeTarget(currentFamily, name, kind);
                     if (target) {
                         fieldState.flake_links.push({ target, variant: {}, lora_strengths: [] });
                         renderFields();
@@ -2065,6 +2075,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     Number.isFinite(baseRootIndex) ? baseRootIndex : 0,
                     fullOutputPath,
                     oldName,
+                    kind,
                 );
                 if (mode === "create") {
                     await close({ created: true, name: savedName, data: ordered });
