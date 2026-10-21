@@ -39,10 +39,11 @@ async def _list_flakes(request: web.Request) -> web.Response:
         display_names = flake_io.list_flake_display_names(family=family)
         tag_names = flake_io.list_flake_tag_names(family=family)
         favorites = flake_io.list_flake_favorites(family=family)
+        folder_covers = flake_io.list_folder_covers(names, dirs, favorites)
     except Exception as exc:
         logging.exception("[flakes] failed to list flakes")
         return _server_error(str(exc))
-    return web.json_response({"flakes": names, "directories": dirs, "display_names": display_names, "tag_names": tag_names, "favorites": favorites})
+    return web.json_response({"flakes": names, "directories": dirs, "display_names": display_names, "tag_names": tag_names, "favorites": favorites, "folder_covers": folder_covers})
 
 
 @routes.get("/flakes/drives")

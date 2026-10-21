@@ -17,6 +17,7 @@ export async function fetchList(family = "") {
             // LoRA tag line, matching the grid items (#334).
             tag_names: d.tag_names || {},
             favorites: Array.isArray(d.favorites) ? d.favorites : [],
+            folder_covers: d.folder_covers || {},
         }));
     }
     return LIST_PROMISE;

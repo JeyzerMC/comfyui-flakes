@@ -21,11 +21,11 @@ const withoutPresets = (names) => names.filter(n => {
     return !norm.startsWith("model_presets/") && norm !== "model_presets";
 });
 
-export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {}, tagNames = {}, favorites = [] }) {
+export async function openFileLoadPicker({ flakes, directories, family = "", displayNames = {}, tagNames = {}, favorites = [], folderCovers = {} }) {
     return openNamePicker({
         title: "Load existing flake", kind: "flakes", noun: "flake", base: "models/flakes/",
         names: withoutPresets(flakes), directories: withoutPresets(directories), family,
-        coverUrl: getCoverUrl, favorites,
+        coverUrl: getCoverUrl, favorites, folderCovers,
         // Stacked label with a dimmer tag line, matching the grid (#297).
         renderLabel: (el, name) => renderFlakeLabel(el, { name: displayNames[name] || name.split("/").pop(), tags: tagNames[name] || [] }),
     });
@@ -55,7 +55,7 @@ export async function openPresetPicker({ selected = "", family = "" } = {}) {
 // when the names span several drives. One drive is shown at a time, an extra
 // model path's by default. Without `directories`, folders come from the names.
 // Resolves to {name} or null.
-function openNamePicker({ title, kind, noun, base, names, directories = null, family, selected = "", coverUrl, renderLabel, favorites = [] }) {
+function openNamePicker({ title, kind, noun, base, names, directories = null, family, selected = "", coverUrl, renderLabel, favorites = [], folderCovers = {} }) {
     return new Promise((resolve) => {
         const { content, footer, close, handlers } = openOverlay();
         handlers.onClose = (v) => resolve(v ?? null);
@@ -182,15 +182,18 @@ function openNamePicker({ title, kind, noun, base, names, directories = null, fa
                 grid.appendChild(makeFolderTile("↑", "..", () => openFolder(parts.join("/"))));
             }
             for (const sub of subfolders) {
-                grid.appendChild(makeFolderTile("📁", sub, () => openFolder(currentFolder ? normPath(currentFolder) + "/" + sub : sub)));
+                const path = currentFolder ? normPath(currentFolder) + "/" + sub : sub;
+                grid.appendChild(makeFolderTile("📁", sub, () => openFolder(path), folderCovers[path]));
             }
             for (const name of folderNames) grid.appendChild(makeThumb(name));
             if (subfolders.length === 0 && folderNames.length === 0) showEmpty();
         }
 
-        function makeFolderTile(icon, label, onClick) {
+        // `cover` names the flake whose cover dims behind the icon (#424).
+        function makeFolderTile(icon, label, onClick, cover) {
             const item = document.createElement("div");
-            css(item, "aspect-ratio:1/1;background:#252525;border:1px solid #444;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
+            const bg = cover ? `background-image:linear-gradient(rgba(0,0,0,0.6),rgba(0,0,0,0.6)),url(${coverUrl(cover)});background-size:cover;background-position:center;` : "";
+            css(item, bg + "aspect-ratio:1/1;background-color:#252525;border:1px solid #444;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
             const iconEl = document.createElement("div");
             iconEl.textContent = icon;
             css(iconEl, label === ".." ? "font-size:24px;color:#888;" : "font-size:32px;");

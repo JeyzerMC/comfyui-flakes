@@ -456,6 +456,29 @@ def list_flake_favorites(family: str | None = None) -> list[str]:
     return result
 
 
+def list_folder_covers(names: list[str], dirs: list[str], favorites: list[str]) -> dict[str, str]:
+    """Map of folder -> flake whose cover the Load picker shows on its tile
+    (#424): the first favorite directly inside, else the first flake directly
+    inside, else the first subfolder's. Only flakes with a cover count."""
+    by_folder: dict[str, list[str]] = {}
+    for name in names:
+        by_folder.setdefault(name.rpartition("/")[0], []).append(name)
+    subs: dict[str, list[str]] = {}
+    for d in dirs:
+        subs.setdefault(d.rpartition("/")[0], []).append(d)
+    fav = set(favorites)
+    covers: dict[str, str] = {}
+
+    def cover(folder: str) -> str | None:
+        if folder not in covers:
+            direct = sorted(by_folder.get(folder, []), key=lambda n: (n not in fav, n.lower()))
+            covers[folder] = next((n for n in direct if read_cover(n)), None) or next(
+                (c for sub in sorted(subs.get(folder, []), key=str.lower) if (c := cover(sub))), None)
+        return covers[folder]
+
+    return {d: c for d in dirs if (c := cover(d))}
+
+
 def list_series(family: str | None = None) -> list[str]:
     """Distinct, non-empty `serie` values across flakes (sorted)."""
     series: set[str] = set()
