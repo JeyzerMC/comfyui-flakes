@@ -288,8 +288,9 @@ diffusion model, so the files go in `models/model_patches/`, not
 
 Image-to-video with its own presets and nodes: **Flake Animate Preset** /
 **Preset Combo** load an animate preset into a `flake_anim_data` pin, **Flake
-Animate Stack** / **Combo** add flakes and the start image, and **Flake Generate
-Animation** samples it and saves an MP4 to `output/anim/<family>/`.
+Animate Stack** / **Combo** add flakes, and **Flake Generate Animation** samples
+it and saves an MP4 to `output/anim/<family>/`. Start images belong to the grid
+items (bottom-left `+` / count button); each image queues its own video.
 
 | Family | Folder | Models | Text encoder type | VAEs |
 |---|---|---|---|---|

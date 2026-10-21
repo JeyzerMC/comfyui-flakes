@@ -4,19 +4,24 @@ import {
     makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut, effectiveVariant, variantDropdownOptions, variantDefaultsOf, choiceFlakeLinks,
 } from "../utils.js";
-import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, importAnimFlakeApi } from "../api.js";
+import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, importAnimFlakeApi, pickedImageUrl } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
-import { openFileLoadPicker, openVariantMultiPicker } from "../pickers.js";
+import { openFileLoadPicker, openVariantMultiPicker, makeItemImagesButton } from "../pickers.js";
 import { getGeneratingUid, newItemUid } from "../queue.js";
 
-function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, onReplace, onToggleBypass, onSingleOut, onDuplicate, onDragStart, onDragOver, onDrop, onDragEnd }) {
+// Grid item [width, height] per kind; animate items are larger to show their
+// input image (#441).
+const ITEM_SIZE = { img: [72, 80], anim: [104, 128] };
+
+function makeComboBlock({ entry, idx, kind, isActive, isGenerating, onEdit, onRemove, onReplace, onToggleBypass, onSingleOut, onDuplicate, onImagesChanged, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const hasCover = !!entry.name;
     const isBypassed = !!entry.bypassed;
+    const isAnim = kind === "anim";
     const block = document.createElement("div");
     block.dataset.idx = String(idx);
     block.dataset.flakeBlock = "1";
 
-    css(block, `position:relative;height:80px;background:${
+    css(block, `position:relative;height:${ITEM_SIZE[kind][1]}px;background:${
         isBypassed ? "#1a1a1a" : "#2a2a2a"
     };border:${
         isGenerating ? "2px solid #4a9eff" : "1px solid #444"
@@ -24,9 +29,13 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
         hasCover ? "background-size:cover;background-position:center;" : ""
     }${isGenerating ? "box-shadow:0 0 8px 1px rgba(74,158,255,0.7);" : ""}${isBypassed ? "opacity:0.45;" : ""}`);
 
-    // Cover image — swap to an effective variant choice's image when it has one,
-    // otherwise fall back to the flake's base cover.
+    // Cover image — the first input image of an animate item (#441), else an
+    // effective variant choice's image when it has one, else the base cover.
     function refreshCover() {
+        if (entry.images?.length) {
+            block.style.backgroundImage = `url("${pickedImageUrl(entry.images[0])}")`;
+            return;
+        }
         if (!hasCover) return;
         const baseUrl = getCoverUrl(entry.name);
         const sel = Object.entries(effectiveVariant(entry.variant, cachedVariantDefaults(entry.name)))[0];
@@ -96,7 +105,13 @@ function makeComboBlock({ entry, idx, isActive, isGenerating, onEdit, onRemove, 
         block.appendChild(dup);
     }
 
-    if (entry.favorite) block.appendChild(makeFavoriteStar());
+    if (entry.favorite) {
+        const star = makeFavoriteStar();
+        // Animate items keep the bottom-left for their input images button.
+        if (isAnim) Object.assign(star.style, { left: "auto", right: "20px" });
+        block.appendChild(star);
+    }
+    if (isAnim) block.appendChild(makeItemImagesButton(entry, onImagesChanged));
 
     // Name — stacked label: name line, dimmer tag line (#297), variant suffix.
     const baseName = entry.display_name || entry.name || "(missing)";
@@ -621,8 +636,9 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
     });
     container.appendChild(toggleAll);
 
+    const [itemW, itemH] = ITEM_SIZE[kind];
     const grid = document.createElement("div");
-    css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
+    css(grid, `display:grid;grid-template-columns:repeat(auto-fill, minmax(${itemW}px, 1fr));gap:4px;`);
     container.appendChild(grid);
 
     let dragSrcIdx = null;
@@ -637,6 +653,7 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
             const { block: blk, triangleBtn, refreshVisuals } = makeComboBlock({
                 entry: flakes[i],
                 idx: i,
+                kind,
                 isActive: i === activeIdx,
                 isGenerating: generatingUid != null && flakes[i]._uid === generatingUid,
                 onEdit: handleEdit,
@@ -645,6 +662,7 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
                 onToggleBypass: handleToggleBypass,
                 onSingleOut: handleSingleOut,
                 onDuplicate: handleDuplicate,
+                onImagesChanged: () => { writeAllFlakes(flakes); render(); },
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
                     Object.assign(flakeDrag, { node, entry: flakes[idx], take: () => takeDragged(idx), kind });
@@ -933,6 +951,7 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
     }
 
     grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad, onImport: kind === "anim" ? handleImport : null });
+    grid._addBlock.style.height = `${itemH}px`;
 
     grid._addBlock.addEventListener("dragover", (e) => {
         if (dragSrcIdx === null && !isForeignDrag()) return;
@@ -971,11 +990,11 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
     node._combo_render = render;
     const comboWidget = node.addDOMWidget("combo_ui", "div", container, { serialize: false, margin: 4 });
     comboWidget.computeSize = () => {
-        // Match the actual auto-fill column count (minmax 72px + 4px gap) so a wide
-        // node doesn't over-count rows and pad itself with empty space (#317).
-        const cols = Math.max(1, Math.floor((node.size[0] - 16) / 76));
+        // Match the actual auto-fill column count (minmax item width + 4px gap) so a
+        // wide node doesn't over-count rows and pad itself with empty space (#317).
+        const cols = Math.max(1, Math.floor((node.size[0] - 16) / (itemW + 4)));
         const rows = Math.max(1, Math.ceil((readAllFlakes().length + 1) / cols));
-        return [node.size[0], rows * 84 + 55];  // +24 for the toggle-all button (#315)
+        return [node.size[0], rows * (itemH + 4) + 55];  // +24 for the toggle-all button (#315)
     };
     updateActiveFlake();
     render();

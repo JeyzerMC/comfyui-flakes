@@ -189,6 +189,11 @@ export function inputImageUrl(path) {
     return `/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(parts.join("/"))}&type=input`;
 }
 
+// Preview URL of an image picked with pickImage: absolute (outside input/) or input-relative.
+export function pickedImageUrl(path) {
+    return /^([A-Za-z]:)?[\\/]/.test(path) ? `/flakes/image?path=${encodeURIComponent(path)}` : inputImageUrl(path);
+}
+
 export function flakeAssetUrl(name, path) {
     return `/flakes/asset?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`;
 }

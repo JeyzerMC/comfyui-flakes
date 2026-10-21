@@ -7,13 +7,13 @@ import {
     familyFolder, familyFromFolder, makeHoverRemoveWrapper, CN_MODEL_MAP,
 } from "./utils.js";
 import {
-    getCoverUrl, getVariantImageUrl, flakeAssetUrl, inputImageUrl, fetchCnTypes, fetchInputs,
+    getCoverUrl, getVariantImageUrl, flakeAssetUrl, pickedImageUrl, fetchCnTypes, fetchInputs,
     saveFlakeApi, deleteFlakeApi, fetchFlakeMeta,
     fetchLoraSiblingImage, loraSiblingImageUrl, fetchLoraSiblingImagePath,
     fetchLoraVariantSiblingImagePath, invalidateList,
     fetchCnModels, fetchAnimFamilies,
 } from "./api.js";
-import { openFileBrowser, IMAGE_ROOTS } from "./pickers.js";
+import { pickImage } from "./pickers.js";
 import {
     openFieldMenu, makeScheduleHandle, makeSchedulePanel, pickFlakeTarget,
     renderLoraList, serializeLoras, normalizeLinks, renderLinkList, renderOneLinkOverrides, serializeLinks,
@@ -25,20 +25,6 @@ import {
 //   "pose_classic_0_cover_001.png" (the "_3_<preproc>_" run becomes "_0_cover_").
 // `inferredType` is matched against the available CN `types` so an unknown token
 // is ignored.
-// Flake images (cover, ControlNet, variant) are picked in place from any
-// ComfyUI folder rather than uploaded, so the save can move the original file
-// and its batch, or keep it where it is inside the flake's folder (#392, #396).
-// input/ picks stay input-relative; other folders give an absolute path.
-// Without an earlier pick in this session, an existing flake opens on its folder.
-let lastImageDir = null;
-async function pickImage(flakeName) {
-    const start = lastImageDir || (flakeName ? { type: "flake_images", path: flakeName } : { type: "inputs", path: "" });
-    const result = await openFileBrowser({ type: start.type, defaultPath: start.path, roots: IMAGE_ROOTS });
-    if (!result?.file) return null;
-    lastImageDir = { type: result.type, path: result.file.split("/").slice(0, -1).join("/") };
-    return result.type === "inputs" ? result.file : result.path;
-}
-
 const slugStem = (name) => name.trim().toLowerCase().replace(/\s+/g, "_");
 
 function inferCnFromImage(filename, types = []) {
@@ -110,9 +96,7 @@ export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Bas
         handlers.onClose = (v) => resolve(v ?? null);
         // Preview URL of a picked or saved image value: `./` (owned by the
         // flake), absolute (picked outside input/), else input-relative.
-        const imageUrl = (v) => v.startsWith("./") ? flakeAssetUrl(name, v)
-            : /^([A-Za-z]:)?[\\/]/.test(v) ? `/flakes/image?path=${encodeURIComponent(v)}`
-            : inputImageUrl(v);
+        const imageUrl = (v) => v.startsWith("./") ? flakeAssetUrl(name, v) : pickedImageUrl(v);
         const pickFlakeImage = () => pickImage(mode !== "create" ? name : "");
 
         // Cover candidates for a picked ControlNet image: its batch's `_0_cover`

@@ -1,6 +1,6 @@
 import { openOverlay } from "./modal.js";
 import { css, makeButton, makeComfyInput, makeComfyValueSlider, familyFolder, renderFlakeLabel } from "./utils.js";
-import { getCoverUrl, getVariantImageUrl, fetchBrowse, fetchLoras, fetchCheckpoints, fetchAnimFamily } from "./api.js";
+import { getCoverUrl, getVariantImageUrl, fetchBrowse, fetchLoras, fetchCheckpoints, fetchAnimFamily, pickedImageUrl } from "./api.js";
 
 const BROWSE_TYPE_LABELS = {
     checkpoints: "models/checkpoints",
@@ -603,4 +603,119 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
         });
         footer.appendChild(selectBtn);
     });
+}
+
+// Flake images (cover, ControlNet, variant) are picked in place from any
+// ComfyUI folder rather than uploaded, so the save can move the original file
+// and its batch, or keep it where it is inside the flake's folder (#392, #396).
+// input/ picks stay input-relative; other folders give an absolute path.
+// Without an earlier pick in this session, an existing flake opens on its folder.
+let lastImageDir = null;
+export async function pickImage(flakeName) {
+    const start = lastImageDir || (flakeName ? { type: "flake_images", path: flakeName } : { type: "inputs", path: "" });
+    const result = await openFileBrowser({ type: start.type, defaultPath: start.path, roots: IMAGE_ROOTS });
+    if (!result?.file) return null;
+    lastImageDir = { type: result.type, path: result.file.split("/").slice(0, -1).join("/") };
+    return result.type === "inputs" ? result.file : result.path;
+}
+
+// Bottom-left button of a Flake Animate grid item (#441): `+` picks its first
+// input image, the image count opens the item's image list. `onChanged` runs
+// after every edit of `entry.images`.
+export function makeItemImagesButton(entry, onChanged) {
+    const count = entry.images?.length || 0;
+    const btn = document.createElement("button");
+    btn.textContent = count ? String(count) : "+";
+    btn.title = count ? "Input images (one video each)" : "Add an input image";
+    css(btn, "position:absolute;bottom:2px;left:2px;z-index:6;min-width:18px;height:16px;padding:0 4px;border:none;border-radius:8px;background:rgba(0,0,0,0.65);color:#cfe6ff;font-size:10px;font-weight:700;line-height:16px;cursor:pointer;");
+    btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (count) {
+            openItemImages(entry, onChanged);
+            return;
+        }
+        const path = await pickImage();
+        if (!path) return;
+        entry.images = [path];
+        onChanged();
+    });
+    btn.addEventListener("mousedown", (e) => e.stopPropagation());
+    btn.addEventListener("dblclick", (e) => e.stopPropagation());
+    return btn;
+}
+
+// Small overlay grid of an item's input images: click previews one larger,
+// ✕ removes it, drag reorders, the + tile adds one.
+function openItemImages(entry, onChanged) {
+    const { overlay, panel, content, footer } = openOverlay();
+    css(panel, panel.style.cssText + "width:auto;");
+    footer.style.display = "none";
+    let dragFrom = null;
+
+    function changed() {
+        onChanged();
+        render();
+    }
+
+    function preview(path) {
+        const view = document.createElement("div");
+        css(view, "position:fixed;inset:0;display:flex;align-items:center;justify-content:center;cursor:zoom-out;");
+        const img = document.createElement("img");
+        img.src = pickedImageUrl(path);
+        css(img, "max-width:80vw;max-height:80vh;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.7);");
+        view.appendChild(img);
+        view.addEventListener("click", () => view.remove());
+        overlay.appendChild(view);
+    }
+
+    function makeTile() {
+        const tile = document.createElement("div");
+        css(tile, "position:relative;width:96px;height:96px;border-radius:4px;background:#2a2a2a center/cover no-repeat;box-sizing:border-box;cursor:pointer;");
+        return tile;
+    }
+
+    function render() {
+        const grid = document.createElement("div");
+        css(grid, "display:grid;grid-template-columns:repeat(4, 96px);gap:6px;");
+        entry.images.forEach((path, i) => {
+            const tile = makeTile();
+            tile.style.backgroundImage = `url("${pickedImageUrl(path)}")`;
+            tile.title = path;
+            tile.draggable = true;
+            tile.addEventListener("click", () => preview(path));
+            tile.addEventListener("dragstart", () => { dragFrom = i; });
+            tile.addEventListener("dragend", () => { dragFrom = null; });
+            tile.addEventListener("dragover", (e) => { if (dragFrom !== null && dragFrom !== i) e.preventDefault(); });
+            tile.addEventListener("drop", (e) => {
+                e.preventDefault();
+                entry.images.splice(i, 0, ...entry.images.splice(dragFrom, 1));
+                dragFrom = null;
+                changed();
+            });
+            const remove = document.createElement("button");
+            remove.textContent = "✕";
+            remove.title = "Remove image";
+            css(remove, "position:absolute;top:2px;right:2px;width:18px;height:18px;padding:0;border:none;border-radius:9px;background:rgba(0,0,0,0.65);color:#fff;font-size:11px;line-height:18px;cursor:pointer;");
+            remove.addEventListener("click", (e) => {
+                e.stopPropagation();
+                entry.images.splice(i, 1);
+                changed();
+            });
+            tile.appendChild(remove);
+            grid.appendChild(tile);
+        });
+        const add = makeTile();
+        add.textContent = "+";
+        add.title = "Add an input image";
+        css(add, add.style.cssText + "border:1px dashed #555;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:300;color:#777;");
+        add.addEventListener("click", async () => {
+            const path = await pickImage();
+            if (!path) return;
+            entry.images.push(path);
+            changed();
+        });
+        grid.appendChild(add);
+        content.replaceChildren(grid);
+    }
+    render();
 }

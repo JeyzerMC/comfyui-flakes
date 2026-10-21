@@ -4,9 +4,9 @@ import {
     makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, variantInitials, renderFlakeLabel, splitNameAndTags,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, effectiveVariant, variantDropdownOptions, variantDefaultsOf, choiceFlakeLinks,
 } from "../utils.js";
-import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, invalidateList, importAnimFlakeApi } from "../api.js";
+import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, invalidateList, importAnimFlakeApi, pickedImageUrl } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
-import { openFileLoadPicker } from "../pickers.js";
+import { openFileLoadPicker, makeItemImagesButton } from "../pickers.js";
 
 // Append the names of any tag-name LoRAs (#274) to a flake's grid display name,
 // e.g. "Askeladd" + a tagged "Some Author Name" -> "Askeladd — Some Author Name".
@@ -18,25 +18,34 @@ function appendLoraTags(baseName, loras) {
     return tags.length ? `${baseName} — ${tags.join(", ")}` : baseName;
 }
 
-function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, onDuplicate, onDragStart, onDragOver, onDrop, onDragEnd }) {
+// Grid item [width, height] per kind; animate items are larger to show their
+// input image (#441).
+const ITEM_SIZE = { img: [72, 80], anim: [104, 128] };
+
+function makeBlock({ entry, idx, kind, onEdit, onRemove, onReplace, onToggleBypass, onDuplicate, onImagesChanged, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const isDefault = !!entry.inline;
     const isBypassed = !!entry.bypassed;
+    const isAnim = kind === "anim";
     const hasCover = !isDefault && entry.name;
     const block = document.createElement("div");
     block.dataset.idx = String(idx);
     block.dataset.flakeBlock = "1";
 
-    css(block, `position:relative;height:80px;background:${
+    css(block, `position:relative;height:${ITEM_SIZE[kind][1]}px;background:${
         isDefault ? "#2a3a4a" : isBypassed ? "#1a1a1a" : "#2a2a2a"
     };border:1px solid ${
         isDefault ? "#3a5a8a" : isBypassed ? "#333" : "#444"
     };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;${
-        hasCover ? "background-size:cover;background-position:center;" : ""
+        hasCover || isAnim ? "background-size:cover;background-position:center;" : ""
     }${isBypassed ? "opacity:0.45;" : ""}`);
 
-    // Cover image — swap to an effective variant choice's image when it has one,
-    // otherwise fall back to the flake's base cover.
+    // Cover image — the first input image of an animate item (#441), else an
+    // effective variant choice's image when it has one, else the base cover.
     function refreshCover() {
+        if (entry.images?.length) {
+            block.style.backgroundImage = `url("${pickedImageUrl(entry.images[0])}")`;
+            return;
+        }
         if (!hasCover) return;
         const baseUrl = getCoverUrl(entry.name);
         const sel = Object.entries(effectiveVariant(entry.variant, cachedVariantDefaults(entry.name)))[0];
@@ -97,7 +106,13 @@ function makeBlock({ entry, idx, onEdit, onRemove, onReplace, onToggleBypass, on
         block.appendChild(dup);
     }
 
-    if (!isDefault && entry.favorite) block.appendChild(makeFavoriteStar());
+    if (!isDefault && entry.favorite) {
+        const star = makeFavoriteStar();
+        // Animate items keep the bottom-left for their input images button.
+        if (isAnim) Object.assign(star.style, { left: "auto", right: "20px" });
+        block.appendChild(star);
+    }
+    if (isAnim) block.appendChild(makeItemImagesButton(entry, onImagesChanged));
 
     // Name — stacked label: name line, dimmer tag line (#297), variant suffix.
     const fullName = isDefault ? "Default" : (entry.display_name || entry.name || "(missing)");
@@ -631,8 +646,9 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
     container.appendChild(toggleAll);
 
     // Flakes grid
+    const [itemW, itemH] = ITEM_SIZE[kind];
     const grid = document.createElement("div");
-    css(grid, "display:grid;grid-template-columns:repeat(auto-fill, minmax(72px, 1fr));gap:4px;");
+    css(grid, `display:grid;grid-template-columns:repeat(auto-fill, minmax(${itemW}px, 1fr));gap:4px;`);
     container.appendChild(grid);
 
     let dragSrcIdx = null;
@@ -647,11 +663,13 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
             const { block: blk, triangleBtn, refreshVisuals } = makeBlock({
                 entry: entries[i],
                 idx: i,
+                kind,
                 onEdit: handleEdit,
                 onRemove: handleRemove,
                 onReplace: handleReplace,
                 onToggleBypass: handleToggleBypass,
                 onDuplicate: handleDuplicate,
+                onImagesChanged: () => { writeEntries(entries); render(); },
                 onDragStart: (e, idx, el) => {
                     dragSrcIdx = idx;
                     Object.assign(flakeDrag, { node, entry: entries[idx], take: () => takeDragged(idx), kind });
@@ -837,7 +855,7 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr[idx] = { name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite };
+        arr[idx] = { name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite, images: arr[idx].images };
         writeEntries(arr);
         render();
     }
@@ -933,6 +951,7 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
     }
 
     grid._addBlock = makeAddBlock({ onNew: handleNew, onLoad: handleLoad, onImport: kind === "anim" ? handleImport : null });
+    grid._addBlock.style.height = `${itemH}px`;
 
     // Allow dropping after the last item onto the add block
     grid._addBlock.addEventListener("dragover", (e) => {
@@ -974,11 +993,11 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
     node._flakes_render = render;
     const flakeWidget = node.addDOMWidget("flakes_ui", "div", container, { serialize: false, margin: 4 });
     flakeWidget.computeSize = () => {
-        // Match the actual auto-fill column count (minmax 72px + 4px gap) so a wide
-        // node doesn't over-count rows and pad itself with empty space (#317).
-        const cols = Math.max(1, Math.floor((node.size[0] - 16) / 76));
+        // Match the actual auto-fill column count (minmax item width + 4px gap) so a
+        // wide node doesn't over-count rows and pad itself with empty space (#317).
+        const cols = Math.max(1, Math.floor((node.size[0] - 16) / (itemW + 4)));
         const rows = Math.max(1, Math.ceil((readEntries().length + 1) / cols));
-        return [node.size[0], rows * 84 + 55];  // +24 for the toggle-all button (#315)
+        return [node.size[0], rows * (itemH + 4) + 55];  // +24 for the toggle-all button (#315)
     };
     writeEntries(readEntries());
     render();

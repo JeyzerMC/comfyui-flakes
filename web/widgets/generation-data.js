@@ -1,7 +1,7 @@
 import { css, effectiveVariant, expandEntryVariants, choiceFlakeLinks } from "../utils.js";
 import { openOverlay } from "../modal.js";
-import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults } from "../api.js";
-import { getActiveBatch, subscribeBatch, variantKey } from "../queue.js";
+import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, pickedImageUrl } from "../api.js";
+import { getActiveBatch, subscribeBatch, variantKey, itemImageJobs, stackImageJobs } from "../queue.js";
 
 // Cartesian product of a flake's variant groups ({group:[choices]}) -> one
 // {group: choice} per combination (#345).
@@ -27,8 +27,13 @@ function makeFlakeCard(e, itemKey) {
     const variantCover = variantSel ? getVariantImageUrl(e.name, variantSel[0], variantSel[1]) : null;
     const choices = Object.values(variant);
     const base = e.display_name || e.name.split("/").pop() || e.name;
+    const label = base + (choices.length ? ` (${choices.join(", ")})` : "");
+    // A Flake Animate item's job shows its input image instead (#441).
+    if (e.image) {
+        return { label: `${label} · ${e.image.split(/[\\/]/).pop()}`, entry: e, coverUrl: pickedImageUrl(e.image), itemKey };
+    }
     return {
-        label: base + (choices.length ? ` (${choices.join(", ")})` : ""),
+        label,
         entry: e,
         coverUrl: variantCover || baseCover,
         baseCoverUrl: baseCover,
@@ -154,6 +159,14 @@ export async function buildModel(startNode) {
                     fixed.stackFlakes.push(e);
                 }
             }
+            // So are a Flake Animate Stack's input images (#441).
+            const imageJobs = stackImageJobs(node);
+            if (imageJobs.length) {
+                axes.push({
+                    node, kind: "image", label: "Input Image",
+                    items: imageJobs.map(({ image, key }) => ({ label: image.split(/[\\/]/).pop(), coverUrl: pickedImageUrl(image), itemKey: key })),
+                });
+            }
         } else if (FLAKE_COMBO_TYPES.includes(type)) {
             const allFlakes = node.properties?._combo_flakes || [];
             const flakes = Array.isArray(allFlakes) ? allFlakes.filter(e => !e.inline && !e.bypassed && e.name) : [];
@@ -164,11 +177,14 @@ export async function buildModel(startNode) {
                 // (#406), like the queue.js expansion. The meta load also gives
                 // the default variant choices the cards show (#388).
                 await fetchFlakeMeta(e.name).catch(() => {});
+                // Then one per input image (#441).
                 const combos = e._all_variants ? await flakeVariantCombos(e.name) : expandEntryVariants(e);
                 if (combos.length > (e._all_variants ? 0 : 1)) {
-                    for (const variant of combos) items.push(makeFlakeCard({ ...e, variant }, `${e._uid}.${variantKey(variant)}`));
+                    for (const variant of combos) {
+                        for (const { image, key } of itemImageJobs(e, `${e._uid}.${variantKey(variant)}`)) items.push(makeFlakeCard({ ...e, variant, image }, key));
+                    }
                 } else {
-                    items.push(makeFlakeCard(e, e._uid));
+                    for (const { image, key } of itemImageJobs(e, e._uid)) items.push(makeFlakeCard({ ...e, image }, key));
                 }
             }
             axes.push({ node, kind: "flake", label: "Flake Combo", items });

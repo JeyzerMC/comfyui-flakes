@@ -13,16 +13,36 @@ function enumerateVariantCombos(meta) {
     return cartesianProduct(arrays).map(pairs => Object.fromEntries(pairs));
 }
 
-// Active (non-bypassed, non-inline) "All Variants" flakes in a FlakeStack's
-// flakes_json, as [{ index, flake }] (#343).
-function stackAllVariantsFlakes(node) {
+// A FlakeStack's flakes_json entries.
+function stackEntries(node) {
     const w = node.widgets?.find(w => w.name === "flakes_json");
     let entries = [];
     try { entries = JSON.parse(w?.value || "[]"); } catch { entries = []; }
-    if (!Array.isArray(entries)) return [];
-    return entries
+    return Array.isArray(entries) ? entries : [];
+}
+
+// Active (non-bypassed, non-inline) "All Variants" flakes in a FlakeStack's
+// flakes_json, as [{ index, flake }] (#343).
+function stackAllVariantsFlakes(node) {
+    return stackEntries(node)
         .map((flake, index) => ({ flake, index }))
         .filter(({ flake }) => flake && !flake.inline && !flake.bypassed && flake._all_variants && flake.name);
+}
+
+// Flake Animate grid items carry input images (#441), one job each. A combo
+// item splits into [{ image, key: `${key}@${k}` }]; without images it stays
+// one job under its own key. The Generation Data overlay mirrors these keys.
+export function itemImageJobs(entry, key) {
+    const images = entry.images || [];
+    return images.length ? images.map((image, k) => ({ image, key: `${key}@${k}` })) : [{ image: null, key }];
+}
+
+// A Flake Animate Stack's jobs: one per input image of its active items, in
+// grid order, as [{ index, image, key: `s@${k}` }] (index: the item's entry).
+export function stackImageJobs(node) {
+    return stackEntries(node)
+        .flatMap((e, index) => (e && !e.bypassed && e.images || []).map(image => ({ index, image })))
+        .map((job, k) => ({ ...job, key: `s@${k}` }));
 }
 
 export function getComboFlakes(node) {
@@ -69,20 +89,23 @@ export function computeJobCount(graph) {
         if (FLAKE_COMBO_TYPES.includes(node.type)) {
             // Each active flake is one axis item; an "All Variants" flake expands
             // into one item per variant combination (#343), a "Multiple" one
-            // into one per checked choice set (#406).
+            // into one per checked choice set (#406), each times its input images (#441).
             let axis = 0;
             for (const f of activeComboFlakes(node)) {
-                axis += f._all_variants ? Math.max(1, variantComboCount(f.name)) : expandEntryVariants(f).length;
+                const variants = f._all_variants ? Math.max(1, variantComboCount(f.name)) : expandEntryVariants(f).length;
+                axis += variants * itemImageJobs(f, "").length;
             }
             if (axis > 0) count *= axis;
         } else if (MODEL_COMBO_TYPES.includes(node.type)) {
             const n = activeComboPresets(node).length;
             if (n > 0) count *= n;
         } else if (STACK_TYPES.includes(node.type)) {
-            // Stack flakes flagged "All Variants" are extra axes (#343).
+            // Stack flakes flagged "All Variants" are extra axes (#343), and so
+            // are a Flake Animate Stack's input images (#441).
             for (const { flake } of stackAllVariantsFlakes(node)) {
                 count *= Math.max(1, variantComboCount(flake.name));
             }
+            count *= Math.max(1, stackImageJobs(node).length);
         }
     }
     return count;
@@ -500,6 +523,12 @@ app.queuePrompt = async function(number, batchCount = 1) {
                 node, type: "stack_variant", flakeIndex: index, value: variant, vkey: `s${index}.${variantKey(variant)}`,
             })));
         }
+        const imageJobs = stackImageJobs(node);
+        if (imageJobs.length) {
+            stackAxes.push(imageJobs.map(({ index, image, key }) => ({
+                node, type: "stack_image", flakeIndex: index, value: image, vkey: key,
+            })));
+        }
     }
 
     if (orderedNodes.length === 0 && stackAxes.length === 0) {
@@ -526,17 +555,18 @@ app.queuePrompt = async function(number, batchCount = 1) {
             // Expand "All Variants" flakes into one axis item per variant combo,
             // "Multiple" choices into one per checked choice (#406); ordinary
             // flakes stay a single item. vkey keeps each combo's comboKey
-            // unique (#343).
+            // unique (#343). Each splits again per input image (#441), the
+            // job's entry carrying it as `image`.
             const comboItems = [];
             for (const flake of activeFlakes) {
                 const uid = flake._uid;
                 const variants = flake._all_variants ? enumerateVariantCombos(await fetchFlakeMeta(flake.name)) : expandEntryVariants(flake);
-                if (flake._all_variants || variants.length > 1) {
-                    for (const variant of variants) {
-                        comboItems.push({ node, type: "combo", value: { ...flake, variant }, uid, vkey: `${uid}.${variantKey(variant)}` });
+                const split = flake._all_variants || variants.length > 1;
+                for (const variant of variants) {
+                    const value = split ? { ...flake, variant } : flake;
+                    for (const { image, key } of itemImageJobs(flake, split ? `${uid}.${variantKey(variant)}` : uid)) {
+                        comboItems.push({ node, type: "combo", value: image ? { ...value, image } : value, uid, vkey: key });
                     }
-                } else {
-                    comboItems.push({ node, type: "combo", value: flake, uid, vkey: uid });
                 }
             }
             optionsArrays.push(comboItems);
@@ -579,8 +609,8 @@ app.queuePrompt = async function(number, batchCount = 1) {
     const nodeOriginals = new Map();
     for (const item of combinations[0]) {
         if (!nodeOriginals.has(item.node.id)) {
-            if (item.type === "combo" || item.type === "stack_variant") {
-                // Both mutate the node's flakes_json; save it once to restore later.
+            if (item.type === "combo" || item.type === "stack_variant" || item.type === "stack_image") {
+                // All mutate the node's flakes_json; save it once to restore later.
                 const w = item.node.widgets?.find(w => w.name === "flakes_json");
                 nodeOriginals.set(item.node.id, { node: item.node, widget: w, value: w?.value });
             } else {
@@ -643,6 +673,15 @@ app.queuePrompt = async function(number, batchCount = 1) {
                             arr[item.flakeIndex] = { ...arr[item.flakeIndex], variant: item.value };
                             w.value = JSON.stringify(arr);
                         }
+                    }
+                } else if (item.type === "stack_image") {
+                    // This job's input image goes on its item only; the previous
+                    // job's is cleared (#441).
+                    const w = item.node.widgets?.find(w => w.name === "flakes_json");
+                    if (w) {
+                        let arr; try { arr = JSON.parse(w.value || "[]"); } catch { arr = []; }
+                        arr.forEach((e, i) => { e.image = i === item.flakeIndex ? item.value : undefined; });
+                        w.value = JSON.stringify(arr);
                     }
                 } else {
                     const w = item.node.widgets?.find(w => w.name === "preset");

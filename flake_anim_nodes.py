@@ -3,6 +3,7 @@ down the chain; encoding and sampling happen once in Flake Generate Animation.""
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
 
 import comfy.model_management
@@ -11,7 +12,7 @@ import nodes
 from comfy_api.latest import io
 
 from . import flake_families, flake_io
-from .flake_compose import _load_lora
+from .flake_compose import _load_cn_image, _load_lora
 from .flake_io import _resolve_model_name
 from .full_flake_node import _apply_preset_overrides, _build_filename_prefix, _join_prompts, _resolve_flakes
 
@@ -178,9 +179,6 @@ class FlakeAnimStack:
                     "tooltip": "JSON-encoded list of animate flake entries. Managed by the Flake widget.",
                 }),
             },
-            "optional": {
-                "image": ("IMAGE", {"tooltip": "Start image; replaces the one set upstream."}),
-            },
         }
 
     RETURN_TYPES = ("FLAKE_ANIM_DATA",)
@@ -189,11 +187,16 @@ class FlakeAnimStack:
     CATEGORY = "flakes"
     DESCRIPTION = (
         "Compose animate flakes on top of an incoming flake_anim_data: applies their LoRAs to the "
-        "diffusion model(s) and appends their prompts. Prompts are encoded in Flake Generate Animation."
+        "diffusion model(s), appends their prompts and sets the start image from the grid items' input "
+        "images (one job per image). Prompts are encoded in Flake Generate Animation."
     )
 
-    def execute(self, family: str, flake_anim_data: dict, flakes_json: str, image=None):
+    def execute(self, family: str, flake_anim_data: dict, flakes_json: str):
         flakes = _resolve_flakes(flakes_json)
+        # The queue puts each job's start image on its grid item as `image`
+        # (#441); the last one in the chain wins.
+        images = [e["image"] for e in json.loads(flakes_json or "[]")
+                  if isinstance(e, dict) and e.get("image") and not e.get("bypassed")]
         # LoRA schedules are cond hooks and nothing is encoded here, so
         # animate flake LoRAs apply at their plain strength.
         models, lora_entries = _apply_anim_loras(flake_anim_data["models"], [lr for f in flakes for lr in f.loras])
@@ -202,7 +205,7 @@ class FlakeAnimStack:
         return ({
             **flake_anim_data,
             "models": models,
-            "image": flake_anim_data["image"] if image is None else image,
+            "image": _load_cn_image(images[-1]) if images else flake_anim_data["image"],
             "pos_text": pos_text,
             "neg_text": neg_text,
             "filename_state": {
@@ -310,7 +313,7 @@ class FlakeGenerateAnimation:
                 use_headroom=False, headroom=0.0, prompt=None, extra_pnginfo=None):
         data = flake_anim_data
         if data["image"] is None:
-            raise ValueError("Flake Generate Animation has no start image — connect an image to a Flake Animate Stack/Combo.")
+            raise ValueError("Flake Generate Animation has no start image — add one to a Flake Animate Stack/Combo grid item (its bottom-left + button).")
         if upscale and not upscale_model:
             raise ValueError("Flake Generate Animation: Upscale is on but no upscale_model is selected.")
         if interpolate and not interpolation_model:

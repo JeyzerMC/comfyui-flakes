@@ -46,7 +46,7 @@ def _setup():
     pkg.__path__ = [ROOT]
     sys.modules[PKG] = pkg
     compose = types.ModuleType(f"{PKG}.flake_compose")
-    compose._load_lora = None
+    compose._load_lora = compose._load_cn_image = None
     sys.modules[f"{PKG}.flake_compose"] = compose
 
     _load("flake_io")
@@ -208,6 +208,6 @@ def test_toggle_on_without_a_model_is_a_clear_error(toggle):
 def test_missing_image_is_a_clear_error():
     data = _data("wan22")
     data["image"] = None
-    with pytest.raises(ValueError, match="Flake Animate Stack/Combo"):
+    with pytest.raises(ValueError, match="Flake Animate Stack/Combo grid item"):
         _run(data)
     assert CALLS == []

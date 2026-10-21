@@ -49,6 +49,7 @@ def _setup():
     compose = types.ModuleType(f"{PKG}.flake_compose")
     # Models are tuples of the file they were loaded from plus applied LoRAs.
     compose._load_lora = lambda model, clip, path, sm, sc: (model + ((path, sm),), clip)
+    compose._load_cn_image = lambda path: f"loaded:{path}"
     sys.modules[f"{PKG}.flake_compose"] = compose
 
     fio = _load("flake_io")
@@ -157,8 +158,8 @@ def _anim_data(models, stems):
     }
 
 
-def _stack(data, entries, image=None):
-    return anim.FlakeAnimStack().execute("Wan 2.2", data, json.dumps(entries), image)[0]
+def _stack(data, entries):
+    return anim.FlakeAnimStack().execute("Wan 2.2", data, json.dumps(entries))[0]
 
 
 def test_stack_routes_flake_loras_and_joins_prompts():
@@ -191,7 +192,7 @@ def test_stack_routes_flake_loras_and_joins_prompts():
     assert (data["filename_state"]["stems"], len(data["filename_state"]["loras"])) == (["anim/wan22/"], 1)
 
 
-def test_stack_single_model_follows_flake_links_and_replaces_image():
+def test_stack_single_model_follows_flake_links():
     files = {
         "anim/mh3/host": {"loras": [{"path": "host", "path_low": "ignored", "strength": 0.8}],
                           "flake_links": [{"target": "anim/mh3/style"}]},
@@ -199,9 +200,24 @@ def test_stack_single_model_follows_flake_links_and_replaces_image():
     }
     data = {**_anim_data({"model": ("M",)}, []), "image": "upstream"}
     with _flakes(files):
-        out = _stack(data, [{"name": "anim/mh3/host"}], image="start")
+        out = _stack(data, [{"name": "anim/mh3/host"}])
         kept = _stack(data, [])
     assert out["models"] == {"model": ("M", ("host", 0.8), ("style", 0.4))}
     assert out["pos_text"] == "a fennec girl BREAK watercolor"
-    assert out["image"] == "start" and kept["image"] == "upstream"
     assert kept["models"] == data["models"] and kept["pos_text"] == "a fennec girl"
+
+
+def test_stack_loads_the_job_image_of_active_items():
+    """The queue sets each job's `image` on a grid item (#441): the last active
+    one is loaded and replaces the upstream image; the `images` lists and
+    bypassed items are ignored."""
+    data = {**_anim_data({"model": ("M",)}, []), "image": "upstream"}
+    with _flakes({"anim/mh3/a": {}, "anim/mh3/b": {}}):
+        picked = _stack(data, [
+            {"inline": True, "content": {}, "image": "pose/first.png"},
+            {"name": "anim/mh3/a", "images": ["x.png", "y.png"], "image": "C:/shots/fennec.png"},
+            {"name": "anim/mh3/b", "bypassed": True, "image": "skipped.png"},
+        ])
+        listed = _stack(data, [{"name": "anim/mh3/a", "images": ["x.png"]}])
+    assert picked["image"] == "loaded:C:/shots/fennec.png"
+    assert listed["image"] == "upstream"
