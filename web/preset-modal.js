@@ -262,12 +262,16 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
             presetCoverLabel.style.display = "block";
         });
 
-        async function tryAutoCover(val) {
+        // Animate presets have no checkpoint cover fallback, so their diffusion
+        // model's sibling image is copied as the cover on save (#440).
+        async function tryAutoCover(val, route = "checkpoint_sibling_image") {
             if (!val || presetCoverUrl || presetCoverImg.style.display === "block") return;
+            const url = `/flakes/${route}?path=${encodeURIComponent(val)}`;
             try {
-                const resp = await fetch(`/flakes/checkpoint_sibling_image?path=${encodeURIComponent(val)}`);
+                const resp = await fetch(url);
                 if (resp.ok) {
-                    updatePresetCoverPreview(`/flakes/checkpoint_sibling_image?path=${encodeURIComponent(val)}`);
+                    if (anim) presetCoverUrl = url;
+                    updatePresetCoverPreview(url);
                 }
             } catch { /* ignore */ }
         }
@@ -351,6 +355,9 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                 animModels[key] = makeSearchableDropdown([], data[key] || "", `Select ${label}...`);
                 col.appendChild(animModels[key].container);
                 attachModelPicker(animModels[key], type, `Select ${label}`);
+                if (key === "diffusion_model_high" || key === "diffusion_model") {
+                    animModels[key].element.addEventListener("change", () => tryAutoCover(animModels[key].element.value, "diffusion_model_sibling_image"));
+                }
                 animModelRow.appendChild(col);
             }
             ckptCol.appendChild(animModelRow);
@@ -431,6 +438,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                 const result = await openFileBrowser({ type });
                 if (result?.file) {
                     wrap.element.value = result.file;
+                    wrap.element.dispatchEvent(new Event("change"));
                     show();
                 }
             });

@@ -580,7 +580,7 @@ async def _delete_preset(request: web.Request) -> web.Response:
 
 
 # ---------------------------------------------------------------------------
-# Checkpoint sibling image (auto-cover)
+# Model sibling image (auto-cover)
 # ---------------------------------------------------------------------------
 
 _CHECKPOINT_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
@@ -750,6 +750,14 @@ async def _get_checkpoint_sibling_image(request: web.Request) -> web.Response:
     if not path:
         return _bad_request("missing 'path' query param")
     return _sibling_image_response("checkpoints", path)
+
+
+@routes.get("/flakes/diffusion_model_sibling_image")
+async def _get_diffusion_model_sibling_image(request: web.Request) -> web.Response:
+    path = request.query.get("path", "").strip()
+    if not path:
+        return _bad_request("missing 'path' query param")
+    return _sibling_image_response("diffusion_models", path)
 
 
 @routes.get("/flakes/lora_sibling_image")
@@ -940,11 +948,12 @@ async def _browse(_request: web.Request) -> web.Response:
     for base, rel in targets:
         target = os.path.normpath(os.path.join(base, rel)) if rel else base
 
-        # Security: ensure target is inside base
-        real_target = os.path.realpath(target)
-        real_base = os.path.realpath(base)
+        # Security: ensure target is inside base. Checked on the path itself, not
+        # its realpath, so symlinked/junctioned folders (e.g. models/unet on
+        # another drive) open like ComfyUI loads them (#440).
+        abs_base = os.path.abspath(base)
         try:
-            if os.path.commonpath([real_target, real_base]) != real_base:
+            if os.path.commonpath([os.path.abspath(target), abs_base]) != abs_base:
                 continue
         except ValueError:
             continue
