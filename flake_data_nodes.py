@@ -423,12 +423,67 @@ def _used_entry(entry):
     return entry
 
 
+def _mergeable_stack(entries):
+    """Whether a stack's entries can join the end of the upstream stack without
+    changing the image: no inline Default with content (the widget only keeps
+    one, at index 0), and no new size (FlakeStack.execute fits every stack's
+    ControlNet images to the size its first sizing flake sets)."""
+    flakes = [flake_io.resolve(e) for e in entries]
+    if entries and entries[0].get("inline") and flakes[0] != flake_io.resolve(_STACK_DEFAULT_ENTRY):
+        return False
+    return not any(f.resolution or any(cn.resolution_from_image for cn in f.controlnets) for f in flakes)
+
+
+def _merge_stacks(prompt, workflow):
+    """Fold each run of chained root-level Flake Stacks into its first node, so
+    a saved image restores one compact stack (#436). A stack is folded into
+    the one feeding it only when it is that stack's sole consumer; subgraph
+    definitions are shared by every instance and stay untouched."""
+    nodes = workflow.get("nodes") or []
+    links = workflow.get("links") or []
+    by_id = {str(n["id"]): n for n in nodes}
+    removed = set()
+    for a in nodes:
+        aid = str(a["id"])
+        if aid in removed or prompt.get(aid, {}).get("class_type") != "FlakeStack":
+            continue
+        while True:
+            out = [l for l in links if str(l[1]) == aid]
+            bid = str(out[0][3]) if len(out) == 1 else None
+            if prompt.get(bid, {}).get("class_type") != "FlakeStack":
+                break
+            a_raw, b_raw = prompt[aid]["inputs"]["flakes_json"], prompt[bid]["inputs"]["flakes_json"]
+            b_entries = json.loads(b_raw)
+            if not _mergeable_stack(b_entries):
+                break
+            if b_entries and b_entries[0].get("inline"):
+                b_entries = b_entries[1:]
+            new_raw = json.dumps(json.loads(a_raw) + b_entries)
+            prompt[aid]["inputs"]["flakes_json"] = new_raw
+            a["widgets_values"] = [new_raw if v == a_raw else v for v in a.get("widgets_values") or []]
+            a.setdefault("properties", {})["_fit_size"] = True
+
+            # A takes over B's outgoing links; the A -> B link goes away with B.
+            links.remove(out[0])
+            for l in links:
+                if str(l[1]) == bid:
+                    l[1] = a["id"]
+            a["outputs"][0]["links"] = by_id[bid]["outputs"][0]["links"]
+            del prompt[bid]
+            for node in prompt.values():
+                for k, v in node["inputs"].items():
+                    if isinstance(v, list) and len(v) == 2 and str(v[0]) == bid:
+                        node["inputs"][k] = [aid, v[1]]
+            removed.add(bid)
+    workflow["nodes"] = [n for n in nodes if str(n["id"]) not in removed]
+
+
 def _used_only_metadata(prompt, extra_pnginfo):
     """Deep copies of ``prompt`` and ``extra_pnginfo`` describing only what
     produced this run, so a drag-dropped image restores just that (#346, #426):
     Flake Model Combo -> Flake Model Preset with the used preset and overrides,
     Flake Combo -> Flake Stack holding the used entry, stacks minus bypassed
-    entries. queue.js sets every combo node to a single item per queued
+    entries, chained stacks folded into one (#436). queue.js sets every combo node to a single item per queued
     prompt, so the prompt inputs already hold the used ones.
     """
     if not prompt:
@@ -449,6 +504,9 @@ def _used_only_metadata(prompt, extra_pnginfo):
             props = {k: v for k, v in (wf.get("properties") or {}).items() if not k.startswith("_combo_")}
             if props.get("Node name for S&R") == cls:
                 props["Node name for S&R"] = node["class_type"]
+            if cls != "FlakeStack":
+                # Fit the converted node to its content on load (web/flake_stack.js).
+                props["_fit_size"] = True
             if cls == "FlakeModelCombo":
                 # The Preset widget re-serialises overrides_json from _overrides.
                 props["_overrides"] = json.loads(inputs.get("overrides_json") or "{}")
@@ -466,6 +524,9 @@ def _used_only_metadata(prompt, extra_pnginfo):
         if wf:
             wf["widgets_values"] = [new_raw if v == raw else v for v in wf.get("widgets_values") or []]
 
+    workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+    if isinstance(workflow, dict):
+        _merge_stacks(prompt, workflow)
     return prompt, extra_pnginfo
 
 

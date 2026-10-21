@@ -26,6 +26,15 @@ function setDefaultSize(node, minWidth) {
     }
 }
 
+// Saved image metadata flags nodes it converted or merged (#436): they still
+// carry the original node's size, so shrink to the minimum width and fit.
+function fitSavedSize(node, minWidth) {
+    if (!node.properties?._fit_size) return;
+    delete node.properties._fit_size;
+    node.setSize([minWidth, node.size[1]]);
+    setDefaultSize(node, minWidth);
+}
+
 // Recover from workflows saved by the broken v0.1.x where model_family was
 // detached from node.widgets when flake_data was connected — that shifted
 // the widget value order so onConfigure assigned `flakes_json` (a JSON
@@ -77,6 +86,7 @@ app.registerExtension({
                 removeHiddenInputs(this, hidden);
                 _recoverShiftedWidgets(this, "flakes_json");
                 this._flakes_render?.();
+                fitSavedSize(this, 340);
                 return r;
             };
         }
@@ -100,6 +110,7 @@ app.registerExtension({
                 this._configured = true;
                 removeHiddenInputs(this, hidden);
                 this._preset_render?.();
+                fitSavedSize(this, 300);
                 return r;
             };
         }
