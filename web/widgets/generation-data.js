@@ -584,8 +584,17 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         split.appendChild(left);
         split.appendChild(right);
 
-        // selection state: index per axis
-        const selIdx = model.axes.map(() => 0);
+        function runningComboKey() {
+            const batch = getActiveBatch();
+            const idx = batch.promptIds.indexOf(batch.runningPromptId);
+            return idx < 0 ? null : batch.comboKeys[idx];
+        }
+
+        // selection state: index per axis. Opens on the combination being
+        // generated, else the last one that produced an image, else the first (#423).
+        const startPairs = parseComboKey(runningComboKey() ?? getImages().lastKey);
+        const selIdx = model.axes.map(axis => Math.max(0, axis.items.findIndex(item =>
+            startPairs.some(([nodeId, itemKey]) => nodeId === Number(axis.node.id) && itemKey === item.itemKey))));
 
         function currentSelection() {
             return model.axes.map((axis, i) => axis.items[selIdx[i]]);
@@ -654,6 +663,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             section.appendChild(scroll);
             left.appendChild(section);
         });
+        cards.at(-1)?.[selIdx.at(-1)].scrollIntoView({ block: "nearest" });
 
         // Left: combo-specific fields container (below grids)
         const leftDataWrap = document.createElement("div");
@@ -664,13 +674,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         // Walk through every card and update its progress track based on the
         // currently-running prompt (mapped to combo via queue.js's _activeBatch).
         function findCardsForRunningCombo() {
-            const batch = getActiveBatch();
-            const pid = batch.runningPromptId;
-            if (!pid) return [];
-            const idx = batch.promptIds.indexOf(pid);
-            if (idx < 0) return [];
-            const key = batch.comboKeys[idx];
-            const pairs = parseComboKey(key);
+            const pairs = parseComboKey(runningComboKey());
             const out = [];
             for (const [nodeId, itemKey] of pairs) {
                 for (const axisCards of cards) {

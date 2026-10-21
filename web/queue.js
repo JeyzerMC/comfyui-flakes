@@ -131,7 +131,7 @@ export function getGeneratingUid(node) {
     return activeState()?.generating[node.id];
 }
 
-// { combo: {comboKey: img}, ad: {comboKey: img}, ab, last } for a FlakeGenerate
+// { combo: {comboKey: img}, ad: {comboKey: img}, ab, last, lastKey } for a FlakeGenerate
 // node, or null when no batch of this workflow produced results for it.
 export function getBatchImages(node) {
     return activeState()?.images[node.id] || null;
@@ -375,9 +375,10 @@ function setupBatchTracking(state, combinations, comboKeys) {
         const images = output?.flake_images;
         if (idx < 0 || !Array.isArray(images) || images.length === 0) return;
         const comboKey = comboKeys[idx] ?? "";
-        const entry = state.images[nodeId] || (state.images[nodeId] = { combo: {}, ad: {}, ab: false, last: null });
+        const entry = state.images[nodeId] || (state.images[nodeId] = { combo: {}, ad: {}, ab: false, last: null, lastKey: null });
         entry.combo[comboKey] = images[0];
         entry.last = images[0];
+        entry.lastKey = comboKey;
         const adImages = output.flake_images_ad;
         if (Array.isArray(output.adetailer_ab) && output.adetailer_ab.length > 0 && Array.isArray(adImages) && adImages.length > 0) {
             entry.ad[comboKey] = adImages[0];
