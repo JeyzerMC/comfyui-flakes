@@ -1,0 +1,163 @@
+"""Tests for the animate families and preset storage (#429). Same loading
+approach as test_portable_flakes.py, with the stub `folder_paths` pointing the
+flakes and model_presets roots at temp dirs."""
+import contextlib
+import importlib.util
+import os
+import sys
+import tempfile
+import types
+
+
+def _load_flake_io():
+    fp = types.ModuleType("folder_paths")
+    fp.get_filename_list = lambda category: []
+    fp.get_full_path = lambda category, name: None
+    fp.get_folder_paths = lambda category: []
+    fp.base_path = os.getcwd()
+    fp.folder_names_and_paths = {}
+    sys.modules["folder_paths"] = fp
+
+    pkg = types.ModuleType("_fpkg_anim")
+    pkg.__path__ = [os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]
+    sys.modules["_fpkg_anim"] = pkg
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    src = os.path.join(os.path.dirname(here), "flake_io.py")
+    spec = importlib.util.spec_from_file_location("_fpkg_anim.flake_io", src)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["_fpkg_anim.flake_io"] = mod
+    spec.loader.exec_module(mod)
+    return mod, fp
+
+
+fio, fp = _load_flake_io()
+families = fio.flake_families
+
+
+@contextlib.contextmanager
+def _roots():
+    with tempfile.TemporaryDirectory() as tmp:
+        presets = os.path.join(tmp, "model_presets")
+        fp.folder_names_and_paths["flakes"] = ([tmp], {".yaml", ".yml"})
+        fp.folder_names_and_paths["model_presets"] = ([presets], {".yaml", ".yml"})
+        yield tmp, presets
+
+
+def _write(path, data=b""):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+def _raises_value_error(fn):
+    try:
+        fn()
+    except ValueError:
+        return True
+    return False
+
+
+def test_anim_families_stay_out_of_image_families():
+    anim = {f.label for f in families.ANIM_FAMILIES}
+    assert anim == {"Wan 2.2", "MiniMax H3"}
+    assert not anim & set(families.MODEL_FAMILIES)
+    assert not {f.folder for f in families.ANIM_FAMILIES} & set(families.BY_FOLDER)
+
+
+def test_wan22_preset_round_trip():
+    with _roots() as (_, presets):
+        name = fio.save_preset("", {
+            "display_name": "Wan fennec",
+            "diffusion_model_high": "wan/high.safetensors",
+            "diffusion_model_low": "wan/low.safetensors",
+            "text_encoder": "umt5_xxl_fp8.safetensors",
+            "vae": "wan_2.1_vae.safetensors",
+            "shift_high": 8,
+            "resolution": "720p",
+            "prompt": {"positive": "a fennec girl waves her fluffy tail", "negative": "blurry"},
+            "loras": [{"name": "lightx2v", "path": "wan/lightx2v.safetensors", "strength": 0.8}],
+        }, family="Wan 2.2", output_path="chars/fennec", kind="anim")
+        assert name == "anim/wan22/chars/fennec"
+        assert os.path.isfile(os.path.join(presets, "anim", "wan22", "chars", "fennec.yaml"))
+
+        p = fio.load_anim_preset(name)
+        assert p.family == "wan22"
+        assert p.display_name == "Wan fennec"
+        assert (p.diffusion_model_high, p.diffusion_model_low) == ("wan/high.safetensors", "wan/low.safetensors")
+        assert p.diffusion_model is None
+        assert p.text_encoder == "umt5_xxl_fp8.safetensors"
+        assert p.vae == "wan_2.1_vae.safetensors"
+        assert p.positive == "a fennec girl waves her fluffy tail"
+        assert p.negative == "blurry"
+        assert [(lr.path, lr.strength) for lr in p.loras] == [("wan/lightx2v.safetensors", 0.8)]
+        # Saved values win, the rest come from the family.
+        assert (p.shift_high, p.resolution) == (8.0, "720p")
+        assert (p.shift_low, p.refiner_step) == (5.0, 2)
+        assert (p.steps, p.cfg, p.sampler, p.scheduler) == (4, 1.0, "euler", "linear_quadratic")
+        assert (p.fps, p.duration, p.clip_type) == (16, 5.0, "WAN")
+        assert (p.shift_video, p.shift_audio, p.audio_vae) == (None, None, None)
+
+
+def test_mh3_preset_round_trip():
+    with _roots():
+        name = fio.save_preset("clip", {
+            "diffusion_model": "mh3.safetensors",
+            "vae": "mh3_video_vae.safetensors",
+            "audio_vae": "mh3_audio_vae.safetensors",
+            "steps": 6,
+        }, family="MiniMax H3", kind="anim")
+        assert name == "anim/mh3/clip"
+
+        p = fio.load_anim_preset(name)
+        assert p.family == "mh3"
+        assert (p.diffusion_model, p.audio_vae) == ("mh3.safetensors", "mh3_audio_vae.safetensors")
+        assert p.steps == 6
+        assert (p.shift_video, p.shift_audio) == (10.0, 3.0)
+        assert (p.fps, p.scheduler, p.clip_type, p.resolution) == (24, "simple", "MINIMAX", "720p")
+        assert (p.shift_high, p.shift_low, p.refiner_step) == (None, None, None)
+
+
+def test_anim_preset_save_rejects_unknown_family():
+    with _roots():
+        assert _raises_value_error(lambda: fio.save_preset("x", {}, family="SDXL/Base", kind="anim"))
+        assert _raises_value_error(lambda: fio.save_preset("x", {}, kind="anim"))
+
+
+def test_load_anim_preset_rejects_image_preset():
+    with _roots():
+        name = fio.save_preset("base", {"checkpoint": "a.safetensors"}, family="SDXL/Base")
+        assert _raises_value_error(lambda: fio.load_anim_preset(name))
+
+
+def test_preset_lists_split_by_kind():
+    with _roots():
+        img = fio.save_preset("base", {"display_name": "Base"}, family="SDXL/Base")
+        wan = fio.save_preset("w", {"display_name": "W"}, family="Wan 2.2", kind="anim")
+        mh3 = fio.save_preset("m", {}, family="MiniMax H3", kind="anim")
+
+        assert fio.list_presets() == [img]
+        assert fio.list_presets(family="SDXL/Base") == [img]
+        assert fio.list_presets(kind="anim") == [mh3, wan]
+        assert fio.list_presets(family="Wan 2.2", kind="anim") == [wan]
+        assert fio.list_preset_display_names(kind="anim") == {wan: "W"}
+        assert fio.list_preset_display_names() == {img: "Base"}
+
+
+def test_anim_preset_cover_and_delete():
+    with _roots() as (_, presets):
+        name = fio.save_preset("w", {}, family="Wan 2.2", kind="anim")
+        fio.save_preset_cover(name, ".png", b"png")
+        assert fio.read_preset_cover(name) == (b"png", "image/png")
+        fio.delete_preset(name)
+        assert fio.list_presets(kind="anim") == []
+        assert not os.path.exists(os.path.join(presets, "anim", "wan22", "w.png"))
+
+
+def test_image_flake_lists_exclude_anim():
+    with _roots() as (root, _):
+        _write(os.path.join(root, "img", "sdxl", "hero.yaml"), b"loras: []")
+        _write(os.path.join(root, "anim", "wan22", "wave.yaml"), b"loras: []")
+        _write(os.path.join(root, "model_presets", "img", "sdxl", "base.yaml"), b"{}")
+        assert fio.list_flakes() == ["img/sdxl/hero"]
+        assert fio.list_dirs() == ["img", "img/sdxl"]

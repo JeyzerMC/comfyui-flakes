@@ -204,3 +204,48 @@ CN_MODEL_MAP: dict[str, dict[str, str]] = {f.folder: f.cn_models for f in FAMILI
 CN_SUBFOLDER: dict[str, str] = {f.folder: f.cn_subfolder for f in FAMILIES}
 
 MODEL_FAMILIES: list[str] = [f.label for f in FAMILIES if f.selectable]
+
+
+# --- Animate (image-to-video) families --------------------------------------
+# Kept apart from FAMILIES so they never reach the image dropdowns or the
+# routing maps above. ``folder`` is the segment under ``models/flakes/anim/``
+# and ``models/flakes/model_presets/anim/``.
+
+ANIM_RESOLUTIONS: tuple[str, ...] = ("480p", "580p", "720p")
+
+
+@dataclass(frozen=True)
+class AnimFamilySpec:
+    """One animate family; the numbers seed a new animate preset. Fields a
+    family doesn't use stay None: Wan 2.2 splits sampling between a high- and a
+    low-noise model at ``refiner_step``, MiniMax H3 shifts video and audio
+    separately."""
+
+    label: str
+    folder: str
+    clip_type: str
+    steps: int
+    cfg: float
+    sampler: str
+    scheduler: str
+    fps: int
+    duration: float
+    resolution: str = "720p"
+    shift_high: float | None = None
+    shift_low: float | None = None
+    refiner_step: int | None = None
+    shift_video: float | None = None
+    shift_audio: float | None = None
+
+
+ANIM_FAMILIES: tuple[AnimFamilySpec, ...] = (
+    AnimFamilySpec("Wan 2.2", "wan22", clip_type="WAN", steps=4, cfg=1.0, sampler="euler",
+                   scheduler="linear_quadratic", fps=16, duration=5.0,
+                   shift_high=5.0, shift_low=5.0, refiner_step=2),
+    AnimFamilySpec("MiniMax H3", "mh3", clip_type="MINIMAX", steps=4, cfg=1.0, sampler="euler",
+                   scheduler="simple", fps=24, duration=5.0,
+                   shift_video=10.0, shift_audio=3.0),
+)
+
+ANIM_BY_LABEL: dict[str, AnimFamilySpec] = {f.label: f for f in ANIM_FAMILIES}
+ANIM_BY_FOLDER: dict[str, AnimFamilySpec] = {f.folder: f for f in ANIM_FAMILIES}

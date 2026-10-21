@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 
@@ -309,6 +310,16 @@ async def _list_families(_request: web.Request) -> web.Response:
     return web.json_response({"families": families})
 
 
+@routes.get("/flakes/anim/families")
+async def _list_anim_families(_request: web.Request) -> web.Response:
+    """Animate families with their preset defaults; fields a family doesn't
+    use are null."""
+    return web.json_response({
+        "families": [dataclasses.asdict(f) for f in flake_families.ANIM_FAMILIES],
+        "resolutions": list(flake_families.ANIM_RESOLUTIONS),
+    })
+
+
 @routes.get("/flakes/clip_types")
 async def _list_clip_types(_request: web.Request) -> web.Response:
     """CLIPType members this ComfyUI build supports, for the preset editor's
@@ -434,12 +445,24 @@ async def _delete_cover_route(request: web.Request) -> web.Response:
 # Presets (Phase 4)
 # ---------------------------------------------------------------------------
 
+def _preset_kind(value: str | None) -> str:
+    """``kind`` of a preset route: "img" (default) or "anim" for animate
+    presets. Becomes a path segment, so anything else is rejected."""
+    kind = (value or "").strip() or "img"
+    if kind not in ("img", "anim"):
+        raise ValueError("kind must be 'img' or 'anim'")
+    return kind
+
+
 @routes.get("/flakes/presets")
 async def _list_presets(request: web.Request) -> web.Response:
     family = request.query.get("family", "").strip() or None
     try:
-        names = flake_io.list_presets(family=family)
-        display_names = flake_io.list_preset_display_names(family=family)
+        kind = _preset_kind(request.query.get("kind"))
+        names = flake_io.list_presets(family=family, kind=kind)
+        display_names = flake_io.list_preset_display_names(family=family, kind=kind)
+    except ValueError as exc:
+        return _bad_request(str(exc))
     except Exception as exc:
         logging.exception("[flakes] failed to list presets")
         return _server_error(str(exc))
@@ -497,6 +520,7 @@ async def _save_preset(request: web.Request) -> web.Response:
             base_root_index=base_root_index,
             output_path=output_path,
             old_name=old_name,
+            kind=_preset_kind(body.get("kind")),
         )
     except ValueError as exc:
         return _bad_request(str(exc))

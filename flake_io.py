@@ -176,6 +176,39 @@ class ModelPreset:
             f"'diffusion_model' set — pick a model file in the preset editor."
         )
 
+
+@dataclass
+class AnimPreset:
+    """Animate (image-to-video) preset, stored under
+    ``model_presets/anim/<family folder>/``. Unset numbers fall back to the
+    family's defaults in ``flake_families.ANIM_FAMILIES``."""
+    name: str
+    family: str  # ANIM_FAMILIES folder
+    steps: int
+    cfg: float
+    sampler: str
+    scheduler: str
+    clip_type: str
+    fps: int
+    duration: float
+    resolution: str
+    display_name: str = ""
+    # Wan 2.2 loads a high- and a low-noise model; MiniMax H3 a single one.
+    diffusion_model: str | None = None
+    diffusion_model_high: str | None = None
+    diffusion_model_low: str | None = None
+    text_encoder: str | None = None
+    vae: str | None = None
+    audio_vae: str | None = None
+    shift_high: float | None = None
+    shift_low: float | None = None
+    refiner_step: int | None = None
+    shift_video: float | None = None
+    shift_audio: float | None = None
+    positive: str = ""
+    negative: str = ""
+    loras: list[LoraEntry] = field(default_factory=list)
+
 # ---------------------------------------------------------------------------
 # Flake dataclass + ControlNetEntry
 # ---------------------------------------------------------------------------
@@ -382,6 +415,11 @@ def _resolve_file(name: str) -> str:
     raise FileNotFoundError(f"Flake '{name}' not found under any registered flakes/ directory")
 
 
+# Top-level folders of a flakes root that never hold image flakes: the presets
+# root nested under it and the animate flakes.
+_NON_IMAGE_DIRS = ("model_presets", "anim")
+
+
 def list_flakes(family: str | None = None, roots: list[str] | None = None) -> list[str]:
     names: set[str] = set()
     for root in roots or _flakes_roots():
@@ -395,8 +433,7 @@ def list_flakes(family: str | None = None, roots: list[str] | None = None) -> li
                 rel_dir = os.path.relpath(dirpath, root)
                 rel = stem if rel_dir in ("", ".") else os.path.join(rel_dir, stem)
                 rel_norm = rel.replace(os.sep, "/")
-                # Exclude model_presets from flake listings
-                if rel_norm.startswith("model_presets/") or rel_norm == "model_presets":
+                if rel_norm.split("/", 1)[0] in _NON_IMAGE_DIRS:
                     continue
                 if family is None or _is_flake_compatible(rel_norm, family):
                     names.add(rel_norm)
@@ -504,8 +541,7 @@ def list_dirs(family: str | None = None, roots: list[str] | None = None) -> list
             for d in dirnames:
                 full = os.path.join(dirpath, d)
                 rel = os.path.relpath(full, root).replace(os.sep, "/")
-                # Exclude model_presets from flake directory listings
-                if rel.startswith("model_presets/") or rel == "model_presets":
+                if rel.split("/", 1)[0] in _NON_IMAGE_DIRS:
                     continue
                 if family is None or _is_flake_compatible(rel + "/dummy", family):
                     dirs.add(rel)
@@ -1428,7 +1464,19 @@ def _find_preset_root_index(name: str) -> int:
     raise FileNotFoundError(f"Preset '{name}' not found under any registered model_presets/ directory")
 
 
-def list_presets(family: str | None = None, roots: list[str] | None = None) -> list[str]:
+def _anim_family_folder(family: str | None) -> str:
+    spec = flake_families.ANIM_BY_LABEL.get(family or "")
+    if spec is None:
+        raise ValueError(f"unknown animate family: {family!r}")
+    return spec.folder
+
+
+def list_presets(family: str | None = None, roots: list[str] | None = None, kind: str = "img") -> list[str]:
+    """Preset names of one ``kind``: "img" (everything outside ``anim/``) or
+    "anim" (``anim/<folder>/``)."""
+    anim_prefix = "anim/"
+    if kind == "anim" and family:
+        anim_prefix = f"anim/{_anim_family_folder(family)}/"
     names: set[str] = set()
     for root in roots or _presets_roots():
         if not os.path.isdir(root):
@@ -1441,13 +1489,16 @@ def list_presets(family: str | None = None, roots: list[str] | None = None) -> l
                 rel_dir = os.path.relpath(dirpath, root)
                 rel = stem if rel_dir in ("", ".") else os.path.join(rel_dir, stem)
                 rel_norm = rel.replace(os.sep, "/")
-                if family is None or _is_preset_compatible(rel_norm, family):
+                if kind == "anim":
+                    if rel_norm.startswith(anim_prefix):
+                        names.add(rel_norm)
+                elif rel_norm.split("/", 1)[0] != "anim" and (family is None or _is_preset_compatible(rel_norm, family)):
                     names.add(rel_norm)
     return sorted(names)
 
 
-def list_preset_display_names(family: str | None = None) -> dict[str, str]:
-    names = list_presets(family=family)
+def list_preset_display_names(family: str | None = None, kind: str = "img") -> dict[str, str]:
+    names = list_presets(family=family, kind=kind)
     display_names: dict[str, str] = {}
     for name in names:
         try:
@@ -1473,6 +1524,7 @@ def save_preset(
     base_root_index: int | None = None,
     output_path: str | None = None,
     old_name: str | None = None,
+    kind: str = "img",
 ) -> str:
     """Persist a model preset to disk and return the canonical name the
     caller should now use.
@@ -1496,6 +1548,9 @@ def save_preset(
         When editing, the previously-stored canonical name. If the new
         location differs, the old YAML (and its cover) are moved to the
         new destination.
+    kind
+        "img", or "anim" for an animate preset: ``family`` is then an
+        ``ANIM_FAMILIES`` label and the path is prefixed with ``anim/<folder>``.
     """
     if not isinstance(data, dict):
         raise ValueError("preset data must be an object")
@@ -1508,16 +1563,15 @@ def save_preset(
     else:
         root = _primary_presets_root()
 
+    folder = _anim_family_folder(family) if kind == "anim" else _family_folder(family)
     if output_path:
         canonical = output_path.replace("\\", "/").strip("/")
         _validate_name(canonical)
-        folder = _family_folder(family)
         if folder:
-            canonical = f"img/{folder}/{canonical}"
+            canonical = f"{kind}/{folder}/{canonical}"
     else:
         _validate_name(name)
-        folder = _family_folder(family)
-        canonical = f"img/{folder}/{name}" if folder else name
+        canonical = f"{kind}/{folder}/{name}" if folder else name
 
     target = os.path.join(root, f"{canonical}.yaml")
     _ensure_inside(target, root)
@@ -1674,4 +1728,45 @@ def load_preset(name: str) -> ModelPreset:
         filename_prefix=str(raw.get("filename_prefix", "") or ""),
         loras=_parse_lora_list(raw.get("loras")),
         flake_links=_parse_link_list(raw),
+    )
+
+
+def _num(raw: dict[str, Any], key: str, default, cast=float):
+    value = raw.get(key)
+    return default if value in (None, "") else cast(value)
+
+
+def load_anim_preset(name: str) -> AnimPreset:
+    parts = name.split("/")
+    spec = flake_families.ANIM_BY_FOLDER.get(parts[1]) if parts[0] == "anim" and len(parts) >= 3 else None
+    if spec is None:
+        raise ValueError(f"'{name}' is not under model_presets/anim/<family>/")
+    raw = read_preset_raw(name)
+    prompt = raw.get("prompt") or {}
+    return AnimPreset(
+        name=name,
+        family=spec.folder,
+        display_name=str(raw.get("display_name", "") or ""),
+        diffusion_model=raw.get("diffusion_model") or None,
+        diffusion_model_high=raw.get("diffusion_model_high") or None,
+        diffusion_model_low=raw.get("diffusion_model_low") or None,
+        text_encoder=raw.get("text_encoder") or None,
+        clip_type=str(raw.get("clip_type") or spec.clip_type).strip().upper(),
+        vae=raw.get("vae") or None,
+        audio_vae=raw.get("audio_vae") or None,
+        steps=_num(raw, "steps", spec.steps, int),
+        cfg=_num(raw, "cfg", spec.cfg),
+        sampler=str(raw.get("sampler") or spec.sampler),
+        scheduler=str(raw.get("scheduler") or spec.scheduler),
+        fps=_num(raw, "fps", spec.fps, int),
+        duration=_num(raw, "duration", spec.duration),
+        resolution=str(raw.get("resolution") or spec.resolution),
+        shift_high=_num(raw, "shift_high", spec.shift_high),
+        shift_low=_num(raw, "shift_low", spec.shift_low),
+        refiner_step=_num(raw, "refiner_step", spec.refiner_step, int),
+        shift_video=_num(raw, "shift_video", spec.shift_video),
+        shift_audio=_num(raw, "shift_audio", spec.shift_audio),
+        positive=str(prompt.get("positive", "") or ""),
+        negative=str(prompt.get("negative", "") or ""),
+        loras=_parse_lora_list(raw.get("loras")),
     )
