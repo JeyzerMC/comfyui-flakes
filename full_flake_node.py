@@ -364,7 +364,7 @@ class FlakeModelPreset:
     @classmethod
     def INPUT_TYPES(cls):
         try:
-            preset_names = flake_io.list_presets()
+            preset_names = flake_io.list_presets(local=True)
         except Exception:
             preset_names = []
         if not preset_names:

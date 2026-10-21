@@ -1,4 +1,5 @@
-import { css, makeModelOverridePanel, serializeModelOverrides } from "../utils.js";
+import { css, makeModelOverridePanel, serializeModelOverrides, isLocalName, markLocal, SAVE_TO_DISK_SVG } from "../utils.js";
+import { saveLocalToDisk } from "../bundle.js";
 import { fetchPreset } from "../api.js";
 import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
 import { openPresetPicker } from "../pickers.js";
@@ -197,6 +198,20 @@ export function setupFlakeModelPresetWidget(node, { kind = "img" } = {}) {
     });
     hoverBtns.appendChild(removeBtn);
 
+    // Save a workflow-local preset (#437) on disk.
+    const saveBtn = document.createElement("button");
+    saveBtn.title = "Save to disk";
+    saveBtn.appendChild(svgIcon(SAVE_TO_DISK_SVG));
+    css(saveBtn, HOVER_BTN_STYLE);
+    saveBtn.addEventListener("mouseenter", () => { saveBtn.style.background = "#fff"; saveBtn.style.transform = "scale(1.08)"; });
+    saveBtn.addEventListener("mouseleave", () => { saveBtn.style.background = "rgba(255,255,255,0.92)"; saveBtn.style.transform = "scale(1)"; });
+    saveBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        saveLocalToDisk(presetWidget.value);
+    });
+    hoverBtns.appendChild(saveBtn);
+    let localTag = null;
+
     imgWrap.appendChild(hoverBtns);
 
     // Show/hide hover buttons on image hover
@@ -309,6 +324,10 @@ export function setupFlakeModelPresetWidget(node, { kind = "img" } = {}) {
             coverImg.src = `/flakes/preset_cover?name=${encodeURIComponent(val)}`;
             nameLabel.textContent = val.replace(/\\/g, "/").split("/").pop();
             nameLabel.title = val;
+            localTag?.remove();
+            imgWrap.style.borderStyle = "solid";
+            localTag = isLocalName(val) ? markLocal(imgWrap) : null;
+            saveBtn.style.display = localTag ? "flex" : "none";
             try {
                 const data = await fetchPreset(val);
                 if (data.display_name) {

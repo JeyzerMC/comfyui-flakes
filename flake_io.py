@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import itertools
+import json
 import logging
 import os
 import re
@@ -424,8 +425,8 @@ def _resolve_file(name: str) -> str:
 
 
 # Top-level folders of a flakes root that never hold image flakes: the presets
-# root nested under it and the animate flakes.
-_NON_IMAGE_DIRS = ("model_presets", "anim")
+# root nested under it, the animate flakes and the workflow-local flakes (#437).
+_NON_IMAGE_DIRS = ("model_presets", "anim", "_local")
 
 
 def _in_listing(rel: str, family: str | None, kind: str) -> bool:
@@ -1544,9 +1545,10 @@ def _anim_family_folder(family: str | None) -> str:
     return spec.folder
 
 
-def list_presets(family: str | None = None, roots: list[str] | None = None, kind: str = "img") -> list[str]:
+def list_presets(family: str | None = None, roots: list[str] | None = None, kind: str = "img", local: bool = False) -> list[str]:
     """Preset names of one ``kind``: "img" (everything outside ``anim/``) or
-    "anim" (``anim/<folder>/``)."""
+    "anim" (``anim/<folder>/``). Workflow-local ``_local/`` presets (#437) are
+    left out unless *local*: the node accepts them, the pickers don't list them."""
     anim_prefix = "anim/"
     if kind == "anim" and family:
         anim_prefix = f"anim/{_anim_family_folder(family)}/"
@@ -1565,7 +1567,7 @@ def list_presets(family: str | None = None, roots: list[str] | None = None, kind
                 if kind == "anim":
                     if rel_norm.startswith(anim_prefix):
                         names.add(rel_norm)
-                elif rel_norm.split("/", 1)[0] != "anim" and (family is None or _is_preset_compatible(rel_norm, family)):
+                elif rel_norm.split("/", 1)[0] not in (("anim",) if local else ("anim", "_local")) and (family is None or _is_preset_compatible(rel_norm, family)):
                     names.add(rel_norm)
     return sorted(names)
 
@@ -1885,11 +1887,13 @@ def collect_bundle(flakes: list[str], presets: list[str]) -> dict[str, Any]:
     """The portable bundle of *flakes*, *presets* and every flake they link
     to: ``{version, files: {hash: base64}, flakes: {name: {yaml, files:
     {rel: hash}}}, presets: {...}}``. A flake comes before the flakes it
-    links to. Missing link targets are left out, as ``resolve`` skips them."""
+    links to. Missing link targets are left out, as ``resolve`` skips them.
+    Workflow-local flakes go in under their original names, links included."""
     bundle: dict[str, Any] = {"version": 1, "files": {}, "flakes": {}, "presets": {}}
 
     def add(kind: str, name: str) -> None:
-        if name in bundle[kind]:
+        key = _LOCAL_PREFIX_RE.sub("", name)
+        if key in bundle[kind]:
             return
         try:
             path = _resolve_file(name) if kind == "flakes" else _resolve_preset_file(name)
@@ -1897,8 +1901,11 @@ def collect_bundle(flakes: list[str], presets: list[str]) -> dict[str, Any]:
             return
         with open(path, encoding="utf-8") as f:
             text = f.read()
-        bundle[kind][name] = {"yaml": text, "files": _bundle_files(path, bundle["files"])}
-        for target in _link_targets(yaml.safe_load(text) or {}):
+        targets = _link_targets(yaml.safe_load(text) or {})
+        base = key.rsplit("/", 1)[-1]
+        text = _bundle_yaml(text, base, base, {t: _LOCAL_PREFIX_RE.sub("", t) for t in targets})
+        bundle[kind][key] = {"yaml": text, "files": _bundle_files(path, bundle["files"])}
+        for target in targets:
             add("flakes", target)
 
     for name in flakes:
@@ -1938,16 +1945,12 @@ def _renamed_rel(rel: str, old_base: str, new_base: str) -> str:
     return "/".join(parts)
 
 
-def install_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
-    """Install a ``collect_bundle`` bundle without overwriting anything: a name
-    holding an identical yaml is skipped, one holding a different yaml installs
-    as "<name> (imported)" (then "(imported 2)", ...). Returns the installed
-    names and the {old: new} renames of flakes and presets."""
+def _check_bundle(bundle: dict[str, Any]) -> None:
+    """Reject a bundle whose names or files would land outside their flake."""
     if bundle.get("version") != 1:
         raise ValueError(f"unsupported flake bundle version: {bundle.get('version')!r}")
     blobs = bundle.get("files") or {}
-    kinds = (("flakes", _primary_root(), _resolve_file), ("presets", _primary_presets_root(), _resolve_preset_file))
-    for kind, _, _ in kinds:
+    for kind in ("flakes", "presets"):
         for name, item in (bundle.get(kind) or {}).items():
             _validate_name(name)
             base = name.rsplit("/", 1)[-1]
@@ -1957,35 +1960,94 @@ def install_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
                         or os.path.splitext(rel)[1].lower() in _WEIGHT_EXTENSIONS or key not in blobs):
                     raise ValueError(f"invalid file {rel!r} in bundled {name!r}")
 
+
+def _write_bundled(root: str, name: str, text: str, item: dict[str, Any], blobs: dict[str, str], old_base: str) -> None:
+    """Write bundled *item* as *name* under *root*: its yaml *text* and its
+    files, renamed from *old_base*. Files already there are kept."""
+    target = os.path.join(root, f"{name}.yaml")
+    _ensure_inside(target, root)
+    folder = os.path.dirname(target)
+    os.makedirs(folder, exist_ok=True)
+    with open(target, "w", encoding="utf-8") as f:
+        f.write(text)
+    for rel, key in item["files"].items():
+        path = os.path.join(folder, _renamed_rel(rel, old_base, name.rsplit("/", 1)[-1]))
+        _ensure_inside(path, root)
+        if not os.path.exists(path):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(blobs[key]))
+
+
+def install_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
+    """Install a ``collect_bundle`` bundle without overwriting anything: a name
+    holding an identical yaml is skipped, one holding a different yaml installs
+    as "<name> (imported)" (then "(imported 2)", ...). Returns the installed
+    names and the {old: new} renames of flakes and presets."""
+    _check_bundle(bundle)
+    blobs = bundle.get("files") or {}
     result: dict[str, Any] = {"installed": [], "flakes": {}, "presets": {}}
-    for kind, root, resolve_file in kinds:
+    for kind, root, resolve_file in (("flakes", _primary_root(), _resolve_file), ("presets", _primary_presets_root(), _resolve_preset_file)):
         # Reversed so linked flakes get their final names before the flakes
         # (and then presets) whose link targets point at them.
         for name, item in reversed(list((bundle.get(kind) or {}).items())):
             base = name.rsplit("/", 1)[-1]
             for new in itertools.chain([name, f"{name} (imported)"], (f"{name} (imported {n})" for n in itertools.count(2))):
-                new_base = new.rsplit("/", 1)[-1]
-                text = _bundle_yaml(item["yaml"], base, new_base, result["flakes"])
+                text = _bundle_yaml(item["yaml"], base, new.rsplit("/", 1)[-1], result["flakes"])
                 try:
                     with open(resolve_file(new), encoding="utf-8") as f:
                         if f.read() == text:
                             break
                 except FileNotFoundError:
-                    target = os.path.join(root, f"{new}.yaml")
-                    _ensure_inside(target, root)
-                    folder = os.path.dirname(target)
-                    os.makedirs(folder, exist_ok=True)
-                    with open(target, "w", encoding="utf-8") as f:
-                        f.write(text)
-                    for rel, key in item["files"].items():
-                        path = os.path.join(folder, _renamed_rel(rel, base, new_base))
-                        _ensure_inside(path, root)
-                        if not os.path.exists(path):
-                            os.makedirs(os.path.dirname(path), exist_ok=True)
-                            with open(path, "wb") as f:
-                                f.write(base64.b64decode(blobs[key]))
+                    _write_bundled(root, new, text, item, blobs, base)
                     result["installed"].append(new)
                     break
             if new != name:
                 result[kind][name] = new
     return result
+
+# ---------------------------------------------------------------------------
+# Workflow-local flakes (#437)
+# ---------------------------------------------------------------------------
+
+# A dropped image's bundle is staged as "_local/<bundle hash>/<name>" in
+# ComfyUI's temp folder, an extra non-primary root: its flakes resolve like
+# installed ones, saves never land there and listings leave them out.
+_LOCAL_PREFIX_RE = re.compile(r"^_local/[0-9a-f]+/")
+
+
+def stage_bundle(bundle: dict[str, Any]) -> dict[str, dict[str, str]]:
+    """Stage a ``collect_bundle`` bundle as workflow-local flakes and presets.
+    Returns the {name: staged name} of flakes and presets; staging the same
+    bundle again writes nothing."""
+    _check_bundle(bundle)
+    blobs = bundle.get("files") or {}
+    prefix = f"_local/{hashlib.sha256(json.dumps(bundle, sort_keys=True).encode()).hexdigest()[:16]}/"
+    flakes_root = os.path.join(folder_paths.get_temp_directory(), "flakes_local")
+    roots = {"flakes": flakes_root, "presets": os.path.join(flakes_root, "model_presets")}
+    folder_paths.add_model_folder_path("flakes", roots["flakes"])
+    folder_paths.add_model_folder_path("model_presets", roots["presets"])
+    renames = {kind: {name: prefix + name for name in bundle.get(kind) or {}} for kind in roots}
+    for kind, root in roots.items():
+        for name, item in (bundle.get(kind) or {}).items():
+            if not os.path.isfile(os.path.join(root, f"{prefix}{name}.yaml")):
+                base = name.rsplit("/", 1)[-1]
+                _write_bundled(root, prefix + name, _bundle_yaml(item["yaml"], base, base, renames["flakes"]), item, blobs, base)
+    return renames
+
+
+def save_local(name: str) -> dict[str, dict[str, str]]:
+    """Install workflow-local flake or preset *name* and the flakes it links
+    to with ``install_bundle``'s naming rules. Returns the {staged name: saved
+    name} of flakes and presets."""
+    prefix = _LOCAL_PREFIX_RE.match(name)
+    if not prefix:
+        raise ValueError(f"{name!r} is not a workflow-local flake")
+    try:
+        _resolve_file(name)
+        bundle = collect_bundle([name], [])
+    except FileNotFoundError:
+        _resolve_preset_file(name)
+        bundle = collect_bundle([], [name])
+    result = install_bundle(bundle)
+    return {kind: {prefix.group(0) + n: result[kind].get(n, n) for n in bundle[kind]} for kind in ("flakes", "presets")}

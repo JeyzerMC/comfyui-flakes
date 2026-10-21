@@ -5,9 +5,12 @@ import contextlib
 import importlib.util
 import json
 import os
+import re
 import sys
 import tempfile
 import types
+
+import yaml
 
 
 def _load_flake_io():
@@ -17,6 +20,12 @@ def _load_flake_io():
     fp.get_folder_paths = lambda category: []
     fp.base_path = os.getcwd()
     fp.folder_names_and_paths = {}
+
+    def add_model_folder_path(category, path):
+        paths = fp.folder_names_and_paths[category][0]
+        if path not in paths:
+            paths.append(path)
+    fp.add_model_folder_path = add_model_folder_path
     sys.modules["folder_paths"] = fp
 
     pkg = types.ModuleType("_fpkg_pf")
@@ -449,11 +458,12 @@ BUNDLE_PRESET = "checkpoint: base.safetensors\nflake_links:\n- {target: chars/ho
 
 @contextlib.contextmanager
 def _machine():
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as comfy_temp:
         presets = os.path.join(tmp, "model_presets")
         os.makedirs(presets)
         fp.folder_names_and_paths["flakes"] = ([tmp], {".yaml", ".yml"})
         fp.folder_names_and_paths["model_presets"] = ([presets], {".yaml", ".yml"})
+        fp.get_temp_directory = lambda: comfy_temp
         yield tmp
 
 
@@ -523,12 +533,81 @@ def test_bundle_rejects_paths_outside_the_flake():
         bad["flakes"]["chars/musashi"]["files"][rel] = blob
         with _machine() as root:
             assert _raises_value_error(lambda: fio.install_bundle(bad)), rel
+            assert _raises_value_error(lambda: fio.stage_bundle(bad)), rel
             assert os.listdir(root) == ["model_presets"]
+            assert os.listdir(fp.get_temp_directory()) == []
     for name in ("../evil", "/evil", "chars/../../evil"):
         bad = json.loads(json.dumps(bundle))
         bad["flakes"][name] = bad["flakes"].pop("chars/horse")
         with _machine() as root:
             assert _raises_value_error(lambda: fio.install_bundle(bad)), name
+            assert _raises_value_error(lambda: fio.stage_bundle(bad)), name
+
+
+# Workflow-local flakes (#437): a dropped image's bundle is staged, not installed.
+def _staged_prefix(renames):
+    staged = renames["flakes"]["chars/musashi"]
+    assert re.fullmatch(r"_local/[0-9a-f]+/chars/musashi", staged)
+    return staged[:-len("chars/musashi")]
+
+
+def test_stage_bundle_keeps_flakes_local():
+    bundle = _source_bundle()
+    with _machine() as root:
+        renames = fio.stage_bundle(bundle)
+        p = _staged_prefix(renames)
+        assert renames == {"flakes": {"chars/musashi": p + "chars/musashi", "chars/horse": p + "chars/horse"},
+                           "presets": {"img/sdxl/base": p + "img/sdxl/base"}}
+        # Nothing on disk; the temp root comes after the flakes folder.
+        assert os.listdir(root) == ["model_presets"] and os.listdir(os.path.join(root, "model_presets")) == []
+        assert fio._primary_root() == root and fio._primary_presets_root() == os.path.join(root, "model_presets")
+        # Staged flakes resolve like installed ones, links retargeted.
+        assert fio.read_flake_raw(p + "chars/musashi")["flake_links"] == [{"target": p + "chars/horse"}]
+        assert fio.read_preset_raw(p + "img/sdxl/base")["flake_links"] == [{"target": p + "chars/horse"}]
+        assert fio.read_cover(p + "chars/musashi") == (PNG, "image/png")
+        assert fio.read_preset_cover(p + "img/sdxl/base") == (b"preset cover", "image/png")
+        pose = fio.resolve({"name": p + "chars/musashi"}).controlnets[0].image_name
+        assert pose.startswith(fp.get_temp_directory()) and os.path.isfile(pose)
+        # Listings leave them out; the preset node still accepts them.
+        assert fio.list_flakes() == fio.list_dirs() == fio.list_presets() == []
+        assert fio.list_presets(local=True) == [p + "img/sdxl/base"]
+        # Staging again writes nothing and registers the roots once.
+        staged = fio._resolve_file(p + "chars/horse")
+        _write(staged, b"prompt: {positive: edited}\n")
+        assert fio.stage_bundle(json.loads(json.dumps(bundle))) == renames
+        assert fio.read_flake_raw(p + "chars/horse")["prompt"] == {"positive": "edited"}
+        assert len(fp.folder_names_and_paths["flakes"][0]) == len(fp.folder_names_and_paths["model_presets"][0]) == 2
+
+
+def test_save_local_installs_with_linked_flakes():
+    bundle = _source_bundle()
+    with _machine() as root:
+        _write(os.path.join(root, "chars", "horse.yaml"), b"prompt: {positive: pony}\n")
+        p = _staged_prefix(fio.stage_bundle(bundle))
+        assert fio.save_local(p + "chars/musashi") == {
+            "flakes": {p + "chars/musashi": "chars/musashi", p + "chars/horse": "chars/horse (imported)"}, "presets": {}}
+        assert fio.read_flake_raw("chars/musashi")["flake_links"] == [{"target": "chars/horse (imported)"}]
+        assert fio.read_flake_raw("chars/horse")["prompt"] == {"positive": "pony"}
+        assert fio.read_cover("chars/musashi") == (PNG, "image/png")
+        assert fio.read_cover("chars/horse (imported)") == (PNG, "image/png")
+        # The preset reuses the already saved horse.
+        assert fio.save_local(p + "img/sdxl/base") == {
+            "flakes": {p + "chars/horse": "chars/horse (imported)"}, "presets": {p + "img/sdxl/base": "img/sdxl/base"}}
+        assert fio.read_preset_raw("img/sdxl/base")["flake_links"] == [{"target": "chars/horse (imported)"}]
+        assert fio.list_flakes() == ["chars/horse", "chars/horse (imported)", "chars/musashi"]
+        assert _raises_value_error(lambda: fio.save_local("chars/musashi"))
+
+
+def test_collect_bundle_strips_local_prefix():
+    bundle = _source_bundle()
+    with _machine():
+        p = _staged_prefix(fio.stage_bundle(bundle))
+        again = fio.collect_bundle([p + "chars/musashi"], [p + "img/sdxl/base"])
+    assert list(again["flakes"]) == ["chars/musashi", "chars/horse"] and list(again["presets"]) == ["img/sdxl/base"]
+    assert yaml.safe_load(again["flakes"]["chars/musashi"]["yaml"]) == yaml.safe_load(BUNDLE_MUSASHI)
+    assert yaml.safe_load(again["presets"]["img/sdxl/base"]["yaml"]) == yaml.safe_load(BUNDLE_PRESET)
+    assert again["flakes"]["chars/horse"] == bundle["flakes"]["chars/horse"]
+    assert again["files"] == bundle["files"]
 
 
 if __name__ == "__main__":

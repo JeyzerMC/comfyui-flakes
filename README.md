@@ -167,13 +167,18 @@ Move the yaml and its folder together to share or relocate a flake.
 
 Images saved by Flake Generate carry the flakes and model presets that made
 them (linked flakes included): their yaml, cover and folder files, without the
-model weights. Dropping such an image into ComfyUI installs them, so only the
-checkpoint and LoRA files have to be supplied.
+model weights. Dropping such an image into ComfyUI loads them as local flakes,
+so only the checkpoint and LoRA files have to be supplied.
 
-- Nothing is overwritten: a flake or preset already present with the same yaml
-  is reused, a different one with the same name installs as
-  `<name> (imported)` and the loaded nodes point at it.
-- Files go only into the flake's own folder under `models/flakes`.
+- Local flakes and presets stay with the workflow (they are kept in it and
+  staged in ComfyUI's temp folder on load) and are not saved on disk: their
+  grid items and preset widgets show a **Local** tag with a dashed border, and
+  they don't appear in the pickers.
+- **Save to disk** (item hover button) saves one, with the local flakes it
+  links to, under `models/flakes`. Nothing is
+  overwritten: a flake or preset already present with the same yaml is reused,
+  a different one with the same name is saved as `<name> (imported)`, and the
+  workflow's nodes point at the saved name.
 
 ### Editor helpers
 

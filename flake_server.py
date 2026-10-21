@@ -813,9 +813,10 @@ async def _upload_preset_cover(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "name": name})
 
 
-@routes.post("/flakes/bundle/install")
-async def _install_bundle(request: web.Request) -> web.Response:
-    """Install the flake bundle embedded in a dropped image's workflow (#427)."""
+@routes.post("/flakes/bundle/stage")
+async def _stage_bundle(request: web.Request) -> web.Response:
+    """Stage the flake bundle embedded in a loaded workflow (#427) as
+    workflow-local flakes (#437)."""
     try:
         body = await request.json()
     except Exception:
@@ -823,11 +824,33 @@ async def _install_bundle(request: web.Request) -> web.Response:
     if not isinstance(body, dict):
         return _bad_request("body must be a JSON object")
     try:
-        result = flake_io.install_bundle(body)
+        result = flake_io.stage_bundle(body)
     except ValueError as exc:
         return _bad_request(str(exc))
     except Exception as exc:
-        logging.exception("[flakes] failed to install flake bundle")
+        logging.exception("[flakes] failed to stage flake bundle")
+        return _server_error(str(exc))
+    return web.json_response(result)
+
+
+@routes.post("/flakes/bundle/save")
+async def _save_local(request: web.Request) -> web.Response:
+    """Save a workflow-local flake or preset on disk (#437)."""
+    try:
+        body = await request.json()
+    except Exception:
+        return _bad_request("invalid JSON body")
+    name = body.get("name") if isinstance(body, dict) else None
+    if not isinstance(name, str) or not name:
+        return _bad_request("missing 'name'")
+    try:
+        result = flake_io.save_local(name)
+    except FileNotFoundError as exc:
+        return _not_found(str(exc))
+    except ValueError as exc:
+        return _bad_request(str(exc))
+    except Exception as exc:
+        logging.exception("[flakes] failed to save local flake %s", name)
         return _server_error(str(exc))
     return web.json_response(result)
 

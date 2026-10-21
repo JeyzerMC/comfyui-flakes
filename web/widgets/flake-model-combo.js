@@ -1,8 +1,9 @@
 import {
     css, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeBypassStrike,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, attachHoldToSingleOut, makeAddBlock,
-    makeModelOverridePanel, serializeModelOverrides,
+    makeModelOverridePanel, serializeModelOverrides, isLocalName, markLocal, SAVE_TO_DISK_SVG,
 } from "../utils.js";
+import { saveLocalToDisk } from "../bundle.js";
 import { openPresetPicker } from "../pickers.js";
 import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
 import { fetchPreset } from "../api.js";
@@ -29,9 +30,11 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
             makeHoverButton({ svg: `<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>`, title: "Replace Preset", onClick: () => onReplace(idx) }),
             makeHoverButton({ svg: `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>`, title: "Edit Preset", onClick: () => onEdit(idx) }),
             makeHoverButton({ svg: `<circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/>`, title: "Remove from Combo", onClick: () => onRemove(idx) }),
+            ...(isLocalName(preset) ? [makeHoverButton({ svg: SAVE_TO_DISK_SVG, title: "Save to disk", onClick: () => saveLocalToDisk(preset) })] : []),
         ],
         showTriangle: true,
     });
+    if (isLocalName(preset)) markLocal(block);
 
     const fullName = display_name || preset.split(/[\/\\]+/).pop() || preset;
     const nameEl = document.createElement("div");

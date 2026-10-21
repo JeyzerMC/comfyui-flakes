@@ -1118,7 +1118,7 @@ export function makeGridItemOverlay({
     let hoverWrap = null;
     if (showHoverButtons && buttons.length > 0) {
         hoverWrap = document.createElement("div");
-        css(hoverWrap, "position:absolute;inset:0;display:none;align-items:center;justify-content:center;gap:4px;z-index:3;background:rgba(0,0,0,0.35);border-radius:3px;padding:4px;box-sizing:border-box;");
+        css(hoverWrap, "position:absolute;inset:0;display:none;flex-wrap:wrap;align-content:center;align-items:center;justify-content:center;gap:4px;z-index:3;background:rgba(0,0,0,0.35);border-radius:3px;padding:4px;box-sizing:border-box;");
         for (const btn of buttons) {
             hoverWrap.appendChild(btn);
         }
@@ -1305,6 +1305,21 @@ export function makeFavoriteStar() {
     star.textContent = "★";
     css(star, "position:absolute;bottom:2px;left:4px;z-index:6;color:#f5c518;font-size:12px;line-height:14px;text-shadow:0 1px 3px rgba(0,0,0,0.9);pointer-events:none;");
     return star;
+}
+
+// Workflow-local flakes and presets (#437), staged from a dropped image's
+// bundle: dashed border and a "Local" tag until saved on disk.
+export const isLocalName = (name) => typeof name === "string" && name.startsWith("_local/");
+export const SAVE_TO_DISK_SVG = `<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>`;
+
+export function markLocal(block) {
+    block.style.borderStyle = "dashed";
+    const tag = document.createElement("div");
+    tag.textContent = "Local";
+    tag.title = "Temporary flake from this workflow — not saved on disk";
+    css(tag, "position:absolute;top:2px;left:50%;transform:translateX(-50%);z-index:6;padding:0 4px;border-radius:3px;background:rgba(224,160,64,0.9);color:#1a1a1a;font-size:9px;font-weight:700;line-height:13px;");
+    block.appendChild(tag);
+    return tag;
 }
 
 // Long-press ("hold") a combo activation checkbox to "single out": activate
