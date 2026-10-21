@@ -86,7 +86,7 @@ def _split_flake_data(flake_data):
         )
     else:
         filename_prefix = ""
-    steps, cfg, sampler_name, scheduler = sampling_preset
+    steps, cfg, sampler_name, scheduler, denoise = sampling_preset
     return {
         "model": model,
         "clip": clip,
@@ -101,6 +101,7 @@ def _split_flake_data(flake_data):
         "cfg": cfg,
         "sampler_name": sampler_name,
         "scheduler": scheduler,
+        "denoise": denoise,
     }
 
 
@@ -196,7 +197,7 @@ class IntoFlakeDataAll:
         else:
             generation_data = None
 
-        sampling_preset = (steps, cfg, sampler_name, scheduler)
+        sampling_preset = (steps, cfg, sampler_name, scheduler, 1.0)
 
         return ((model_bundle, generation_data, sampling_preset),)
 
@@ -246,7 +247,7 @@ class IntoFlakeDataSelect:
         orig_filename_state = {}
         if len(orig_generation_data) > 7 and isinstance(orig_generation_data[7], dict):
             orig_filename_state = orig_generation_data[7]
-        orig_steps, orig_cfg, orig_sampler, orig_scheduler = orig_sampling_preset
+        orig_steps, orig_cfg, orig_sampler, orig_scheduler, orig_denoise = orig_sampling_preset
 
         new_model_bundle = (
             model if model is not None else orig_model,
@@ -272,6 +273,7 @@ class IntoFlakeDataSelect:
             cfg if cfg is not None else orig_cfg,
             sampler_name if sampler_name is not None else orig_sampler,
             scheduler if scheduler is not None else orig_scheduler,
+            orig_denoise,
         )
 
         return ((new_model_bundle, new_generation_data, new_sampling_preset),)
@@ -349,11 +351,12 @@ class PreviewFlakeData:
 
         # --- Parameters ---
         if sampling_preset is not None:
-            steps, cfg, sampler_name, scheduler = sampling_preset
+            steps, cfg, sampler_name, scheduler, denoise = sampling_preset
             params_info["Steps"] = str(steps)
             params_info["CFG"] = str(cfg)
             params_info["Sampler"] = str(sampler_name)
             params_info["Scheduler"] = str(scheduler)
+            params_info["Denoise"] = str(denoise)
 
         # --- Metadata ---
         if generation_data is not None:
@@ -495,6 +498,7 @@ class FlakeGenerate:
         cfg = parts["cfg"]
         sampler_name = parts["sampler_name"]
         scheduler = parts["scheduler"]
+        denoise = parts["denoise"]
 
         # Distilled models sample at cfg 1 with a zeroed negative (#359). Done
         # here rather than at preset-load time because this is the one place the
@@ -513,7 +517,7 @@ class FlakeGenerate:
         ks = KSampler()
         sampled = ks.sample(
             model, seed, steps, cfg, sampler_name, scheduler,
-            positive, negative, latent, denoise=1.0,
+            positive, negative, latent, denoise=denoise,
         )
         sampled_latent = sampled[0]
 
@@ -630,6 +634,7 @@ class FlakeGenerate:
             models_info["CFG"] = str(cfg)
             models_info["Sampler"] = str(sampler_name)
             models_info["Scheduler"] = str(scheduler)
+            models_info["Denoise"] = str(denoise)
 
         # ── Inputs overlay: prompts (grouped by BREAK) + controlnet info ──
         inputs_info = {}

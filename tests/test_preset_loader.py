@@ -464,7 +464,7 @@ def test_override_cfg_drives_the_decision_not_the_preset():
     the post-override value."""
     bundle = ("M", "C", "V")
     gen = ("POS", [["COND", {}]], "LAT", 1024, 1024, "p", "n", {"stems": []})
-    samp = (30, 4.0, "euler", "simple")          # preset says cfg 4
+    samp = (30, 4.0, "euler", "simple", 1.0)          # preset says cfg 4
     _b, _g, samp2 = full_flake_node._apply_preset_overrides(
         '{"cfg": 1.0}', bundle, gen, samp)
     assert samp2[1] == 1.0

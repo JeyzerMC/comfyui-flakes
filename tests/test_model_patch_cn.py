@@ -205,7 +205,7 @@ def _run(model_family, *flake_cns, upstream_family=None):
     flake_data = (
         (FakeModel("BASE_MODEL"), "CLIP", "VAE"),
         ([["P", {}]], [["N", {}]], {"samples": "l"}, 1024, 1024, "", "", {"stems": [], "model_family": upstream_family}),
-        (30, 4.0, "euler", "simple"),
+        (30, 4.0, "euler", "simple", 1.0),
     )
     entries = [{"name": n} for n in flakes]
     import json

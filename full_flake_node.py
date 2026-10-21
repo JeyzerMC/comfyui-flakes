@@ -306,7 +306,7 @@ def _load_preset_bundle(preset_name: str, model_family: str | None = None):
         "model_family": model_family,
     }
     generation_data = (positive, negative, latent, width, height, pos_text, neg_text, filename_state)
-    sampling_preset = (preset_data.steps, preset_data.cfg, preset_data.sampler, preset_data.scheduler)
+    sampling_preset = (preset_data.steps, preset_data.cfg, preset_data.sampler, preset_data.scheduler, 1.0)
 
     return model_bundle, generation_data, sampling_preset
 
@@ -327,7 +327,7 @@ def _apply_preset_overrides(overrides_json, model_bundle, generation_data, sampl
     if not isinstance(ovr, dict) or not ovr:
         return model_bundle, generation_data, sampling_preset
 
-    steps, cfg, sampler, scheduler = sampling_preset
+    steps, cfg, sampler, scheduler, denoise = sampling_preset
 
     def _conv(key, conv, cur):
         v = ovr.get(key)
@@ -344,7 +344,7 @@ def _apply_preset_overrides(overrides_json, model_bundle, generation_data, sampl
         sampler = str(ovr["sampler"])
     if ovr.get("scheduler"):
         scheduler = str(ovr["scheduler"])
-    sampling_preset = (steps, cfg, sampler, scheduler)
+    sampling_preset = (steps, cfg, sampler, scheduler, denoise)
 
     fp = (ovr.get("filename_prefix") or "").strip()
     if fp and isinstance(generation_data, tuple) and len(generation_data) > 7 and isinstance(generation_data[7], dict):
@@ -453,7 +453,7 @@ class FlakeStack:
         model_bundle, generation_data, sampling_preset = flake_data
         model, clip, vae = model_bundle
         positive_cond, negative_cond, latent, width, height, pos_text, neg_text = generation_data[:7]
-        steps, cfg, sampler, scheduler = sampling_preset
+        steps, cfg, sampler, scheduler, denoise = sampling_preset
 
         # --- Filename prefix state ----------------------------------------------
         # Copy the incoming filename_state so we don't mutate the original tuple.
@@ -653,7 +653,7 @@ class FlakeStack:
 
         out_model_bundle = (model, clip, vae)
         out_generation_data = (positive_cond, negative_cond, latent, new_width, new_height, new_pos_text, new_neg_text, filename_state)
-        out_sampling_preset = (steps, cfg, sampler, scheduler)
+        out_sampling_preset = (steps, cfg, sampler, scheduler, denoise)
 
         return (
             (out_model_bundle, out_generation_data, out_sampling_preset),

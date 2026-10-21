@@ -316,6 +316,22 @@ at full size and scrolls both ways. Landscape outputs widen the overlay to
 nearly the screen width. Prompts,
 LoRAs and model details are folded under the `^` at the bottom of each panel.
 
+### Flake Inpaint
+
+Insert it right before Flake Generate to redraw part of an image with the
+chain's model, LoRAs and prompt. Load the image on the node and paint the area
+to redraw with ComfyUI's mask editor (right-click → Open in MaskEditor). The
+image's size replaces the chain resolution.
+
+- **denoise** `1.0` fills the masked area from scratch (grown by `grow_mask`);
+  below `1.0` it keeps the original as a starting point. Flake Generate samples
+  at this denoise.
+- Without a mask the whole image is redrawn at `denoise` (img2img).
+- `positive_prompt` / `negative_prompt` are appended to the chain prompt.
+
+To fix an image Flakes made, drop it into ComfyUI to restore its workflow,
+insert Flake Inpaint before Flake Generate and load the same image.
+
 ### Flake Data Split
 
 TODO 

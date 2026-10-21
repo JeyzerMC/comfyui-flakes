@@ -181,7 +181,7 @@ HALF = [KF(0.0, 1.0), KF(0.5, 0.0)]
 BASE_DATA = (
     ("MODEL", "CLIP", "VAE"),
     ([["P", {}]], [["N", {}]], {"samples": "l"}, 1024, 1024, "", "", {"stems": []}),
-    (30, 4.0, "euler", "simple"),
+    (30, 4.0, "euler", "simple", 1.0),
 )
 
 
