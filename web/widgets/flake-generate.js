@@ -4,7 +4,9 @@ import { buildModel, openGenerationDataOverlay } from "./generation-data.js";
 
 const ACCENT = "#4a9eff";
 
-export function setupFlakeGenerateWidget(node) {
+// `video`: Flake Generate Animation, whose results are videos read from
+// flake_videos and whose chain comes in on flake_anim_data (#434).
+export function setupFlakeGenerateWidget(node, { video = false } = {}) {
     if (!node.properties) node.properties = {};
 
     // Conditional optional widgets (#306): the ADetailer/Upscale sub-widgets only
@@ -88,7 +90,7 @@ export function setupFlakeGenerateWidget(node) {
     genDataBtn.addEventListener("mouseleave", () => { genDataBtn.style.borderColor = ACCENT + "44"; genDataBtn.style.background = "#222"; });
     genDataBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        const flakeInput = node.inputs?.find(i => i.name === "flake_data");
+        const flakeInput = node.inputs?.find(i => i.name === (video ? "flake_anim_data" : "flake_data"));
         const graph = node.graph;
         let startNode = null;
         if (flakeInput?.link && graph) {
@@ -106,6 +108,7 @@ export function setupFlakeGenerateWidget(node) {
             upscale: !!findWidget("upscale")?.value,
             upscaleModel: findWidget("upscale_model")?.value,
             upscaleFactor: findWidget("upscale_factor")?.value,
+            video,
         });
     });
     topRow.appendChild(genDataBtn);
@@ -120,10 +123,15 @@ export function setupFlakeGenerateWidget(node) {
     imageEl.title = "Double-click to reveal in file explorer";
     imageContainer.appendChild(imageEl);
 
+    const videoEl = document.createElement("video");
+    Object.assign(videoEl, { controls: true, loop: true, muted: true, autoplay: true, title: imageEl.title });
+    css(videoEl, "max-width:100%;border-radius:4px;display:none;");
+    imageContainer.appendChild(videoEl);
+
     // Double-click the output image to reveal it in the OS file explorer (#329).
     let currentImage = null;
     let previewUrl = null; // live sampling preview shown instead of currentImage (#374)
-    imageEl.addEventListener("dblclick", () => {
+    const reveal = () => {
         if (!currentImage) return;
         fetch("/flakes/reveal", {
             method: "POST",
@@ -134,11 +142,13 @@ export function setupFlakeGenerateWidget(node) {
                 type: currentImage.type || "output",
             }),
         }).catch((e) => console.error("[flakes] reveal failed", e));
-    });
+    };
+    imageEl.addEventListener("dblclick", reveal);
+    videoEl.addEventListener("dblclick", reveal);
 
     const noImageLabel = document.createElement("div");
     css(noImageLabel, "font-size:11px;opacity:0.4;text-align:center;padding:8px 0;");
-    noImageLabel.textContent = "No image generated yet";
+    noImageLabel.textContent = video ? "No video generated yet" : "No image generated yet";
     imageContainer.appendChild(noImageLabel);
 
     // Read-only filename label (filename only, full path in tooltip) + dimensions
@@ -156,12 +166,24 @@ export function setupFlakeGenerateWidget(node) {
         return sub ? `${sub}/${img.filename}` : img.filename;
     }
 
+    function showDimensions(w, h) {
+        dimensionsLabel.textContent = `${w} × ${h}`;
+        dimensionsLabel.style.display = "block";
+    }
+    videoEl.addEventListener("loadedmetadata", () => showDimensions(videoEl.videoWidth, videoEl.videoHeight));
+
     function showImage(img) {
         currentImage = img;
         previewUrl = null;
-        imageEl.src = `/view?filename=${encodeURIComponent(img.filename)}&type=${img.type || "output"}&subfolder=${encodeURIComponent(img.subfolder || "")}`;
-        imageEl.style.display = "block";
+        const url = `/view?filename=${encodeURIComponent(img.filename)}&type=${img.type || "output"}&subfolder=${encodeURIComponent(img.subfolder || "")}`;
         noImageLabel.style.display = "none";
+        imageEl.style.display = video ? "none" : "block";
+        videoEl.style.display = video ? "block" : "none";
+        if (video) {
+            videoEl.src = url;
+        } else {
+            imageEl.src = url;
+        }
         const rel = outputRelPath(img);
         if (rel) {
             const fileName = img.filename;
@@ -171,21 +193,18 @@ export function setupFlakeGenerateWidget(node) {
         } else {
             filenameLabel.style.display = "none";
         }
+        if (video) return;
         imageEl.onload = () => {
-            if (imageEl.naturalWidth && imageEl.naturalHeight) {
-                dimensionsLabel.textContent = `${imageEl.naturalWidth} × ${imageEl.naturalHeight}`;
-                dimensionsLabel.style.display = "block";
-            }
+            if (imageEl.naturalWidth && imageEl.naturalHeight) showDimensions(imageEl.naturalWidth, imageEl.naturalHeight);
         };
-        if (imageEl.complete && imageEl.naturalWidth) {
-            dimensionsLabel.textContent = `${imageEl.naturalWidth} × ${imageEl.naturalHeight}`;
-            dimensionsLabel.style.display = "block";
-        }
+        if (imageEl.complete && imageEl.naturalWidth) showDimensions(imageEl.naturalWidth, imageEl.naturalHeight);
     }
 
     function clearImage() {
         previewUrl = null;
         imageEl.style.display = "none";
+        videoEl.style.display = "none";
+        videoEl.pause();
         noImageLabel.style.display = "block";
         filenameLabel.style.display = "none";
         dimensionsLabel.style.display = "none";
@@ -199,6 +218,8 @@ export function setupFlakeGenerateWidget(node) {
         imageEl.onload = null;
         imageEl.src = url;
         imageEl.style.display = "block";
+        videoEl.style.display = "none";
+        videoEl.pause();
         noImageLabel.style.display = "none";
         filenameLabel.style.display = "none";
         dimensionsLabel.style.display = "none";
@@ -251,8 +272,9 @@ export function setupFlakeGenerateWidget(node) {
     const origOnExecuted = node.onExecuted;
     node.onExecuted = function (output) {
         const r = origOnExecuted?.apply(this, arguments);
-        if (output && output.flake_images && output.flake_images.length > 0) {
-            const img = output.flake_images[0];
+        const files = video ? output?.flake_videos : output?.flake_images;
+        if (files && files.length > 0) {
+            const img = files[0];
             showImage(img);
             node.properties._last_image = img;
             // Store ADetailer A/B outputs when present (#328).
@@ -269,7 +291,7 @@ export function setupFlakeGenerateWidget(node) {
             // replaces them with its own result under the empty key, so the
             // overlay shows it once its live preview ends (#374).
             if (!getBatchImages(node)) node.properties._images_by_combo = { "": img };
-        } else if (output && output.flake_images) {
+        } else if (files) {
             clearImage();
         }
         return r;

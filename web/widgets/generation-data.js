@@ -474,6 +474,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         upscale = false,
         upscaleModel,
         upscaleFactor,
+        video = false,
     } = opts;
     const { content, footer, close, handlers } = openOverlay();
     const adetailerAB = getImages().ab;
@@ -566,6 +567,16 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         const fill = fitOn || stacked;
         img.style.width = img.style.height = fill ? "100%" : "auto";
         imageBox.style.overflow = fill ? "hidden" : "auto";
+    }
+    // Flake Generate Animation results play in a <video> in place of the
+    // composite <img>; previews and covers stay images (#434).
+    function addCompositeVideo(imageBox, img, onSize) {
+        const v = document.createElement("video");
+        Object.assign(v, { controls: true, loop: true, muted: true, autoplay: true, title: img.title });
+        css(v, img.style.cssText + "display:none;");
+        v.addEventListener("loadedmetadata", () => onSize(v.videoWidth, v.videoHeight));
+        imageBox.appendChild(v);
+        return v;
     }
     // Collapsed metadata: the image fills the panel, no scrollbar. Expanded: the
     // image keeps its height and the panel scrolls (#411).
@@ -798,7 +809,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         let currentGenerated = null;
         compositeImg.style.cursor = "pointer";
         compositeImg.title = "Double-click to reveal in file explorer";
-        compositeImg.addEventListener("dblclick", () => {
+        const reveal = () => {
             if (!currentGenerated) return;
             fetch("/flakes/reveal", {
                 method: "POST",
@@ -809,13 +820,20 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                     type: currentGenerated.type || "output",
                 }),
             }).catch((e) => console.error("[flakes] reveal failed", e));
-        });
+        };
+        compositeImg.addEventListener("dblclick", reveal);
 
         let stacked = false;
-        const fit = () => fitImage(compositeImg, imageBox, stacked);
+        const fit = () => { fitImage(compositeImg, imageBox, stacked); fitImage(compositeVideo, imageBox, stacked); };
         let shownSize = null; // natural size of the shown output / preview (#417)
         const resize = () => { if (!stacked && shownSize) sizeOverlay(...shownSize, null, fitOn && imageBox); };
         onFitChange = () => { fit(); resize(); };
+        const compositeVideo = addCompositeVideo(imageBox, compositeImg, (w, h) => {
+            compositeDimensions.textContent = `${w} × ${h}`;
+            shownSize = [w, h];
+            resize();
+        });
+        compositeVideo.addEventListener("dblclick", reveal);
 
         const dataWrap = document.createElement("div");
         css(dataWrap, "display:flex;flex-direction:column;gap:10px;");
@@ -867,6 +885,10 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             shownPreview = selectedPreview();
             const generated = shownPreview ? null : selectedResult();
             currentGenerated = generated;
+            const playing = video && !!generated;
+            compositeImg.style.display = playing ? "none" : "block";
+            compositeVideo.style.display = playing ? "block" : "none";
+            if (!playing) compositeVideo.pause();
             stacked = false;
             fit();
             if (shownPreview) {
@@ -876,10 +898,12 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 compositeDimensions.textContent = data.dimensions || "";
             } else if (generated) {
                 dimsFromImage = true;
-                compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
+                const url = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
+                if (playing) compositeVideo.src = url;
+                else compositeImg.src = url;
                 const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
                 compositeLabel.textContent = sub ? `${sub}/${generated.filename}` : generated.filename;
-                compositeDimensions.textContent = (compositeImg.complete && compositeImg.naturalWidth)
+                compositeDimensions.textContent = (!playing && compositeImg.complete && compositeImg.naturalWidth)
                     ? `${compositeImg.naturalWidth} × ${compositeImg.naturalHeight}`
                     : (data.dimensions || "");
             } else {
@@ -1013,7 +1037,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
         let currentGenerated = null;
         compositeImg.style.cursor = "pointer";
         compositeImg.title = "Double-click to reveal in file explorer";
-        compositeImg.addEventListener("dblclick", () => {
+        const reveal = () => {
             if (!currentGenerated) return;
             fetch("/flakes/reveal", {
                 method: "POST",
@@ -1024,13 +1048,20 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                     type: currentGenerated.type || "output",
                 }),
             }).catch((e) => console.error("[flakes] reveal failed", e));
-        });
+        };
+        compositeImg.addEventListener("dblclick", reveal);
 
         let stacked = false;
-        const fit = () => fitImage(compositeImg, imageBox, stacked);
+        const fit = () => { fitImage(compositeImg, imageBox, stacked); fitImage(compositeVideo, imageBox, stacked); };
         let shownSize = null; // natural size of the shown output / preview (#417)
         const resize = () => { if (!stacked && shownSize) sizeOverlay(...shownSize, singleWrap, fitOn && imageBox); };
         onFitChange = () => { fit(); resize(); };
+        const compositeVideo = addCompositeVideo(imageBox, compositeImg, (w, h) => {
+            compositeDimensions.textContent = `${w} × ${h}`;
+            shownSize = [w, h];
+            resize();
+        });
+        compositeVideo.addEventListener("dblclick", reveal);
 
         const dataWrap = document.createElement("div");
         css(dataWrap, "display:flex;flex-direction:column;gap:10px;width:100%;");
@@ -1120,6 +1151,10 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
             shownPreview = selectedPreview();
             const generated = shownPreview ? null : selectedResult();
             currentGenerated = generated;
+            const playing = video && !!generated;
+            compositeImg.style.display = playing ? "none" : "block";
+            compositeVideo.style.display = playing ? "block" : "none";
+            if (!playing) compositeVideo.pause();
             stacked = false;
             fit();
             if (shownPreview) {
@@ -1129,10 +1164,12 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 compositeDimensions.textContent = data.dimensions || "";
             } else if (generated) {
                 dimsFromImage = true;
-                compositeImg.src = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
+                const url = `/view?filename=${encodeURIComponent(generated.filename)}&type=${generated.type || "output"}&subfolder=${encodeURIComponent(generated.subfolder || "")}`;
+                if (playing) compositeVideo.src = url;
+                else compositeImg.src = url;
                 const sub = (generated.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
                 compositeLabel.textContent = sub ? `${sub}/${generated.filename}` : generated.filename;
-                compositeDimensions.textContent = (compositeImg.complete && compositeImg.naturalWidth)
+                compositeDimensions.textContent = (!playing && compositeImg.complete && compositeImg.naturalWidth)
                     ? `${compositeImg.naturalWidth} × ${compositeImg.naturalHeight}`
                     : (data.dimensions || "");
             } else {

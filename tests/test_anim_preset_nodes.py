@@ -34,8 +34,9 @@ def _setup():
     fp.base_path = os.getcwd()
     fp.folder_names_and_paths = {}
     sys.modules["folder_paths"] = fp
-    for name in ("comfy", "comfy.sd", "comfy.utils"):
+    for name in ("comfy", "comfy.sd", "comfy.utils", "comfy.model_management", "comfy_api", "comfy_api.latest"):
         sys.modules.setdefault(name, types.ModuleType(name))
+    sys.modules["comfy_api.latest"].io = types.SimpleNamespace()
 
     nodes = types.ModuleType("nodes")
     for attr in ("CLIPTextEncode", "EmptyLatentImage", "ControlNetApplyAdvanced", "ControlNetLoader", "LoraLoader"):

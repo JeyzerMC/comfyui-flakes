@@ -5,12 +5,15 @@ from __future__ import annotations
 import dataclasses
 import os
 
+import comfy.model_management
+import folder_paths
 import nodes
+from comfy_api.latest import io
 
 from . import flake_families, flake_io
 from .flake_compose import _load_lora
 from .flake_io import _resolve_model_name
-from .full_flake_node import _apply_preset_overrides, _join_prompts, _resolve_flakes
+from .full_flake_node import _apply_preset_overrides, _build_filename_prefix, _join_prompts, _resolve_flakes
 
 _PLACEHOLDERS = ("Select a preset...", "No model preset is selected")
 
@@ -214,3 +217,121 @@ class FlakeAnimCombo(FlakeAnimStack):
     """Same backend as FlakeAnimStack; the frontend keeps one active flake in
     ``flakes_json`` per queued combination, like FlakeCombo."""
     pass
+
+
+# MiniMax H3 renders at a fixed 24 fps (FPS in comfy_extras/nodes_minimax_h3.py).
+_MH3_FPS = 24
+
+
+def _video_size(image, resolution: str, multiple: int) -> tuple[int, int]:
+    """The preset's short edge (480p/580p/720p) at the start image's aspect,
+    both sides rounded to ``multiple`` (Wan 2.2 takes 16, MiniMax H3 32)."""
+    h, w = image.shape[1], image.shape[2]
+    scale = int(resolution.rstrip("p")) / min(w, h)
+    return max(multiple, round(w * scale / multiple) * multiple), max(multiple, round(h * scale / multiple) * multiple)
+
+
+def _timing(family: str, preset: dict) -> tuple[int, int]:
+    """Frame count to request and the video fps. Wan 2.2 takes 4k+1 frames at
+    the preset fps; MiniMax H3 snaps the count to its own grid."""
+    if family == "wan22":
+        return round(preset["duration"] * preset["fps"] / 4) * 4 + 1, preset["fps"]
+    return round(preset["duration"] * _MH3_FPS), _MH3_FPS
+
+
+def _sample_wan22(data, seed, width, height, length):
+    """High-noise model up to ``refiner_step``, low-noise model for the rest."""
+    m = nodes.NODE_CLASS_MAPPINGS
+    p = data["preset"]
+    shift = m["ModelSamplingSD3"]()
+    high = shift.patch(data["models"]["high"], p["shift_high"])[0]
+    low = shift.patch(data["models"]["low"], p["shift_low"])[0]
+    encode = m["CLIPTextEncode"]()
+    positive, negative, latent = m["WanImageToVideo"].execute(
+        encode.encode(data["clip"], data["pos_text"])[0], encode.encode(data["clip"], data["neg_text"])[0],
+        data["vae"], width, height, length, 1, start_image=data["image"]).result
+    ks = m["KSamplerAdvanced"]()
+    sampling = (p["steps"], p["cfg"], p["sampler"], p["scheduler"], positive, negative)
+    latent = ks.sample(high, "enable", seed, *sampling, latent, 0, p["refiner_step"], "enable")[0]
+    latent = ks.sample(low, "disable", seed, *sampling, latent, p["refiner_step"], 10000, "disable")[0]
+    return m["VAEDecode"]().decode(data["vae"], latent)[0], None
+
+
+def _sample_mh3(data, seed, width, height, length):
+    m = nodes.NODE_CLASS_MAPPINGS
+    p = data["preset"]
+    model = m["MiniMaxH3SigmaShift"].execute(data["models"]["model"], p["shift_video"], p["shift_audio"]).result[0]
+    positive, latent = m["MiniMaxH3ImageToVideo"].execute(
+        data["clip"], data["vae"], data["pos_text"], width, height, length, first_frame=data["image"]).result
+    negative = m["CLIPTextEncode"]().encode(data["clip"], data["neg_text"])[0]
+    latent = m["KSampler"]().sample(model, seed, p["steps"], p["cfg"], p["sampler"], p["scheduler"],
+                                    positive, negative, latent, denoise=1.0)[0]
+    # The AV latent decodes as is: VAEDecode reads its video half, VAEDecodeAudio its audio half.
+    images = m["VAEDecode"]().decode(data["vae"], latent)[0]
+    audio = m["VAEDecodeAudio"].execute(vae=data["audio_vae"], samples=latent).result[0]
+    return images, audio
+
+
+class FlakeGenerateAnimation:
+    """Samples a FLAKE_ANIM_DATA chain into a video, optionally upscales and
+    frame-interpolates it, and saves it with core Create Video / Save Video."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "flake_anim_data": ("FLAKE_ANIM_DATA",),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True}),
+            },
+            "optional": {
+                "upscale_model": (["None"] + folder_paths.get_filename_list("upscale_models"), {"default": "None"}),
+                "interpolation_model": (["None"] + folder_paths.get_filename_list("frame_interpolation"), {
+                    "default": "None", "tooltip": "Doubles the frame count and the fps."}),
+                "headroom": ("FLOAT", {
+                    "default": 0.0, "min": 0.0, "max": 64.0, "step": 0.5,
+                    "tooltip": "GB of VRAM kept free while sampling and decoding, on top of ComfyUI's reserve."}),
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "execute"
+    CATEGORY = "flakes"
+    DESCRIPTION = "Generate a video from FLAKE_ANIM_DATA and its start image, then save it as MP4. Displays the result inline."
+    OUTPUT_NODE = True
+
+    def execute(self, flake_anim_data, seed, upscale_model="None", interpolation_model="None", headroom=0.0,
+                prompt=None, extra_pnginfo=None):
+        data = flake_anim_data
+        if data["image"] is None:
+            raise ValueError("Flake Generate Animation has no start image — connect an image to a Flake Animate Stack/Combo.")
+        family, preset = data["family"], data["preset"]
+        width, height = _video_size(data["image"], preset["resolution"], 16 if data["family"] == "wan22" else 32)
+        length, fps = _timing(family, preset)
+        sample = _sample_wan22 if family == "wan22" else _sample_mh3
+
+        reserved = comfy.model_management.EXTRA_RESERVED_VRAM
+        comfy.model_management.EXTRA_RESERVED_VRAM = reserved + int(headroom * 1024 ** 3)
+        try:
+            images, audio = sample(data, seed, width, height, length)
+        finally:
+            comfy.model_management.EXTRA_RESERVED_VRAM = reserved
+
+        m = nodes.NODE_CLASS_MAPPINGS
+        if upscale_model != "None":
+            model = m["UpscaleModelLoader"].execute(upscale_model).result[0]
+            images = m["ImageUpscaleWithModel"].execute(model, images).result[0]
+        if interpolation_model != "None":
+            model = m["FrameInterpolationModelLoader"].execute(interpolation_model).result[0]
+            images = m["FrameInterpolate"].execute(model, images, 2).result[0]
+            fps *= 2
+
+        video = m["CreateVideo"].execute(images, fps, audio).result[0]
+        fs = data["filename_state"]
+        save = m["SaveVideo"].PREPARE_CLASS_CLONE(
+            {"hidden_inputs": {io.Hidden.prompt: prompt, io.Hidden.extra_pnginfo: extra_pnginfo}})
+        saved = save.execute(video, _build_filename_prefix(fs["preset"], fs["stems"]), "mp4").ui.as_dict()["images"]
+        return {"ui": {"flake_videos": saved, "seed": [seed]}}

@@ -27,7 +27,7 @@ else:
 from .full_flake_node import FlakeModelPreset, FlakeStack, FlakeCombo, FlakeModelCombo  # noqa: E402
 from .flake_data_nodes import FlakeDataSplitAll, FlakeDataSplitSelect, IntoFlakeDataAll, IntoFlakeDataSelect, PreviewFlakeData, FlakeGenerate  # noqa: E402
 from .flake_extra_nodes import FlakeIPAdapter, FlakeInpaint  # noqa: E402
-from .flake_anim_nodes import FlakeAnimPreset, FlakeAnimPresetCombo, FlakeAnimStack, FlakeAnimCombo  # noqa: E402
+from .flake_anim_nodes import FlakeAnimPreset, FlakeAnimPresetCombo, FlakeAnimStack, FlakeAnimCombo, FlakeGenerateAnimation  # noqa: E402
 from . import flake_server  # noqa: E402,F401 — registers aiohttp routes on import
 
 NODE_CLASS_MAPPINGS = {
@@ -47,6 +47,7 @@ NODE_CLASS_MAPPINGS = {
     "FlakeAnimPresetCombo": FlakeAnimPresetCombo,
     "FlakeAnimStack": FlakeAnimStack,
     "FlakeAnimCombo": FlakeAnimCombo,
+    "FlakeGenerateAnimation": FlakeGenerateAnimation,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -66,6 +67,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "FlakeAnimPresetCombo": "Flake Animate Preset Combo",
     "FlakeAnimStack": "Flake Animate Stack",
     "FlakeAnimCombo": "Flake Animate Combo",
+    "FlakeGenerateAnimation": "Flake Generate Animation",
 }
 WEB_DIRECTORY = "./web"
 

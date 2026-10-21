@@ -117,6 +117,9 @@ function getPromptIdFromEvent(e) {
 const _batchStates = new WeakMap(); // workflow -> { generating, images, completed, total }
 const _batchListeners = new Set();
 
+// Nodes that sample a chain: they show previews and keep per-combination results.
+const GENERATE_TYPES = ["FlakeGenerate", "FlakeGenerateAnimation"];
+
 function activeWorkflow() {
     // Frontends without a workflow store have a single implicit workflow.
     return app.extensionManager?.workflow?.activeWorkflow ?? app;
@@ -158,7 +161,7 @@ function renderHighlights(state) {
 // FlakeGenerate nodes read the active workflow's state themselves.
 function renderResults() {
     for (const n of app.graph.nodes) {
-        if (n.type === "FlakeGenerate") n._flake_generate_render?.();
+        if (GENERATE_TYPES.includes(n.type)) n._flake_generate_render?.();
     }
     for (const fn of _batchListeners) fn();
 }
@@ -189,7 +192,7 @@ export function getLivePreview(node) {
 // propagation here hides the event from it.
 _resolveComfyApi()?.addEventListener("b_preview_with_metadata", (e) => {
     const { blob, displayNodeId, jobId } = e.detail;
-    if (app.graph?.getNodeById(displayNodeId)?.type !== "FlakeGenerate") return;
+    if (!GENERATE_TYPES.includes(app.graph?.getNodeById(displayNodeId)?.type)) return;
     e.stopImmediatePropagation();
     setPreview({ url: URL.createObjectURL(blob), nodeId: String(displayNodeId), promptId: jobId });
 });
@@ -218,7 +221,7 @@ function installQueuePromptWrapper(comfyApi) {
         const comboKey = _currentBatchComboKey;
         const comboIndex = _currentComboIndex;
         if ((!opts?.previewMethod || opts.previewMethod === "default")
-            && Object.values(data?.output || {}).some(n => n?.class_type === "FlakeGenerate")
+            && Object.values(data?.output || {}).some(n => GENERATE_TYPES.includes(n?.class_type))
             && await serverPreviewDefault() === "none") {
             opts = { ...opts, previewMethod: "auto" };
         }
@@ -369,10 +372,11 @@ function setupBatchTracking(state, combinations, comboKeys) {
     }
 
     // A FlakeGenerate output (from the `executed` event or /history): store
-    // its images by the prompt's comboKey under the producing node's id.
+    // its images (or FlakeGenerateAnimation's videos) by the prompt's comboKey
+    // under the producing node's id.
     function handleOutput(pid, nodeId, output) {
         const idx = promptIds.indexOf(pid);
-        const images = output?.flake_images;
+        const images = output?.flake_images || output?.flake_videos;
         if (idx < 0 || !Array.isArray(images) || images.length === 0) return;
         const comboKey = comboKeys[idx] ?? "";
         const entry = state.images[nodeId] || (state.images[nodeId] = { combo: {}, ad: {}, ab: false, last: null, lastKey: null });
@@ -459,7 +463,7 @@ function orderedComboNodes() {
     const ordered = [];
     const seen = new Set();
     for (const gen of app.graph.nodes) {
-        if (gen.type !== "FlakeGenerate" && gen.type !== "FlakeGenerateAnimation") continue;
+        if (!GENERATE_TYPES.includes(gen.type)) continue;
         const fdInput = gen.inputs?.find(i => i.name === "flake_data" || i.name === "flake_anim_data");
         if (fdInput?.link == null) continue;
         const link = app.graph.links?.[fdInput.link];
@@ -590,7 +594,7 @@ app.queuePrompt = async function(number, batchCount = 1) {
         }
     }
 
-    const flakeGenerateNodes = app.graph.nodes.filter(n => n.type === "FlakeGenerate");
+    const flakeGenerateNodes = app.graph.nodes.filter(n => GENERATE_TYPES.includes(n.type));
 
     // Clean up any previous batch tracking
     if (_batchCleanup) {

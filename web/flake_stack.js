@@ -210,11 +210,12 @@ app.registerExtension({
                 return r;
             };
         }
-        if (nodeData.name === "FlakeGenerate") {
+        if (nodeData.name === "FlakeGenerate" || nodeData.name === "FlakeGenerateAnimation") {
+            const video = nodeData.name === "FlakeGenerateAnimation";
             const origOnNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 const r = origOnNodeCreated?.apply(this, arguments);
-                setupFlakeGenerateWidget(this);
+                setupFlakeGenerateWidget(this, { video });
                 if (!this._configured) {
                     setDefaultSize(this, 300);
                 }

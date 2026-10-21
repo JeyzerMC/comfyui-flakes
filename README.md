@@ -284,6 +284,33 @@ diffusion model, so the files go in `models/model_patches/`, not
 
 ---
 
+## Flake Animate
+
+Image-to-video with its own presets and nodes: **Flake Animate Preset** /
+**Preset Combo** load an animate preset into a `flake_anim_data` pin, **Flake
+Animate Stack** / **Combo** add flakes and the start image, and **Flake Generate
+Animation** samples it and saves an MP4 to `output/anim/<family>/`.
+
+| Family | Folder | Models | Text encoder type | VAEs |
+|---|---|---|---|---|
+| `Wan 2.2` | `wan22` | high-noise + low-noise diffusion models | `WAN` | Wan VAE |
+| `MiniMax H3` | `mh3` | one diffusion model | `MINIMAX` | video VAE + audio VAE |
+
+All files load with ComfyUI's core loaders (diffusion models, text encoders,
+VAEs), so they go in the usual `models/` folders. Wan 2.2 LoRAs take a high and
+a low file. MiniMax H3 videos are 24 fps with generated audio.
+
+Flake Generate Animation:
+
+- The video's short edge comes from the preset's resolution (480p / 580p /
+  720p) and its aspect from the start image; both sides round to a multiple of 32.
+- **upscale_model** (`models/upscale_models/`) upscales every frame.
+- **interpolation_model** (`models/frame_interpolation/`, RIFE or FILM) doubles
+  the frame count and the fps.
+- **headroom** keeps that many GB of VRAM free while sampling and decoding.
+
+---
+
 ## Nodes
 
 ### Flake Stack
