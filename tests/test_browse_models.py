@@ -114,3 +114,13 @@ def test_parent_of_models_is_refused(models):
 def test_diffusion_model_sibling_image(models):
     resp = asyncio.run(srv._get_diffusion_model_sibling_image(_Request(query={"path": "wan_high.safetensors"})))
     assert (resp.status, resp.content_type) == (200, "image/png")
+
+
+def test_roots_exclude_temp_local_root(tmp_path):
+    fp.get_temp_directory = lambda: str(tmp_path / "temp")
+    fp.models_dir = str(tmp_path / "models")
+    for kind in ("flakes", "model_presets"):
+        real = str(tmp_path / "models" / kind)
+        fp.get_folder_paths = lambda k, real=real, kind=kind: [real, srv.flake_io.local_root(kind)]
+        roots = asyncio.run(srv._list_roots(_Request(query={"type": kind}))).data["roots"]
+        assert [r["index"] for r in roots] == [0]

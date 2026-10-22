@@ -2016,6 +2016,12 @@ def install_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
 _LOCAL_PREFIX_RE = re.compile(r"^_local/[0-9a-f]+/")
 
 
+def local_root(kind: str) -> str:
+    """Temp directory staged workflow-local items live in, for ``flakes`` or ``model_presets``."""
+    root = os.path.join(folder_paths.get_temp_directory(), "flakes_local")
+    return root if kind == "flakes" else os.path.join(root, kind)
+
+
 def stage_bundle(bundle: dict[str, Any]) -> dict[str, dict[str, str]]:
     """Stage a ``collect_bundle`` bundle as workflow-local flakes and presets.
     Returns the {name: staged name} of flakes and presets; staging the same
@@ -2023,8 +2029,7 @@ def stage_bundle(bundle: dict[str, Any]) -> dict[str, dict[str, str]]:
     _check_bundle(bundle)
     blobs = bundle.get("files") or {}
     prefix = f"_local/{hashlib.sha256(json.dumps(bundle, sort_keys=True).encode()).hexdigest()[:16]}/"
-    flakes_root = os.path.join(folder_paths.get_temp_directory(), "flakes_local")
-    roots = {"flakes": flakes_root, "presets": os.path.join(flakes_root, "model_presets")}
+    roots = {"flakes": local_root("flakes"), "presets": local_root("model_presets")}
     folder_paths.add_model_folder_path("flakes", roots["flakes"])
     folder_paths.add_model_folder_path("model_presets", roots["presets"])
     renames = {kind: {name: prefix + name for name in bundle.get(kind) or {}} for kind in roots}

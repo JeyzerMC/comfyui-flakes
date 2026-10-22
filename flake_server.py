@@ -701,10 +701,11 @@ async def _list_roots(request: web.Request) -> web.Response:
     if kind == "model_presets":
         install_dir = os.path.join(install_dir, "model_presets")
     install_dir = os.path.normcase(os.path.realpath(install_dir))
+    local_dir = os.path.normcase(os.path.realpath(flake_io.local_root(kind)))
     base_root = None
     extra_roots = []
     for i, root in enumerate(roots):
-        if not root or not isinstance(root, str):
+        if not root or not isinstance(root, str) or os.path.normcase(os.path.realpath(root)) == local_dir:
             continue
         if os.path.normcase(os.path.realpath(root)) == install_dir:
             base_root = {"index": i, "path": root, "label": "Comfy Install", "is_install": True}
