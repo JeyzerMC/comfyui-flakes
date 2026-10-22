@@ -208,8 +208,8 @@ MODEL_FAMILIES: list[str] = [f.label for f in FAMILIES if f.selectable]
 
 # --- Animate (image-to-video) families --------------------------------------
 # Kept apart from FAMILIES so they never reach the image dropdowns or the
-# routing maps above. ``folder`` is the segment under ``models/flakes/anim/``
-# and ``models/flakes/model_presets/anim/``.
+# routing maps above. ``folder`` is the segment under ``models/flakes/video/``
+# and ``models/flakes/model_presets/video/``.
 
 ANIM_RESOLUTIONS: tuple[str, ...] = ("480p", "580p", "720p")
 

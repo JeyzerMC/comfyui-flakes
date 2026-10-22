@@ -185,7 +185,7 @@ class ModelPreset:
 @dataclass
 class AnimPreset:
     """Animate (image-to-video) preset, stored under
-    ``model_presets/anim/<family folder>/``. Unset numbers fall back to the
+    ``model_presets/video/<family folder>/``. Unset numbers fall back to the
     family's defaults in ``flake_families.ANIM_FAMILIES``."""
     name: str
     family: str  # ANIM_FAMILIES folder
@@ -426,15 +426,17 @@ def _resolve_file(name: str) -> str:
 
 # Top-level folders of a flakes root that never hold image flakes: the presets
 # root nested under it, the animate flakes and the workflow-local flakes (#437).
-_NON_IMAGE_DIRS = ("model_presets", "anim", "_local")
+# ANIM_DIR holds the animate flakes and presets (kind "anim") and outputs.
+ANIM_DIR = "video"
+_NON_IMAGE_DIRS = ("model_presets", ANIM_DIR, "_local")
 
 
 def _in_listing(rel: str, family: str | None, kind: str) -> bool:
     """Whether flake path *rel* belongs to a ``kind`` listing: "img" (outside
-    ``_NON_IMAGE_DIRS``, filtered by family) or "anim" (``anim/``, narrowed to
-    ``anim/<folder>/`` by an animate ``family``)."""
+    ``_NON_IMAGE_DIRS``, filtered by family) or "anim" (``video/``, narrowed to
+    ``video/<folder>/`` by an animate ``family``)."""
     if kind == "anim":
-        return rel.startswith(f"anim/{_anim_family_folder(family)}/" if family else "anim/")
+        return rel.startswith(f"{ANIM_DIR}/{_anim_family_folder(family)}/" if family else f"{ANIM_DIR}/")
     return rel.split("/", 1)[0] not in _NON_IMAGE_DIRS and (family is None or _is_flake_compatible(rel, family))
 
 
@@ -633,8 +635,9 @@ def save_flake(
     else:
         _validate_name(name)
         folder = _anim_family_folder(family) if kind == "anim" else _family_folder(family)
-        if folder and not name.startswith(f"{kind}/{folder}/"):
-            canonical = f"{kind}/{folder}/{name}"
+        top = ANIM_DIR if kind == "anim" else kind
+        if folder and not name.startswith(f"{top}/{folder}/"):
+            canonical = f"{top}/{folder}/{name}"
         else:
             canonical = name
 
@@ -923,7 +926,7 @@ _IMPORT_CHOICE_KEYS = ("positive", "negative", "output_stem", "image", "default"
 
 def import_anim_flake(source: str, family: str) -> str:
     """Copy image flake *source* into animate *family* as
-    ``anim/<folder>/<source path minus img/<folder>/>`` (then " (2)", ...) and
+    ``video/<folder>/<source path minus img/<folder>/>`` (then " (2)", ...) and
     return the new name (#433). Its name, prompts, output stem, type, serie,
     variant choice prompts/stems/defaults, cover and choice images come along;
     LoRAs, ControlNets, flake links and resolution belong to the image model
@@ -932,7 +935,7 @@ def import_anim_flake(source: str, family: str) -> str:
     raw = read_flake_raw(source)
     parts = source.split("/")
     rel = "/".join(parts[2:]) if parts[0] == "img" and len(parts) > 2 else source
-    stem = f"anim/{_anim_family_folder(family)}/{rel}"
+    stem = f"{ANIM_DIR}/{_anim_family_folder(family)}/{rel}"
     root = _primary_root()
     taken = set(list_flakes(kind="anim"))
     # A deleted flake keeps its owned folder: don't copy into it.
@@ -1546,12 +1549,12 @@ def _anim_family_folder(family: str | None) -> str:
 
 
 def list_presets(family: str | None = None, roots: list[str] | None = None, kind: str = "img", local: bool = False) -> list[str]:
-    """Preset names of one ``kind``: "img" (everything outside ``anim/``) or
-    "anim" (``anim/<folder>/``). Workflow-local ``_local/`` presets (#437) are
+    """Preset names of one ``kind``: "img" (everything outside ``video/``) or
+    "anim" (``video/<folder>/``). Workflow-local ``_local/`` presets (#437) are
     left out unless *local*: the node accepts them, the pickers don't list them."""
-    anim_prefix = "anim/"
+    anim_prefix = f"{ANIM_DIR}/"
     if kind == "anim" and family:
-        anim_prefix = f"anim/{_anim_family_folder(family)}/"
+        anim_prefix = f"{ANIM_DIR}/{_anim_family_folder(family)}/"
     names: set[str] = set()
     for root in roots or _presets_roots():
         if not os.path.isdir(root):
@@ -1567,7 +1570,7 @@ def list_presets(family: str | None = None, roots: list[str] | None = None, kind
                 if kind == "anim":
                     if rel_norm.startswith(anim_prefix):
                         names.add(rel_norm)
-                elif rel_norm.split("/", 1)[0] not in (("anim",) if local else ("anim", "_local")) and (family is None or _is_preset_compatible(rel_norm, family)):
+                elif rel_norm.split("/", 1)[0] not in ((ANIM_DIR,) if local else (ANIM_DIR, "_local")) and (family is None or _is_preset_compatible(rel_norm, family)):
                     names.add(rel_norm)
     return sorted(names)
 
@@ -1625,7 +1628,7 @@ def save_preset(
         new destination.
     kind
         "img", or "anim" for an animate preset: ``family`` is then an
-        ``ANIM_FAMILIES`` label and the path is prefixed with ``anim/<folder>``.
+        ``ANIM_FAMILIES`` label and the path is prefixed with ``video/<folder>``.
     """
     if not isinstance(data, dict):
         raise ValueError("preset data must be an object")
@@ -1639,14 +1642,15 @@ def save_preset(
         root = _primary_presets_root()
 
     folder = _anim_family_folder(family) if kind == "anim" else _family_folder(family)
+    top = ANIM_DIR if kind == "anim" else kind
     if output_path:
         canonical = output_path.replace("\\", "/").strip("/")
         _validate_name(canonical)
         if folder:
-            canonical = f"{kind}/{folder}/{canonical}"
+            canonical = f"{top}/{folder}/{canonical}"
     else:
         _validate_name(name)
-        canonical = f"{kind}/{folder}/{name}" if folder else name
+        canonical = f"{top}/{folder}/{name}" if folder else name
 
     target = os.path.join(root, f"{canonical}.yaml")
     _ensure_inside(target, root)
@@ -1813,9 +1817,9 @@ def _num(raw: dict[str, Any], key: str, default, cast=float):
 
 def load_anim_preset(name: str) -> AnimPreset:
     parts = name.split("/")
-    spec = flake_families.ANIM_BY_FOLDER.get(parts[1]) if parts[0] == "anim" and len(parts) >= 3 else None
+    spec = flake_families.ANIM_BY_FOLDER.get(parts[1]) if parts[0] == ANIM_DIR and len(parts) >= 3 else None
     if spec is None:
-        raise ValueError(f"'{name}' is not under model_presets/anim/<family>/")
+        raise ValueError(f"'{name}' is not under model_presets/{ANIM_DIR}/<family>/")
     raw = read_preset_raw(name)
     prompt = raw.get("prompt") or {}
     return AnimPreset(

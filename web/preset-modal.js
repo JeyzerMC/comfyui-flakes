@@ -3,7 +3,7 @@ import {
     css, makeButton, makeComfyLabel, makeComfyInput,
     makeComfyDropdown, makeSearchableDropdown, makeChipMultiSelect, makeComfySlider,
     makeTextarea, makeHoverRemoveWrapper, attachAutoGrow,
-    familyFolder, familyFromFolder, familySpec, ensureFamilies,
+    familyFolder, familyFromFolder, familySpec, ensureFamilies, ANIM_DIR,
 } from "./utils.js";
 import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchEmbeddings, inputImageUrl, fetchAnimFamilies, fetchAnimFamily } from "./api.js";
 import { openFileBrowser, IMAGE_ROOTS } from "./pickers.js";
@@ -84,7 +84,7 @@ export async function openPresetEditModal({ mode, name, data, family = "SDXL/Bas
 
         function stripPresetPrefix(p) {
             const parts = p.replace(/\\/g, "/").split("/");
-            if (parts.length >= 3 && ((parts[0] === "img" && FAMILY_FROM_FOLDER[parts[1]]) || parts[0] === "anim")) return parts.slice(2).join("/");
+            if (parts.length >= 3 && ((parts[0] === "img" && FAMILY_FROM_FOLDER[parts[1]]) || parts[0] === ANIM_DIR)) return parts.slice(2).join("/");
             if (parts.length >= 2 && FAMILY_FROM_FOLDER[parts[0]]) return parts.slice(1).join("/");
             return p;
         }

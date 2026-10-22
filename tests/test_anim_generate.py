@@ -84,7 +84,7 @@ def _save_video():
         def execute(*args):
             CALLS.append(("SaveVideo", args, v3_data["hidden_inputs"], mm.EXTRA_RESERVED_VRAM))
             return _Out(ui=types.SimpleNamespace(as_dict=lambda: {
-                "images": [{"filename": "clip_00001_.mp4", "subfolder": "anim", "type": "output"}]}))
+                "images": [{"filename": "clip_00001_.mp4", "subfolder": "video", "type": "output"}]}))
         return types.SimpleNamespace(execute=execute)
     return types.SimpleNamespace(PREPARE_CLASS_CLONE=prepare)
 
@@ -118,7 +118,7 @@ def _data(family, **preset):
         "family": family, "preset": {**base, **preset}, "models": models,
         "clip": "clip", "vae": "vae", "audio_vae": "audio_vae" if family == "mh3" else None,
         "image": IMAGE, "pos_text": "fennec ears twitch", "neg_text": "blurry",
-        "filename_state": {"preset": "", "stems": [f"anim/{family}/", "fennec"]},
+        "filename_state": {"preset": "", "stems": [f"video/{family}/", "fennec"]},
     }
 
 
@@ -157,9 +157,9 @@ def test_wan22_pipeline():
     (_, args, _, _), = _call("CreateVideo")
     assert args == ("VAEDecode", 16, None)
     (_, args, hidden, _), = _call("SaveVideo")
-    assert args[0] == "CreateVideo" and args[1].startswith("anim/wan22/") and args[1].endswith("_fennec")
+    assert args[0] == "CreateVideo" and args[1].startswith("video/wan22/") and args[1].endswith("_fennec")
     assert args[2] == "mp4" and hidden == {"PROMPT": {"1": {}}, "EXTRA_PNGINFO": {"workflow": {}}}
-    assert out["ui"] == {"flake_videos": [{"filename": "clip_00001_.mp4", "subfolder": "anim", "type": "output"}],
+    assert out["ui"] == {"flake_videos": [{"filename": "clip_00001_.mp4", "subfolder": "video", "type": "output"}],
                          "seed": [7]}
 
 

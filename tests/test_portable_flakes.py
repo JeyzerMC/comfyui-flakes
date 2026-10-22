@@ -256,7 +256,7 @@ def test_save_moves_low_lora_file():
         ]}, family="Wan 2.2", kind="anim")
         lora = fio.read_flake_raw(name)["loras"][0]
         assert (lora["path"], lora["path_low"]) == ("./fennec/fennec_Swish.safetensors", "./fennec/fennec_Swish_low.safetensors")
-        owned = os.path.join(root, "anim", "wan22", "fennec")
+        owned = os.path.join(root, "video", "wan22", "fennec")
         for fn in ("fennec_Swish.safetensors", "fennec_Swish_low.safetensors", "fennec_Swish_low.preview.png"):
             assert _exists(owned, fn), fn
         assert not _exists(loras, "wan", "swish_low.safetensors")

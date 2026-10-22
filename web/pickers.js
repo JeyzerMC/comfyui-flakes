@@ -1,5 +1,5 @@
 import { openOverlay } from "./modal.js";
-import { css, makeButton, makeComfyInput, makeComfyValueSlider, familyFolder, renderFlakeLabel } from "./utils.js";
+import { css, makeButton, makeComfyInput, makeComfyValueSlider, familyFolder, renderFlakeLabel, ANIM_DIR } from "./utils.js";
 import { getCoverUrl, getVariantImageUrl, fetchBrowse, fetchLoras, fetchCheckpoints, fetchAnimFamily, pickedImageUrl } from "./api.js";
 
 const BROWSE_TYPE_LABELS = {
@@ -22,12 +22,12 @@ const withoutPresets = (names) => names.filter(n => {
 });
 
 // `kind` "anim" picks animate flakes: `family` is an animate family label and
-// the picker opens in its anim/<folder>.
+// the picker opens in its video/<folder>.
 export async function openFileLoadPicker({ flakes, directories, family = "", kind = "img", displayNames = {}, tagNames = {}, favorites = [], folderCovers = {} }) {
     const animFolder = kind === "anim" ? (await fetchAnimFamily(family).catch(() => null))?.folder : null;
     return openNamePicker({
         title: "Load existing flake", kind: "flakes", drivesKind: kind === "anim" ? "anim" : "flakes", noun: "flake", base: "models/flakes/",
-        names: withoutPresets(flakes), directories: withoutPresets(directories), family, startFolder: animFolder ? `anim/${animFolder}` : null,
+        names: withoutPresets(flakes), directories: withoutPresets(directories), family, startFolder: animFolder ? `${ANIM_DIR}/${animFolder}` : null,
         coverUrl: getCoverUrl, favorites, folderCovers,
         // Stacked label with a dimmer tag line, matching the grid (#297).
         renderLabel: (el, name) => renderFlakeLabel(el, { name: displayNames[name] || name.split("/").pop(), tags: tagNames[name] || [] }),
@@ -45,11 +45,11 @@ export async function openPresetPicker({ selected = "", family = "", kind = "img
     } catch (err) {
         console.error("[flakes] failed to load presets for picker:", err);
     }
-    // Animate presets open in anim/<folder>; image ones derive img/<folder> from the family.
+    // Animate presets open in video/<folder>; image ones derive img/<folder> from the family.
     const animFolder = kind === "anim" ? (await fetchAnimFamily(family).catch(() => null))?.folder : null;
     return openNamePicker({
         title: "Select a Preset", kind: "presets", noun: "preset", base: "model_presets/",
-        names: presets, family, selected, startFolder: animFolder ? `anim/${animFolder}` : null,
+        names: presets, family, selected, startFolder: animFolder ? `${ANIM_DIR}/${animFolder}` : null,
         coverUrl: (name) => `/flakes/preset_cover?name=${encodeURIComponent(name)}`,
         renderLabel: (el, name) => { el.textContent = displayNames[name] || name.replace(/\\/g, "/").split("/").pop(); },
     });

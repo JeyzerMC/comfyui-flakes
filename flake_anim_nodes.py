@@ -67,7 +67,7 @@ def _load_anim_preset_data(preset_name: str) -> dict:
 
     models, lora_entries = _apply_anim_loras(models, p.loras)
 
-    stems = [f"anim/{p.family}/"]
+    stems = [f"{flake_io.ANIM_DIR}/{p.family}/"]
     if p.filename_prefix.strip():
         stems.append(p.filename_prefix.strip())
     return {

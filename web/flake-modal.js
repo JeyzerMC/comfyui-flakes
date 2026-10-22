@@ -4,7 +4,7 @@ import {
     makeComfyDropdown, makePanelDropdown, makeSearchableDropdown,
     makeComfyNumberInput, makeComfyValueSlider, makeSmallValueSlider,
     makeTextarea, makeNumberInput, attachAutoGrow,
-    familyFolder, familyFromFolder, makeHoverRemoveWrapper, CN_MODEL_MAP,
+    familyFolder, familyFromFolder, makeHoverRemoveWrapper, CN_MODEL_MAP, ANIM_DIR,
 } from "./utils.js";
 import {
     getCoverUrl, getVariantImageUrl, flakeAssetUrl, pickedImageUrl, fetchCnTypes, fetchInputs,
@@ -84,7 +84,7 @@ function inferCnFromImage(filename, types = []) {
 }
 
 // `kind` "anim" edits an animate flake (#431): `family` is an animate family
-// label (an edited flake's comes from its anim/<folder>/ name), the flake has
+// label (an edited flake's comes from its video/<folder>/ name), the flake has
 // no ControlNets and Wan 2.2 LoRAs take a LOW file too.
 export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Base", kind = "img" }) {
     const animFamily = kind === "anim"
@@ -220,7 +220,7 @@ export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Bas
         }
 
         function getOutputPrefix() {
-            if (animFamily) return `anim/${animFamily.folder}/`;
+            if (animFamily) return `${ANIM_DIR}/${animFamily.folder}/`;
             const folder = familyFolder(currentFamily);
             return folder ? `img/${folder}/` : "img/";
         }

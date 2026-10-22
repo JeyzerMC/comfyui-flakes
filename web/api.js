@@ -5,7 +5,7 @@ let LIST_KEY = null;
 
 export function invalidateList() { LIST_PROMISE = null; LIST_KEY = null; }
 
-// `kind` "anim" lists the animate flakes under anim/ (#431); `family` is then
+// `kind` "anim" lists the animate flakes under video/ (#431); `family` is then
 // an animate family label.
 export async function fetchList(family = "", kind = "img") {
     const query = new URLSearchParams({ family: family || "", kind });

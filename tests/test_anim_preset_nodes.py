@@ -84,7 +84,7 @@ def _data(preset, overrides=""):
 
 def test_wan22_loads_high_low_and_routes_loras():
     d = _data(_preset(
-        name="anim/wan22/fennec", family="wan22", clip_type="WAN", filename_prefix="fennec/",
+        name="video/wan22/fennec", family="wan22", clip_type="WAN", filename_prefix="fennec/",
         diffusion_model_high="high.safetensors", diffusion_model_low="low.safetensors",
         text_encoder="umt5.safetensors", vae="wan_vae.safetensors", positive=" tail wag ",
         loras=[
@@ -102,26 +102,26 @@ def test_wan22_loads_high_low_and_routes_loras():
     assert (d["family"], d["pos_text"], d["neg_text"]) == ("wan22", "tail wag", "")
     assert d["preset"]["refiner_step"] is None and d["preset"]["steps"] == 4
     fs = d["filename_state"]
-    assert fs["stems"] == ["anim/wan22/", "fennec/"]
+    assert fs["stems"] == ["video/wan22/", "fennec/"]
     assert (fs["checkpoint"], fs["model_family"]) == ("high.safetensors", "Wan 2.2")
     assert [lr["name"] for lr in fs["loras"]] == ["speed", "style"]
 
 
 def test_mh3_loads_audio_vae_and_single_model():
     d = _data(_preset(
-        name="anim/mh3/clip", family="mh3", clip_type="MINIMAX", diffusion_model="mh3.safetensors",
+        name="video/mh3/clip", family="mh3", clip_type="MINIMAX", diffusion_model="mh3.safetensors",
         text_encoder="qwen3vl.safetensors", vae="video_vae.safetensors", audio_vae="audio_vae.safetensors",
         loras=[fio.LoraEntry(path="lora", path_low="ignored", strength=1.0)],
     ))
     assert d["models"] == {"model": ("load_unet", "mh3.safetensors", "default", ("lora", 1.0))}
     assert d["clip"] == ("load_clip", "qwen3vl.safetensors", "minimax")
     assert d["audio_vae"] == ("load_vae", "audio_vae.safetensors")
-    assert d["filename_state"]["stems"] == ["anim/mh3/"]
+    assert d["filename_state"]["stems"] == ["video/mh3/"]
 
 
 def test_missing_model_field_is_a_clear_error():
     try:
-        _data(_preset(name="anim/mh3/x", family="mh3", clip_type="MINIMAX", text_encoder="t", vae="v", audio_vae="a"))
+        _data(_preset(name="video/mh3/x", family="mh3", clip_type="MINIMAX", text_encoder="t", vae="v", audio_vae="a"))
     except ValueError as exc:
         assert "diffusion_model" in str(exc)
     else:
@@ -129,11 +129,11 @@ def test_missing_model_field_is_a_clear_error():
 
 
 def test_overrides_apply_to_preset_and_stems():
-    p = _preset(name="anim/mh3/x", family="mh3", clip_type="MINIMAX", diffusion_model="m",
+    p = _preset(name="video/mh3/x", family="mh3", clip_type="MINIMAX", diffusion_model="m",
                 text_encoder="t", vae="v", audio_vae="a")
     d = _data(p, json.dumps({"steps": 8, "cfg": "", "scheduler": "beta", "filename_prefix": "take2"}))
     assert (d["preset"]["steps"], d["preset"]["cfg"], d["preset"]["scheduler"]) == (8, 1.0, "beta")
-    assert d["filename_state"]["stems"] == ["anim/mh3/", "take2"]
+    assert d["filename_state"]["stems"] == ["video/mh3/", "take2"]
     assert _data(p)["preset"]["steps"] == 4
 
 
@@ -164,43 +164,43 @@ def _stack(data, entries):
 
 def test_stack_routes_flake_loras_and_joins_prompts():
     files = {
-        "anim/wan22/tail": {
+        "video/wan22/tail": {
             "prompt": {"positive": "swishing her fluffy tail", "negative": "static"},
             "output_stem": "tail",
             "loras": [{"name": "swish", "path": "swish_hi", "path_low": "swish_lo", "strength": 1.0}],
             "variants": {"mood": {"happy": {"positive": "smiling", "output_stem": "happy",
                                             "loras": [{"path": "smile_hi", "strength": 0.6}]}}},
         },
-        "anim/wan22/off": {"prompt": {"positive": "never"}, "loras": [{"path": "never"}]},
+        "video/wan22/off": {"prompt": {"positive": "never"}, "loras": [{"path": "never"}]},
     }
-    data = _anim_data({"high": ("H",), "low": ("L",)}, ["anim/wan22/"])
+    data = _anim_data({"high": ("H",), "low": ("L",)}, ["video/wan22/"])
     with _flakes(files):
         out = _stack(data, [
             {"inline": True, "content": {"prompt": {"positive": "blue eyes"}}},
-            {"name": "anim/wan22/tail", "loras": [0.5], "variant": {"mood": "happy"}},
-            {"name": "anim/wan22/off", "bypassed": True},
+            {"name": "video/wan22/tail", "loras": [0.5], "variant": {"mood": "happy"}},
+            {"name": "video/wan22/off", "bypassed": True},
         ])
     assert out["models"] == {"high": ("H", ("swish_hi", 0.5), ("smile_hi", 0.6)), "low": ("L", ("swish_lo", 0.5))}
     assert out["pos_text"] == "a fennec girl BREAK blue eyes BREAK swishing her fluffy tail, smiling"
     assert out["neg_text"] == "blurry, static"
     fs = out["filename_state"]
-    assert fs["stems"] == ["anim/wan22/", "tail_happy"]
+    assert fs["stems"] == ["video/wan22/", "tail_happy"]
     assert [lr["name"] for lr in fs["loras"]] == ["speed", "swish", "smile_hi"]
     assert (out["clip"], out["image"], fs["model_family"]) == ("clip", None, "Wan 2.2")
     # The incoming data is left as it was.
     assert data["models"] == {"high": ("H",), "low": ("L",)}
-    assert (data["filename_state"]["stems"], len(data["filename_state"]["loras"])) == (["anim/wan22/"], 1)
+    assert (data["filename_state"]["stems"], len(data["filename_state"]["loras"])) == (["video/wan22/"], 1)
 
 
 def test_stack_single_model_follows_flake_links():
     files = {
-        "anim/mh3/host": {"loras": [{"path": "host", "path_low": "ignored", "strength": 0.8}],
-                          "flake_links": [{"target": "anim/mh3/style"}]},
-        "anim/mh3/style": {"prompt": {"positive": "watercolor"}, "loras": [{"path": "style", "strength": 0.4}]},
+        "video/mh3/host": {"loras": [{"path": "host", "path_low": "ignored", "strength": 0.8}],
+                          "flake_links": [{"target": "video/mh3/style"}]},
+        "video/mh3/style": {"prompt": {"positive": "watercolor"}, "loras": [{"path": "style", "strength": 0.4}]},
     }
     data = {**_anim_data({"model": ("M",)}, []), "image": "upstream"}
     with _flakes(files):
-        out = _stack(data, [{"name": "anim/mh3/host"}])
+        out = _stack(data, [{"name": "video/mh3/host"}])
         kept = _stack(data, [])
     assert out["models"] == {"model": ("M", ("host", 0.8), ("style", 0.4))}
     assert out["pos_text"] == "a fennec girl BREAK watercolor"
@@ -212,12 +212,12 @@ def test_stack_loads_the_job_image_of_active_items():
     one is loaded and replaces the upstream image; the `images` lists and
     bypassed items are ignored."""
     data = {**_anim_data({"model": ("M",)}, []), "image": "upstream"}
-    with _flakes({"anim/mh3/a": {}, "anim/mh3/b": {}}):
+    with _flakes({"video/mh3/a": {}, "video/mh3/b": {}}):
         picked = _stack(data, [
             {"inline": True, "content": {}, "image": "pose/first.png"},
-            {"name": "anim/mh3/a", "images": ["x.png", "y.png"], "image": "C:/shots/fennec.png"},
-            {"name": "anim/mh3/b", "bypassed": True, "image": "skipped.png"},
+            {"name": "video/mh3/a", "images": ["x.png", "y.png"], "image": "C:/shots/fennec.png"},
+            {"name": "video/mh3/b", "bypassed": True, "image": "skipped.png"},
         ])
-        listed = _stack(data, [{"name": "anim/mh3/a", "images": ["x.png"]}])
+        listed = _stack(data, [{"name": "video/mh3/a", "images": ["x.png"]}])
     assert picked["image"] == "loaded:C:/shots/fennec.png"
     assert listed["image"] == "upstream"

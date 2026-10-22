@@ -1,3 +1,6 @@
+// Folder holding the animate ("anim" kind) flakes, presets and outputs (#445).
+export const ANIM_DIR = "video";
+
 // ---------- Model family ----------
 //
 // The server owns the family registry (flake_families.py, #355). These literals

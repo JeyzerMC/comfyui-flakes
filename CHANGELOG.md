@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Flake Animate** image-to-video for the **Wan 2.2** and **MiniMax H3**
-  families: animate presets stored under `model_presets/anim/<family>/`
+  families: animate presets stored under `model_presets/video/<family>/`
   (#429), animate flakes with high/low LoRAs (#431), Flake Animate Preset and
   Preset Combo nodes (#430), and Flake Generate Animation, which samples the
   chain, optionally upscales and frame-interpolates, and saves an MP4 (with

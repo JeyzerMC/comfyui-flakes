@@ -79,8 +79,8 @@ def test_wan22_preset_round_trip():
             "prompt": {"positive": "a fennec girl waves her fluffy tail", "negative": "blurry"},
             "loras": [{"name": "lightx2v", "path": "wan/lightx2v.safetensors", "strength": 0.8}],
         }, family="Wan 2.2", output_path="chars/fennec", kind="anim")
-        assert name == "anim/wan22/chars/fennec"
-        assert os.path.isfile(os.path.join(presets, "anim", "wan22", "chars", "fennec.yaml"))
+        assert name == "video/wan22/chars/fennec"
+        assert os.path.isfile(os.path.join(presets, "video", "wan22", "chars", "fennec.yaml"))
 
         p = fio.load_anim_preset(name)
         assert p.family == "wan22"
@@ -108,7 +108,7 @@ def test_mh3_preset_round_trip():
             "audio_vae": "mh3_audio_vae.safetensors",
             "steps": 6,
         }, family="MiniMax H3", kind="anim")
-        assert name == "anim/mh3/clip"
+        assert name == "video/mh3/clip"
 
         p = fio.load_anim_preset(name)
         assert p.family == "mh3"
@@ -152,13 +152,13 @@ def test_anim_preset_cover_and_delete():
         assert fio.read_preset_cover(name) == (b"png", "image/png")
         fio.delete_preset(name)
         assert fio.list_presets(kind="anim") == []
-        assert not os.path.exists(os.path.join(presets, "anim", "wan22", "w.png"))
+        assert not os.path.exists(os.path.join(presets, "video", "wan22", "w.png"))
 
 
 def test_image_flake_lists_exclude_anim():
     with _roots() as (root, _):
         _write(os.path.join(root, "img", "sdxl", "hero.yaml"), b"loras: []")
-        _write(os.path.join(root, "anim", "wan22", "wave.yaml"), b"loras: []")
+        _write(os.path.join(root, "video", "wan22", "wave.yaml"), b"loras: []")
         _write(os.path.join(root, "model_presets", "img", "sdxl", "base.yaml"), b"{}")
         assert fio.list_flakes() == ["img/sdxl/hero"]
         assert fio.list_dirs() == ["img", "img/sdxl"]
@@ -172,8 +172,8 @@ def test_anim_flake_round_trip_with_low_lora():
             "loras": [{"name": "swish", "path": "wan/swish_high.safetensors",
                        "name_low": "swish low", "path_low": "wan/swish_low.safetensors", "strength": 0.7}],
         }, family="Wan 2.2", kind="anim")
-        assert name == "anim/wan22/chars/fennec"
-        assert os.path.isfile(os.path.join(root, "anim", "wan22", "chars", "fennec.yaml"))
+        assert name == "video/wan22/chars/fennec"
+        assert os.path.isfile(os.path.join(root, "video", "wan22", "chars", "fennec.yaml"))
         assert fio.read_flake_raw(name)["loras"][0]["path_low"] == "wan/swish_low.safetensors"
 
         flake = fio.resolve({"name": name})
@@ -198,14 +198,14 @@ def test_anim_flake_lists_cover_and_delete():
         assert fio.list_series() == ["Heroes"]
         assert fio.list_flakes(kind="anim") == [mh3, wan]
         assert fio.list_flakes(family="Wan 2.2", kind="anim") == [wan]
-        assert fio.list_dirs(kind="anim") == ["anim", "anim/mh3", "anim/wan22", "anim/wan22/chars"]
-        assert fio.list_dirs(family="MiniMax H3", kind="anim") == ["anim/mh3"]
+        assert fio.list_dirs(kind="anim") == ["video", "video/mh3", "video/wan22", "video/wan22/chars"]
+        assert fio.list_dirs(family="MiniMax H3", kind="anim") == ["video/mh3"]
         assert fio.list_flake_display_names(kind="anim") == {wan: "Wave"}
         assert fio.list_flake_favorites(kind="anim") == [wan]
         assert fio.list_series(kind="anim") == ["Fennec"]
         assert _raises_value_error(lambda: fio.list_flakes(family="SDXL/Base", kind="anim"))
 
-        _write(os.path.join(root, "anim", "wan22", "chars", "wave", "wave.png"), b"png")
+        _write(os.path.join(root, "video", "wan22", "chars", "wave", "wave.png"), b"png")
         assert fio.read_cover(wan) == (b"png", "image/png")
         fio.delete_flake(wan)
         assert fio.list_flakes(kind="anim") == [mh3]
@@ -248,7 +248,7 @@ def test_import_anim_flake_copies_prompts_and_files():
         before = sorted(os.path.join(d, f) for d, _, fs in os.walk(src_dir) for f in fs)
 
         name = fio.import_anim_flake("img/sdxl/chars/hero", "Wan 2.2")
-        assert name == "anim/wan22/chars/hero"
+        assert name == "video/wan22/chars/hero"
         assert fio.read_flake_raw(name) == {
             "name": "Fennec Hero",
             "prompt": {"positive": "a fennec girl with a big fluffy tail", "negative": "blurry"},
@@ -274,11 +274,11 @@ def test_import_anim_flake_collision_naming():
     with _roots() as (root, _):
         _write(os.path.join(root, "img", "sdxl", "hero.yaml"), b"name: Hero")
         _write(os.path.join(root, "img", "pony", "hero.yaml"), b"name: Pony Hero")
-        assert fio.import_anim_flake("img/sdxl/hero", "Wan 2.2") == "anim/wan22/hero"
-        assert fio.import_anim_flake("img/pony/hero", "Wan 2.2") == "anim/wan22/hero (2)"
+        assert fio.import_anim_flake("img/sdxl/hero", "Wan 2.2") == "video/wan22/hero"
+        assert fio.import_anim_flake("img/pony/hero", "Wan 2.2") == "video/wan22/hero (2)"
         # A deleted flake's kept owned folder still takes the name.
-        _write(os.path.join(root, "anim", "wan22", "hero (3)", "hero (3).png"), b"old")
-        assert fio.import_anim_flake("img/sdxl/hero", "Wan 2.2") == "anim/wan22/hero (4)"
-        assert fio.import_anim_flake("img/sdxl/hero", "MiniMax H3") == "anim/mh3/hero"
-        assert fio.read_flake_raw("anim/wan22/hero (2)") == {"name": "Pony Hero"}
+        _write(os.path.join(root, "video", "wan22", "hero (3)", "hero (3).png"), b"old")
+        assert fio.import_anim_flake("img/sdxl/hero", "Wan 2.2") == "video/wan22/hero (4)"
+        assert fio.import_anim_flake("img/sdxl/hero", "MiniMax H3") == "video/mh3/hero"
+        assert fio.read_flake_raw("video/wan22/hero (2)") == {"name": "Pony Hero"}
         assert _raises_value_error(lambda: fio.import_anim_flake("img/sdxl/hero", "SDXL/Base"))
