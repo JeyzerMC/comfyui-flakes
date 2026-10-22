@@ -6,7 +6,7 @@ import {
     familyFolder, familyFromFolder, familySpec, ensureFamilies, ANIM_DIR,
 } from "./utils.js";
 import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchEmbeddings, inputImageUrl, fetchAnimFamilies, fetchAnimFamily } from "./api.js";
-import { openFileBrowser, IMAGE_ROOTS } from "./pickers.js";
+import { openFileBrowser, IMAGE_ROOTS, makeImageDropTarget } from "./pickers.js";
 import { pickFlakeTarget, renderLoraList, serializeLoras, normalizeLinks, renderLinkList, serializeLinks } from "./list-editors.js";
 import { app } from "../../scripts/app.js";
 
@@ -276,12 +276,16 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
             } catch { /* ignore */ }
         }
 
+        function applyPresetCover(url) {
+            presetCoverUrl = url;
+            updatePresetCoverPreview(url);
+        }
         presetCoverBox.addEventListener("click", async () => {
             const result = await openFileBrowser({ type: "inputs", roots: IMAGE_ROOTS });
             if (!result?.file) return;
-            presetCoverUrl = result.type === "inputs" ? inputImageUrl(result.file) : `/flakes/image?path=${encodeURIComponent(result.path)}`;
-            updatePresetCoverPreview(presetCoverUrl);
+            applyPresetCover(result.type === "inputs" ? inputImageUrl(result.file) : `/flakes/image?path=${encodeURIComponent(result.path)}`);
         });
+        makeImageDropTarget(presetCoverBox, (paths) => applyPresetCover(inputImageUrl(paths[0])));
 
         presetCoverWrap.appendChild(presetCoverBox);
         // presetCoverWrap is appended below alongside the Checkpoint column.

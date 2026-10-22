@@ -1,6 +1,6 @@
 import { openOverlay } from "./modal.js";
 import { css, makeButton, makeComfyInput, makeComfyValueSlider, familyFolder, renderFlakeLabel, ANIM_DIR } from "./utils.js";
-import { getCoverUrl, getVariantImageUrl, fetchBrowse, fetchLoras, fetchCheckpoints, fetchAnimFamily, pickedImageUrl } from "./api.js";
+import { getCoverUrl, getVariantImageUrl, fetchBrowse, fetchLoras, fetchCheckpoints, fetchAnimFamily, pickedImageUrl, uploadInputImage } from "./api.js";
 
 const BROWSE_TYPE_LABELS = {
     checkpoints: "models/checkpoints",
@@ -692,6 +692,56 @@ export async function pickImage(flakeName) {
     if (!result?.file) return null;
     lastImageDir = { type: result.type, path: result.file.split("/").slice(0, -1).join("/") };
     return result.type === "inputs" ? result.file : result.path;
+}
+
+// Image files dragged in from disk (#447). While they are over the page every
+// connected drop target is highlighted, the hovered one more strongly. Other
+// drags (grid reorder, cross-node flake moves) are left alone.
+const dropTargets = new Set();
+const dropStyle = document.createElement("style");
+dropStyle.textContent = `
+.flakes-drop-armed { outline:2px dashed #4a9eff !important; outline-offset:-2px; box-shadow:inset 0 0 0 999px rgba(74,158,255,0.12) !important; }
+.flakes-drop-hover { outline-style:solid !important; box-shadow:inset 0 0 0 999px rgba(74,158,255,0.3) !important; }`;
+document.head.appendChild(dropStyle);
+
+const isFileDrag = (e) => e.dataTransfer?.types.includes("Files");
+
+function paintDropTargets(e) {
+    for (const el of dropTargets) {
+        if (!el.isConnected) {
+            dropTargets.delete(el);
+            continue;
+        }
+        el.classList.toggle("flakes-drop-armed", !!e);
+        el.classList.toggle("flakes-drop-hover", !!e && el.contains(e.target));
+    }
+}
+window.addEventListener("dragover", (e) => { if (isFileDrag(e)) paintDropTargets(e); }, true);
+window.addEventListener("dragleave", (e) => { if (!e.relatedTarget) paintDropTargets(null); }, true);
+window.addEventListener("drop", () => paintDropTargets(null), true);
+window.addEventListener("dragend", () => paintDropTargets(null), true);
+
+// Dropped images upload to input/flakes/ and reach `onImages` as input-relative
+// paths, in drop order, like input/ picks. Stopping the events keeps ComfyUI
+// from loading the file as a workflow.
+export function makeImageDropTarget(el, onImages) {
+    dropTargets.add(el);
+    el.addEventListener("dragover", (e) => {
+        if (!isFileDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "copy";
+    });
+    el.addEventListener("drop", async (e) => {
+        if (!isFileDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // Copied first: the drop's file list empties once this handler awaits.
+        const files = [...e.dataTransfer.files].filter(f => f.type.startsWith("image/"));
+        const paths = [];
+        for (const file of files) paths.push(await uploadInputImage(file));
+        if (paths.length) onImages(paths);
+    });
 }
 
 // Bottom-left button of a Flake Animate grid item (#441): `+` picks its first

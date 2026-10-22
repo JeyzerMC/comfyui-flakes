@@ -194,6 +194,19 @@ export function pickedImageUrl(path) {
     return /^([A-Za-z]:)?[\\/]/.test(path) ? `/flakes/image?path=${encodeURIComponent(path)}` : inputImageUrl(path);
 }
 
+// Upload a dropped image file to input/flakes/ (#447); resolves to its
+// input-relative path, the same form as an input/ pick.
+export async function uploadInputImage(file) {
+    const form = new FormData();
+    form.append("image", file);
+    form.append("subfolder", "flakes");
+    form.append("type", "input");
+    const r = await fetch("/upload/image", { method: "POST", body: form });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    return d.subfolder ? `${d.subfolder}/${d.name}` : d.name;
+}
+
 export function flakeAssetUrl(name, path) {
     return `/flakes/asset?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`;
 }

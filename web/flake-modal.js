@@ -13,7 +13,7 @@ import {
     fetchLoraVariantSiblingImagePath, invalidateList,
     fetchCnModels, fetchAnimFamilies,
 } from "./api.js";
-import { pickImage } from "./pickers.js";
+import { pickImage, makeImageDropTarget } from "./pickers.js";
 import {
     openFieldMenu, makeScheduleHandle, makeSchedulePanel, pickFlakeTarget,
     renderLoraList, serializeLoras, normalizeLinks, renderLinkList, renderOneLinkOverrides, serializeLinks,
@@ -571,12 +571,15 @@ export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Bas
 
             // The save moves the picked image to <name>/<base><ext>, or keeps
             // it in place when it already lives in the flake's folder (#396).
+            function applyCover(path) {
+                coverSourcePath = path;
+                updateCoverPreview(imageUrl(path));
+            }
             coverBox.addEventListener("click", async () => {
                 const picked = await pickFlakeImage();
-                if (!picked) return;
-                coverSourcePath = picked;
-                updateCoverPreview(imageUrl(picked));
+                if (picked) applyCover(picked);
             });
+            makeImageDropTarget(coverBox, (paths) => applyCover(paths[0]));
 
             // Auto-cover from a LoRA's sibling image when no cover has been
             // explicitly chosen yet. Stores the resolved image path (e.g. .png)
@@ -1033,9 +1036,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 updateCnImgPreview(imageUrl(cnImagePath));
                             }
 
-                            imgBox.addEventListener("click", async () => {
-                                const fileName = await pickFlakeImage();
-                                if (!fileName) return;
+                            async function applyCnImage(fileName) {
                                 arr[i].image = fileName;
                                 updateCnImgPreview(imageUrl(fileName));
                                 // Auto-set type + cover from the filename (#306, #353).
@@ -1050,7 +1051,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 if (inferredType && !arr[i].type) arr[i].type = inferredType;
                                 renderCNs();
                                 setCoverFromCn?.(await firstExistingImage(cnCoverCandidates(fileName, siblingCandidates)));
+                            }
+                            imgBox.addEventListener("click", async () => {
+                                const fileName = await pickFlakeImage();
+                                if (fileName) applyCnImage(fileName);
                             });
+                            makeImageDropTarget(imgBox, (paths) => applyCnImage(paths[0]));
 
                             imageCol.appendChild(imgBox);
                             imageCol.appendChild(dimLabel);
@@ -1413,17 +1419,20 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         imgBoxLabel.style.display = "block";
                                     }
                                 }
+                                function applyChoiceImage(fileName) {
+                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
+                                    fieldState.variants[groupName][choiceName].image = fileName;
+                                    fieldState.variants[groupName][choiceName]._uploaded = true;
+                                    refreshChoiceImage();
+                                }
                                 imgBox.addEventListener("click", async (e) => {
                                     // Skip the file picker when the user clicks the delete button or its
                                     // dropdown — those have their own handlers.
                                     if (e.target === deleteBtn || dropdown.contains(e.target)) return;
                                     const fileName = await pickFlakeImage();
-                                    if (!fileName) return;
-                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
-                                    fieldState.variants[groupName][choiceName].image = fileName;
-                                    fieldState.variants[groupName][choiceName]._uploaded = true;
-                                    refreshChoiceImage();
+                                    if (fileName) applyChoiceImage(fileName);
                                 });
+                                makeImageDropTarget(imgBox, (paths) => applyChoiceImage(paths[0]));
                                 rightCol.appendChild(imgBox);
                                 refreshChoiceImage();
 
@@ -1577,9 +1586,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                             else { imgPrev.style.display = "none"; imgPlaceholder.style.display = "block"; dimCap.textContent = ""; dimCap.style.display = "none"; }
                                         };
                                         showImg();
-                                        imgBox.addEventListener("click", async () => {
-                                            const fileName = await pickFlakeImage();
-                                            if (!fileName) return;
+                                        async function applyCnImage(fileName) {
                                             cn.image = fileName;
                                             let siblings = [];
                                             try {
@@ -1598,7 +1605,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                                 refreshChoiceImage();
                                             }
                                             setCoverFromCn?.(cover);
+                                        }
+                                        imgBox.addEventListener("click", async () => {
+                                            const fileName = await pickFlakeImage();
+                                            if (fileName) applyCnImage(fileName);
                                         });
+                                        makeImageDropTarget(imgBox, (paths) => applyCnImage(paths[0]));
                                         const imageCol = document.createElement("div");
                                         css(imageCol, "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;");
                                         imageCol.appendChild(imgBox);
