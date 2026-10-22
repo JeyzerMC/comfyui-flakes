@@ -13,7 +13,7 @@ import { getGeneratingUid, newItemUid } from "../queue.js";
 
 // Grid item [width, height] per kind; animate items are larger to show their
 // input image (#441).
-const ITEM_SIZE = { img: [72, 80], anim: [104, 128] };
+const ITEM_SIZE = { img: [90, 100], anim: [104, 128] };
 
 function makeComboBlock({ entry, idx, kind, isActive, isGenerating, onEdit, onRemove, onReplace, onToggleBypass, onSingleOut, onDuplicate, onImagesChanged, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const hasCover = !!entry.name;

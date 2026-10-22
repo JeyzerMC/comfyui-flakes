@@ -23,7 +23,7 @@ function appendLoraTags(baseName, loras) {
 
 // Grid item [width, height] per kind; animate items are larger to show their
 // input image (#441).
-const ITEM_SIZE = { img: [72, 80], anim: [104, 128] };
+const ITEM_SIZE = { img: [90, 100], anim: [104, 128] };
 
 function makeBlock({ entry, idx, kind, onEdit, onRemove, onReplace, onToggleBypass, onDuplicate, onImagesChanged, onDragStart, onDragOver, onDrop, onDragEnd }) {
     const isDefault = !!entry.inline;

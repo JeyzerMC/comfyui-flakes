@@ -1118,7 +1118,7 @@ export function makeGridItemOverlay({
     let hoverWrap = null;
     if (showHoverButtons && buttons.length > 0) {
         hoverWrap = document.createElement("div");
-        css(hoverWrap, "position:absolute;inset:0;display:none;flex-wrap:wrap;align-content:center;align-items:center;justify-content:center;gap:4px;z-index:3;background:rgba(0,0,0,0.35);border-radius:3px;padding:4px;box-sizing:border-box;");
+        css(hoverWrap, "position:absolute;inset:0;display:none;flex-wrap:wrap;align-content:center;align-items:center;justify-content:center;gap:2px;z-index:3;background:rgba(0,0,0,0.35);border-radius:3px;padding:2px;box-sizing:border-box;");
         for (const btn of buttons) {
             hoverWrap.appendChild(btn);
         }
@@ -1132,7 +1132,7 @@ export function makeGridItemOverlay({
         triangleBtn = document.createElement("button");
         triangleBtn.innerHTML = "&#9662;";
         const triSize = Math.round(18 * 1.3);
-        css(triangleBtn, `position:absolute;bottom:3px;left:50%;transform:translateX(-50%);background:transparent;color:#fff;border:none;padding:0;font-size:${triSize}px;line-height:1;cursor:pointer;z-index:4;opacity:0;pointer-events:auto;`);
+        css(triangleBtn, `position:absolute;bottom:0;left:50%;transform:translateX(-50%);background:transparent;color:#fff;border:none;padding:0;font-size:${triSize}px;line-height:1;cursor:pointer;z-index:4;opacity:0;pointer-events:auto;`);
         triangleBtn.addEventListener("click", (e) => { e.stopPropagation(); });
         triangleBtn.addEventListener("dblclick", (e) => e.stopPropagation());
         triangleBtn.addEventListener("mousedown", (e) => e.stopPropagation());
