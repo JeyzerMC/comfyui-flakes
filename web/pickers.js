@@ -769,6 +769,15 @@ export function makeItemImagesButton(entry, onChanged) {
     return btn;
 }
 
+// Images dropped on a Flake Animate grid item or its image list are appended
+// to the item's input images (#448).
+export function makeItemImagesDropTarget(el, entry, onChanged) {
+    makeImageDropTarget(el, (paths) => {
+        entry.images = [...(entry.images || []), ...paths];
+        onChanged();
+    });
+}
+
 // Small overlay grid of an item's input images: click previews one larger,
 // ✕ removes it, drag reorders, the + tile adds one.
 function openItemImages(entry, onChanged) {
@@ -812,6 +821,7 @@ function openItemImages(entry, onChanged) {
             tile.addEventListener("dragend", () => { dragFrom = null; });
             tile.addEventListener("dragover", (e) => { if (dragFrom !== null && dragFrom !== i) e.preventDefault(); });
             tile.addEventListener("drop", (e) => {
+                if (dragFrom === null) return;  // files from disk: the panel's drop target
                 e.preventDefault();
                 entry.images.splice(i, 0, ...entry.images.splice(dragFrom, 1));
                 dragFrom = null;
@@ -843,4 +853,5 @@ function openItemImages(entry, onChanged) {
         content.replaceChildren(grid);
     }
     render();
+    makeItemImagesDropTarget(panel, entry, changed);
 }

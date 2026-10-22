@@ -8,7 +8,7 @@ import {
 import { saveLocalToDisk } from "../bundle.js";
 import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, invalidateList, importAnimFlakeApi, pickedImageUrl } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
-import { openFileLoadPicker, makeItemImagesButton } from "../pickers.js";
+import { openFileLoadPicker, makeItemImagesButton, makeItemImagesDropTarget } from "../pickers.js";
 import { stackImageJobs } from "../queue.js";
 
 // Append the names of any tag-name LoRAs (#274) to a flake's grid display name,
@@ -115,7 +115,10 @@ function makeBlock({ entry, idx, kind, onEdit, onRemove, onReplace, onToggleBypa
         if (isAnim) Object.assign(star.style, { left: "auto", right: "20px" });
         block.appendChild(star);
     }
-    if (isAnim) block.appendChild(makeItemImagesButton(entry, onImagesChanged));
+    if (isAnim) {
+        block.appendChild(makeItemImagesButton(entry, onImagesChanged));
+        makeItemImagesDropTarget(block, entry, onImagesChanged);
+    }
 
     // Name — stacked label: name line, dimmer tag line (#297), variant suffix.
     const fullName = isDefault ? "Default" : (entry.display_name || entry.name || "(missing)");
