@@ -570,7 +570,7 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
         }
 
         function renderPath(rel) {
-            const parts = (rel || "").replace(/\/g, "/").split("/").filter(Boolean);
+            const parts = (rel || "").replace(/\\/g, "/").split("/").filter(Boolean);
             const rootLabel = (currentDrive && driveTabs.childElementCount ? `${currentDrive} ` : "") + (BROWSE_TYPE_LABELS[currentType] || currentType);
             const crumbs = [rootLabel, ...parts];
             pathBar.replaceChildren();
