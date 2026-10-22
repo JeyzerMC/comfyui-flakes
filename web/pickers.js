@@ -413,7 +413,7 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
         if (roots.length < 2) tabs.style.display = "none";
 
         const pathBar = document.createElement("div");
-        css(pathBar, "font-size:11px;color:#888;margin-bottom:8px;word-break:break-all;");
+        css(pathBar, "display:flex;flex-wrap:wrap;align-items:center;gap:2px;font-size:11px;color:#ddd;margin-bottom:8px;");
         content.appendChild(pathBar);
 
         const searchRow = document.createElement("div");
@@ -532,10 +532,33 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
             if (entries.length === 0) showEmpty(term ? "No matches" : "Empty folder");
         }
 
-        function fmtPath(rel) {
-            const r = (rel || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-            const baseLabel = (currentDrive && driveTabs.childElementCount ? `${currentDrive} ` : "") + (BROWSE_TYPE_LABELS[currentType] || currentType);
-            return r ? `${baseLabel}/${r}/` : `${baseLabel}/`;
+        function renderPath(rel) {
+            const parts = (rel || "").replace(/\/g, "/").split("/").filter(Boolean);
+            const rootLabel = (currentDrive && driveTabs.childElementCount ? `${currentDrive} ` : "") + (BROWSE_TYPE_LABELS[currentType] || currentType);
+            const crumbs = [rootLabel, ...parts];
+            pathBar.replaceChildren();
+            crumbs.forEach((name, i) => {
+                if (i) {
+                    const sep = document.createElement("span");
+                    sep.textContent = "›";
+                    css(sep, "color:#666;");
+                    pathBar.appendChild(sep);
+                }
+                if (i === crumbs.length - 1) {
+                    const cur = document.createElement("span");
+                    cur.textContent = name;
+                    css(cur, "padding:2px 6px;");
+                    pathBar.appendChild(cur);
+                    return;
+                }
+                const crumb = document.createElement("button");
+                crumb.textContent = name;
+                css(crumb, "padding:2px 6px;cursor:pointer;border-radius:3px;font-size:11px;background:transparent;color:#aaa;border:1px solid transparent;");
+                crumb.addEventListener("mouseenter", () => { crumb.style.background = "#333"; });
+                crumb.addEventListener("mouseleave", () => { crumb.style.background = "transparent"; });
+                crumb.addEventListener("click", () => loadDir(parts.slice(0, i).join("/")));
+                pathBar.appendChild(crumb);
+            });
         }
 
         function renderDriveTabs(drives) {
@@ -553,14 +576,14 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
         }
 
         async function loadDir(path) {
-            pathBar.textContent = fmtPath(path);
+            renderPath(path);
             searchInput.value = "";
             try {
                 const data = await fetchBrowse(currentType, path, chosenDrive);
                 currentDrive = data.drive || "";
                 renderDriveTabs(data.drives || []);
                 currentPath = data.path || "";
-                pathBar.textContent = fmtPath(currentPath);
+                renderPath(currentPath);
                 // Folders first, then natural case-insensitive name order (Explorer).
                 dirEntries = (data.entries || []).sort((a, b) => (a.type === "dir" ? 0 : 1) - (b.type === "dir" ? 0 : 1)
                     || naturalOrder(a.name, b.name));
