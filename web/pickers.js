@@ -195,18 +195,33 @@ function openNamePicker({ title, kind, drivesKind = kind, noun, base, names, dir
             if (subfolders.length === 0 && folderNames.length === 0) showEmpty();
         }
 
-        // `cover` names the flake whose cover dims behind the icon (#424).
+        // Windows-style folder; `cover` names the flake whose cover sticks out of it (#424, #444).
         function makeFolderTile(icon, label, onClick, cover) {
             const item = document.createElement("div");
-            const bg = cover ? `background-image:linear-gradient(rgba(0,0,0,0.6),rgba(0,0,0,0.6)),url(${coverUrl(cover)});background-size:cover;background-position:center;` : "";
-            css(item, bg + "aspect-ratio:1/1;background-color:#252525;border:1px solid #444;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
-            const iconEl = document.createElement("div");
-            iconEl.textContent = icon;
-            css(iconEl, label === ".." ? "font-size:24px;color:#888;" : "font-size:32px;");
+            css(item, "aspect-ratio:1/1;background-color:#252525;border:1px solid #444;border-radius:4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;user-select:none;box-sizing:border-box;");
             const labelEl = document.createElement("div");
             labelEl.textContent = label;
             css(labelEl, "font-size:10px;color:#ddd;text-align:center;padding:0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;");
-            item.appendChild(iconEl);
+            if (label === "..") {
+                const iconEl = document.createElement("div");
+                iconEl.textContent = icon;
+                css(iconEl, "font-size:24px;color:#888;");
+                item.appendChild(iconEl);
+            } else {
+                const folder = document.createElement("div");
+                css(folder, "position:relative;width:80%;flex:1;min-height:0;margin-top:6px;");
+                const part = (style) => {
+                    const el = document.createElement("div");
+                    css(el, "position:absolute;box-sizing:border-box;" + style);
+                    folder.appendChild(el);
+                    return el;
+                };
+                part("left:0;top:0;width:42%;height:20%;background:#c9962a;border-radius:4px 4px 0 0;");
+                part("left:0;right:0;top:10%;bottom:0;background:#c9962a;border-radius:0 4px 4px 4px;");
+                if (cover) part(`left:5%;right:5%;top:14%;bottom:4%;background:#ddd url(${coverUrl(cover)}) center/cover;border-radius:2px;box-shadow:0 0 2px rgba(0,0,0,0.5);`);
+                part("left:0;right:0;bottom:0;height:22%;background:linear-gradient(#f2c94c,#e8b93a);border-radius:4px 4px 3px 3px;border-top:1px solid #f7dc84;");
+                item.appendChild(folder);
+            }
             item.appendChild(labelEl);
             item.addEventListener("click", onClick);
             item.addEventListener("dblclick", (e) => e.stopPropagation());
