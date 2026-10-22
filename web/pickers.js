@@ -478,14 +478,51 @@ export function openFileBrowser({ type, defaultPath = "", roots = [type] }) {
             return tile;
         }
 
+        // Large preview above the picker; Esc is caught in the capture phase so
+        // the picker's own Esc handler doesn't close it too.
+        function openPreview(path) {
+            const backdrop = document.createElement("div");
+            css(backdrop, "position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center;cursor:zoom-out;");
+            const img = document.createElement("img");
+            img.src = `/flakes/image?path=${encodeURIComponent(path)}`;
+            css(img, "max-width:92vw;max-height:92vh;object-fit:contain;border-radius:4px;box-shadow:0 8px 32px rgba(0,0,0,0.6);");
+            backdrop.appendChild(img);
+            const closePreview = () => {
+                backdrop.remove();
+                window.removeEventListener("keydown", onKey, true);
+            };
+            function onKey(e) {
+                if (e.key !== "Escape") return;
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                closePreview();
+            }
+            window.addEventListener("keydown", onKey, true);
+            backdrop.addEventListener("click", closePreview);
+            document.body.appendChild(backdrop);
+        }
+
         function fileTile(label, file, path) {
             const pick = { file, path, type: currentType };
-            return makeTile(label, fileFace(file, path), (tile) => {
+            const tile = makeTile(label, fileFace(file, path), (tile) => {
                 if (selectedTile) selectedTile.style.borderColor = "#444";
                 selected = pick;
                 selectedTile = tile;
                 tile.style.borderColor = "#2a6acf";
             }, () => close(pick));
+            if (IMAGE_ROOTS.includes(currentType)) {
+                const zoom = document.createElement("button");
+                zoom.textContent = "\u{1F50D}";
+                zoom.title = "Preview";
+                css(zoom, "position:absolute;top:6px;right:6px;padding:2px 5px;cursor:pointer;border-radius:3px;font-size:11px;background:rgba(0,0,0,0.65);color:#ddd;border:1px solid #444;opacity:0;");
+                tile.style.position = "relative";
+                tile.addEventListener("mouseenter", () => { zoom.style.opacity = "1"; });
+                tile.addEventListener("mouseleave", () => { zoom.style.opacity = "0"; });
+                zoom.addEventListener("click", (e) => { e.stopPropagation(); openPreview(path); });
+                zoom.addEventListener("dblclick", (e) => e.stopPropagation());
+                tile.appendChild(zoom);
+            }
+            return tile;
         }
 
         function showEmpty(text) {
