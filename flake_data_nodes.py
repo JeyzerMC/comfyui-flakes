@@ -15,7 +15,7 @@ import folder_paths
 from nodes import KSampler, VAEDecode, SaveImage
 
 from . import flake_compose, flake_io
-from .full_flake_node import _build_filename_prefix
+from .full_flake_node import _apply_attention, _attention_options, _build_filename_prefix
 
 _ADETAILER_DEFAULT_BBOX = "bbox/face_yolov8m.pt"
 
@@ -588,6 +588,8 @@ class FlakeGenerate:
                 "upscale": ("BOOLEAN", {"default": False, "label_on": "Upscale", "label_off": "Upscale off"}),
                 "upscale_model": (_list_upscale_models(), {"default": ""}),
                 "upscale_factor": ("FLOAT", {"default": 1.5, "min": 1.0, "max": 8.0, "step": 0.1}),
+                "attention": (_attention_options(), {
+                    "default": "default", "tooltip": "Attention backend for the model, ADetailer included; default is the one ComfyUI was launched with."}),
             },
             # Embed the workflow/prompt into saved PNGs so outputs can be
             # drag-dropped back into ComfyUI to restore the graph (#344).
@@ -606,10 +608,10 @@ class FlakeGenerate:
 
     def execute(self, flake_data, seed, adetailer="Off", adetailer_denoise=0.4,
                 adetailer_steps=0, adetailer_bbox="bbox/face_yolov8m.pt",
-                upscale=False, upscale_model="", upscale_factor=1.5,
+                upscale=False, upscale_model="", upscale_factor=1.5, attention="default",
                 prompt=None, extra_pnginfo=None, unique_id=None):
         parts = _split_flake_data(flake_data)
-        model = parts["model"]
+        model = _apply_attention(parts["model"], attention)
         clip = parts["clip"]
         vae = parts["vae"]
         positive = parts["positive"]

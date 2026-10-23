@@ -14,7 +14,8 @@ from comfy_api.latest import io
 from . import flake_families, flake_io
 from .flake_compose import _load_cn_image, _load_lora
 from .flake_io import _resolve_model_name
-from .full_flake_node import _apply_preset_overrides, _build_filename_prefix, _join_prompts, _resolve_flakes
+from .full_flake_node import (_apply_attention, _apply_preset_overrides, _attention_options, _build_filename_prefix,
+                              _join_prompts, _resolve_flakes)
 
 _PLACEHOLDERS = ("Select a preset...", "No model preset is selected")
 
@@ -296,6 +297,8 @@ class FlakeGenerateAnimation:
                 "headroom": ("FLOAT", {
                     "default": 0.0, "min": 0.0, "max": 64.0, "step": 0.5,
                     "tooltip": "GB of VRAM kept free while sampling and decoding, on top of ComfyUI's reserve."}),
+                "attention": (_attention_options(), {
+                    "default": "default", "tooltip": "Attention backend for the diffusion model(s); default is the one ComfyUI was launched with."}),
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -310,7 +313,7 @@ class FlakeGenerateAnimation:
     OUTPUT_NODE = True
 
     def execute(self, flake_anim_data, seed, upscale=False, upscale_model="", interpolate=False, interpolation_model="",
-                use_headroom=False, headroom=0.0, prompt=None, extra_pnginfo=None):
+                use_headroom=False, headroom=0.0, attention="default", prompt=None, extra_pnginfo=None):
         data = flake_anim_data
         if data["image"] is None:
             raise ValueError("Flake Generate Animation has no start image — add one to a Flake Animate Stack/Combo grid item (its bottom-left + button).")
@@ -322,6 +325,7 @@ class FlakeGenerateAnimation:
         width, height = _video_size(data["image"], preset["resolution"], 16 if data["family"] == "wan22" else 32)
         length, fps = _timing(family, preset)
         sample = _sample_wan22 if family == "wan22" else _sample_mh3
+        data = {**data, "models": {key: _apply_attention(model, attention) for key, model in data["models"].items()}}
 
         reserved = comfy.model_management.EXTRA_RESERVED_VRAM
         comfy.model_management.EXTRA_RESERVED_VRAM = reserved + (int(headroom * 1024 ** 3) if use_headroom else 0)

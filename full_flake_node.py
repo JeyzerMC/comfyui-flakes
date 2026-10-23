@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 
 import folder_paths
+import comfy.ldm.modules.attention
 import comfy.sd
 import comfy.utils
 from nodes import CLIPTextEncode, EmptyLatentImage, ControlNetApplyAdvanced, ControlNetLoader
@@ -88,6 +89,25 @@ def _build_filename_prefix(preset_name: str, stems: list[str]) -> str:
     if name_parts:
         filename += "_" + "_".join(name_parts)
     return path + filename
+
+
+# Attention backends core registers per model when installed, by combo label (#455).
+_ATTENTION_BACKENDS = {"PyTorch": "pytorch", "Comfy Kitchen INT8": "comfy_kitchen_int8", "Sage": "sage", "Sage 3": "sage3", "Flash": "flash"}
+
+
+def _attention_options() -> list[str]:
+    registered = comfy.ldm.modules.attention.REGISTERED_ATTENTION_FUNCTIONS
+    return ["default"] + [label for label, name in _ATTENTION_BACKENDS.items() if name in registered]
+
+
+def _apply_attention(model, attention: str):
+    """``model`` set to the ``attention`` backend like core Model Attention
+    Backend; "default" keeps the one ComfyUI was launched with."""
+    if attention == "default":
+        return model
+    m = model.clone()
+    m.set_model_optimized_attention(comfy.ldm.modules.attention.get_attention_function(_ATTENTION_BACKENDS[attention]))
+    return m
 
 
 def _carry_controlnets(src_cond, dst_cond):

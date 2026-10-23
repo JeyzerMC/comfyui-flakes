@@ -29,11 +29,19 @@ def _setup():
     fp.base_path = os.getcwd()
     fp.folder_names_and_paths = {}
     sys.modules["folder_paths"] = fp
-    for name in ("comfy", "comfy.sd", "comfy.utils", "comfy.model_management", "comfy_api", "comfy_api.latest"):
+    for name in ("comfy", "comfy.sd", "comfy.utils", "comfy.model_management", "comfy.ldm", "comfy.ldm.modules",
+                 "comfy.ldm.modules.attention", "comfy_api", "comfy_api.latest"):
         sys.modules.setdefault(name, types.ModuleType(name))
     mm = sys.modules["comfy.model_management"]
     mm.EXTRA_RESERVED_VRAM = 100
     sys.modules["comfy"].model_management = mm
+    # As registered on a machine with Comfy Kitchen and Sage but no Sage 3 / Flash.
+    attention = sys.modules["comfy.ldm.modules.attention"]
+    attention.REGISTERED_ATTENTION_FUNCTIONS = {name: f"attention_{name}" for name in ("comfy_kitchen_int8", "sage", "pytorch", "split")}
+    attention.get_attention_function = lambda name: attention.REGISTERED_ATTENTION_FUNCTIONS[name]
+    sys.modules["comfy"].ldm = sys.modules["comfy.ldm"]
+    sys.modules["comfy.ldm"].modules = sys.modules["comfy.ldm.modules"]
+    sys.modules["comfy.ldm.modules"].attention = attention
     sys.modules["comfy_api.latest"].io = types.SimpleNamespace(
         Hidden=types.SimpleNamespace(prompt="PROMPT", extra_pnginfo="EXTRA_PNGINFO"))
 
@@ -211,3 +219,36 @@ def test_missing_image_is_a_clear_error():
     with pytest.raises(ValueError, match="Flake Animate Stack/Combo grid item"):
         _run(data)
     assert CALLS == []
+
+
+class _Model:
+    def __init__(self, name, attention=None):
+        self.name, self.attention = name, attention
+
+    def clone(self):
+        return _Model(self.name, self.attention)
+
+    def set_model_optimized_attention(self, func):
+        self.attention = func
+
+
+def test_attention_options_list_the_registered_backends():
+    options, extra = anim.FlakeGenerateAnimation.INPUT_TYPES()["optional"]["attention"]
+    assert options == ["default", "PyTorch", "Comfy Kitchen INT8", "Sage"] and extra["default"] == "default"
+
+
+def test_attention_patches_clones_of_both_wan22_models():
+    data = _data("wan22")
+    data["models"] = {"high": _Model("high"), "low": _Model("low")}
+    _run(data, attention="Sage")
+    high, low = [c[1][0] for c in _call("ModelSamplingSD3")]
+    assert (high.name, high.attention) == ("high", "attention_sage")
+    assert (low.name, low.attention) == ("low", "attention_sage")
+    assert all(m.attention is None for m in data["models"].values())
+
+
+def test_default_attention_keeps_the_models():
+    data = _data("mh3")
+    data["models"] = {"model": _Model("model")}
+    _run(data)
+    assert _call("MiniMaxH3SigmaShift")[0][1][0] is data["models"]["model"]

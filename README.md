@@ -318,6 +318,8 @@ Flake Generate Animation:
   and decoding.
 - Each field shows only while its toggle is on; a toggle on with no model
   selected is an error.
+- **attention** picks the attention backend for the diffusion model(s) (both
+  Wan 2.2 models), like core Model Attention Backend; see Flake Generate.
 
 ---
 
@@ -364,6 +366,10 @@ right of the overlay, on by default) fits the whole image in view; off, it shows
 at full size and scrolls both ways. Landscape outputs widen the overlay to
 nearly the screen width. Prompts,
 LoRAs and model details are folded under the `^` at the bottom of each panel.
+
+**attention** picks the model's attention backend, ADetailer pass included:
+`default` keeps the one ComfyUI was launched with, and `PyTorch`, `Comfy Kitchen
+INT8`, `Sage`, `Sage 3` and `Flash` are listed when ComfyUI has them available.
 
 ### Flake Inpaint
 

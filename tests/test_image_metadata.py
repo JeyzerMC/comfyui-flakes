@@ -27,6 +27,8 @@ def _load_module():
     sys.modules["_flakemeta.flake_compose"] = types.ModuleType("_flakemeta.flake_compose")
     ffn = types.ModuleType("_flakemeta.full_flake_node")
     ffn._build_filename_prefix = lambda *a, **k: ""
+    ffn._attention_options = lambda: ["default"]
+    ffn._apply_attention = lambda model, attention: model
     sys.modules["_flakemeta.full_flake_node"] = ffn
 
     spec = importlib.util.spec_from_file_location("_flakemeta.flake_data_nodes", os.path.join(root, "flake_data_nodes.py"))
