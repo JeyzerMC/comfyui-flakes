@@ -2,7 +2,7 @@ import {
     css, makeSmallButton, makeComfyInput, makeComfyDropdown, makeSearchableDropdown,
     makeComfyNumberInput, makeComfyValueSlider, makeLabel, familyFolder, variantDefaultsOf, variantDropdownOptions,
 } from "./utils.js";
-import { fetchLoras, fetchFlake } from "./api.js";
+import { fetchLoras, fetchLoraNames, fetchFlake } from "./api.js";
 import { openFileBrowser, openFileLoadPicker } from "./pickers.js";
 
 // LoRA and flake-link list editors shared by the flake and model preset editors.
@@ -243,6 +243,15 @@ export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, l
         return pathRow;
     }
 
+    // Free-text name field suggesting display names already used in flakes.
+    function makeLoraNameInput(value, placeholder) {
+        const dd = makeSearchableDropdown([], value, placeholder);
+        fetchLoraNames().then(names => {
+            for (const n of names) dd.datalist.appendChild(Object.assign(document.createElement("option"), { value: n }));
+        }).catch(() => {});
+        return dd;
+    }
+
     function renderLoras() {
         box.replaceChildren();
         for (let i = 0; i < loras.length; i++) {
@@ -294,7 +303,8 @@ export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, l
             if (lora._editing) {
                 const editRow = document.createElement("div");
                 css(editRow, "display:flex;flex-direction:column;gap:4px;");
-                const nameInput = makeComfyInput(lora.name || "", "Display name");
+                const nameDD = makeLoraNameInput(lora.name || "", "Display name");
+                const nameInput = nameDD.element;
                 nameInput.addEventListener("change", () => {
                     lora.name = nameInput.value;
                     if (lora.tag_name) onTagChange?.();
@@ -306,12 +316,12 @@ export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, l
                     renderLoras();
                 });
                 editRow.appendChild(makeLabel("Name"));
-                editRow.appendChild(nameInput);
+                editRow.appendChild(nameDD.container);
                 if (lowFile) {
-                    const lowNameInput = makeComfyInput(lora.name_low || "", "Display name of the LOW file");
-                    lowNameInput.addEventListener("change", () => { lora.name_low = lowNameInput.value; });
+                    const lowNameDD = makeLoraNameInput(lora.name_low || "", "Display name of the LOW file");
+                    lowNameDD.element.addEventListener("change", () => { lora.name_low = lowNameDD.element.value; });
                     editRow.appendChild(makeLabel("LOW name"));
-                    editRow.appendChild(lowNameInput);
+                    editRow.appendChild(lowNameDD.container);
                 }
                 if (onTagChange) {
                     // Tag-name checkbox (#274): append this LoRA's name to the

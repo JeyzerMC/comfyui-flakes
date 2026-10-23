@@ -528,6 +528,33 @@ def list_series(family: str | None = None, kind: str = "img") -> list[str]:
     return sorted(series)
 
 
+def list_lora_names() -> list[str]:
+    """Distinct, non-empty LoRA display names (`name` / `name_low`) across all
+    flakes of both kinds, including variant choices (sorted)."""
+    names: set[str] = set()
+    for kind in ("img", "anim"):
+        for flake in list_flakes(kind=kind):
+            try:
+                raw = read_flake_raw(flake)
+            except Exception:
+                continue
+            lists = [raw.get("loras")]
+            variants = raw.get("variants")
+            for choices in variants.values() if isinstance(variants, dict) else ():
+                for choice in choices.values() if isinstance(choices, dict) else ():
+                    if isinstance(choice, dict):
+                        lists.append(choice.get("loras"))
+            for loras in lists:
+                for lora in loras if isinstance(loras, list) else ():
+                    if not isinstance(lora, dict):
+                        continue
+                    for key in ("name", "name_low"):
+                        value = lora.get(key)
+                        if isinstance(value, str) and value.strip():
+                            names.add(value.strip())
+    return sorted(names)
+
+
 def list_dirs(family: str | None = None, roots: list[str] | None = None, kind: str = "img") -> list[str]:
     dirs: set[str] = set()
     for root in roots or _flakes_roots():

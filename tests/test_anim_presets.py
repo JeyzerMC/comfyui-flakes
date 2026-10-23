@@ -216,6 +216,24 @@ def test_anim_flake_lists_cover_and_delete():
         assert fio.list_flakes(kind="anim") == [mh3]
 
 
+def test_lora_names_cover_both_kinds_and_variants():
+    with _roots() as (root, _):
+        _write(os.path.join(root, "img", "sdxl", "hero", "hero.yaml"), b"""
+loras:
+  - {name: " Fennec Ears ", path: a.safetensors}
+  - {name: "", path: b.safetensors}
+  - just a string
+variants:
+  outfit:
+    maid: {loras: [{name: Maid Outfit}]}
+    plain: {}
+""")
+        _write(os.path.join(root, "img", "sdxl", "odd", "odd.yaml"), b"loras: {name: Not A List}\n")
+        _write(os.path.join(root, "video", "wan22", "wave", "wave.yaml"),
+               b"loras:\n  - {name: Tail Swish, name_low: Tail Swish low}\n  - {name: Fennec Ears}\n")
+        assert fio.list_lora_names() == ["Fennec Ears", "Maid Outfit", "Tail Swish", "Tail Swish low"]
+
+
 HERO = b"""
 name: Fennec Hero
 flake_type: character
