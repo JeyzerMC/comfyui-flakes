@@ -28,9 +28,11 @@ function makeFlakeCard(e, itemKey) {
     const choices = Object.values(variant);
     const base = e.display_name || e.name.split("/").pop() || e.name;
     const label = base + (choices.length ? ` (${choices.join(", ")})` : "");
-    // A Flake Animate item's job shows its input image instead (#441).
+    // A Flake Animate item's job shows its input image instead (#441); the
+    // overlay's card stack keeps the flake cover under it (#456).
     if (e.image) {
-        return { label: `${label} · ${e.image.split(/[\\/]/).pop()}`, entry: e, coverUrl: pickedImageUrl(e.image), itemKey };
+        const imageUrl = pickedImageUrl(e.image);
+        return { label: `${label} · ${e.image.split(/[\\/]/).pop()}`, entry: e, coverUrl: imageUrl, imageUrl, stackCoverUrls: [variantCover, baseCover], itemKey };
     }
     return {
         label,
@@ -236,8 +238,9 @@ function flakePrompts(d) {
 // `seedKey` (#384). A missing cover is drawn as a plain card. The canvas has the
 // `aspect` of the image box it fills (#411); its long side is DPR-aware
 // (~1024 logical px × devicePixelRatio, capped at 2×) so it isn't blurred in
-// the overlay (#354).
-async function buildCardStack(urlLists, seedKey, aspect) {
+// the overlay (#354). A Flake Generate Animation input image (`topUrl`) goes on
+// top as a larger, centered, unrotated card (#456).
+async function buildCardStack(urlLists, seedKey, aspect, topUrl) {
     const long = Math.round(1024 * Math.min(window.devicePixelRatio || 1, 2));
     const cw = aspect >= 1 ? long : Math.round(long * aspect);
     const ch = aspect >= 1 ? Math.round(long / aspect) : long;
@@ -247,7 +250,7 @@ async function buildCardStack(urlLists, seedKey, aspect) {
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "#1a1a1a";
     ctx.fillRect(0, 0, cw, ch);
-    const images = await Promise.all(urlLists.map(loadFirstImage));
+    const [images, topImg] = await Promise.all([Promise.all(urlLists.map(loadFirstImage)), topUrl ? loadImage(topUrl) : null]);
     const rand = seededRandom(seedKey);
     const n = images.length;
     const cols = Math.max(1, Math.min(n, Math.ceil(Math.sqrt(n * aspect))));
@@ -255,10 +258,27 @@ async function buildCardStack(urlLists, seedKey, aspect) {
     const cellW = cw / cols, cellH = ch / rows;
     const cardEdge = Math.min(cellW, cellH, ch * 0.7) * 0.8;
     const border = Math.max(2, Math.round(cardEdge * 0.035));
-    images.forEach((img, i) => {
+    const cardSize = (img, edge) => {
         const ar = img ? img.width / img.height : 3 / 4;
-        const w = (ar >= 1 ? cardEdge : cardEdge * ar) + 2 * border;
-        const h = (ar >= 1 ? cardEdge / ar : cardEdge) + 2 * border;
+        return [(ar >= 1 ? edge : edge * ar) + 2 * border, (ar >= 1 ? edge / ar : edge) + 2 * border];
+    };
+    const drawCard = (img, cx, cy, w, h, angle, edge) => {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        ctx.shadowColor = "rgba(0,0,0,0.55)";
+        ctx.shadowBlur = edge * 0.08;
+        ctx.shadowOffsetY = edge * 0.02;
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+        ctx.shadowColor = "transparent";
+        ctx.fillStyle = "#2a2a2a";
+        if (img) ctx.drawImage(img, -w / 2 + border, -h / 2 + border, w - 2 * border, h - 2 * border);
+        else ctx.fillRect(-w / 2 + border, -h / 2 + border, w - 2 * border, h - 2 * border);
+        ctx.restore();
+    };
+    images.forEach((img, i) => {
+        const [w, h] = cardSize(img, cardEdge);
         const angle = (rand() * 2 - 1) * Math.PI / 12;
         const row = Math.floor(i / cols);
         // Center a partial last row.
@@ -271,20 +291,12 @@ async function buildCardStack(urlLists, seedKey, aspect) {
         const clamp = (v, e, size) => (2 * e < size ? Math.min(Math.max(v, e), size - e) : size / 2);
         const cx = clamp(x, ex, cw);
         const cy = clamp(y, ey, ch);
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(angle);
-        ctx.shadowColor = "rgba(0,0,0,0.55)";
-        ctx.shadowBlur = cardEdge * 0.08;
-        ctx.shadowOffsetY = cardEdge * 0.02;
-        ctx.fillStyle = "#fff";
-        ctx.fillRect(-w / 2, -h / 2, w, h);
-        ctx.shadowColor = "transparent";
-        ctx.fillStyle = "#2a2a2a";
-        if (img) ctx.drawImage(img, -w / 2 + border, -h / 2 + border, w - 2 * border, h - 2 * border);
-        else ctx.fillRect(-w / 2 + border, -h / 2 + border, w - 2 * border, h - 2 * border);
-        ctx.restore();
+        drawCard(img, cx, cy, w, h, angle, cardEdge);
     });
+    if (topUrl) {
+        const topEdge = Math.min(cw, ch) * 0.75;
+        drawCard(topImg, cw / 2, ch / 2, ...cardSize(topImg, topEdge), 0, topEdge);
+    }
     return canvas.toDataURL();
 }
 
@@ -409,6 +421,7 @@ async function combinationData(model, selection) {
         comboLoraRows: [],
         comboPromptRows: [],
         coverUrls: [],
+        imageUrl: null,
         dimensions: null,
         width: null,
         height: null,
@@ -459,10 +472,16 @@ async function combinationData(model, selection) {
     }
 
     // Cover candidates per selected item, in order: the variant image then the
-    // flake cover, since a variant choice may have no image (#410).
-    out.coverUrls = model.axes.map((_, i) => {
+    // flake cover, since a variant choice may have no image (#410). A Flake
+    // Animate job's input image is kept apart for the top card (#456).
+    model.axes.forEach((axis, i) => {
         const it = selection[i];
-        return (it.baseCoverUrl ? [it.variantCoverUrl, it.baseCoverUrl] : [it.coverUrl]).filter(Boolean);
+        if (axis.kind === "image") {
+            out.imageUrl = it.coverUrl;
+            return;
+        }
+        if (it.imageUrl) out.imageUrl = it.imageUrl;
+        out.coverUrls.push((it.stackCoverUrls || (it.baseCoverUrl ? [it.variantCoverUrl, it.baseCoverUrl] : [it.coverUrl])).filter(Boolean));
     });
     return out;
 }
@@ -931,7 +950,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 stacked = true;
                 fit();
                 sizeOverlay(data.width, data.height);
-                const src = await buildCardStack(urlLists, key, (imageBox.clientWidth || 1) / (imageBox.clientHeight || 1));
+                const src = await buildCardStack(urlLists, key, (imageBox.clientWidth || 1) / (imageBox.clientHeight || 1), video ? data.imageUrl : null);
                 if (token !== imageToken) return;
                 compositeImg.src = src;
                 compositeDimensions.textContent = data.dimensions || "";
@@ -1197,7 +1216,7 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 stacked = true;
                 fit();
                 sizeOverlay(data.width, data.height, singleWrap);
-                const src = await buildCardStack(urlLists, key, (imageBox.clientWidth || 1) / (imageBox.clientHeight || 1));
+                const src = await buildCardStack(urlLists, key, (imageBox.clientWidth || 1) / (imageBox.clientHeight || 1), video ? data.imageUrl : null);
                 if (token !== imageToken) return;
                 compositeImg.src = src;
                 compositeDimensions.textContent = data.dimensions || "";
