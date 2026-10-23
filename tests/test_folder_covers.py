@@ -34,8 +34,7 @@ fio = _load_flake_io()
 
 def _covers(names, dirs, favorites=(), covered=None):
     covered = set(names) if covered is None else set(covered)
-    fio.cover_file = lambda name: f"{name}.png" if name in covered else None
-    return fio.list_folder_covers(names, dirs, list(favorites))
+    return fio.list_folder_covers(names, dirs, list(favorites), covered.__contains__)
 
 
 def test_first_flake_in_folder():

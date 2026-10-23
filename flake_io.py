@@ -17,6 +17,9 @@ import folder_paths
 
 from . import flake_families
 
+# libyaml's loader parses flake and preset yaml ~3x faster than pure Python (#454).
+_YamlLoader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
 
 def _resolve_model_name(category: str, stem_or_name: str) -> str:
     available = folder_paths.get_filename_list(category)
@@ -458,60 +461,37 @@ def list_flakes(family: str | None = None, roots: list[str] | None = None, kind:
     return sorted(names)
 
 
-def list_flake_display_names(family: str | None = None, kind: str = "img") -> dict[str, str]:
+def list_flake_info(family: str | None = None, kind: str = "img") -> dict[str, Any]:
+    """The Load picker's listing, parsing each flake yaml once (#454): names,
+    folders, display names, tag-name LoRAs to show on the item like the grid
+    (#297; only flakes with one appear), favorites (#402) and folder covers."""
     names = list_flakes(family=family, kind=kind)
+    dirs = list_dirs(family=family, kind=kind)
+    raws: dict[str, dict[str, Any]] = {}
     display_names: dict[str, str] = {}
+    tag_names: dict[str, list[str]] = {}
+    favorites: list[str] = []
     for name in names:
         try:
-            raw = read_flake_raw(name)
-            dn = raw.get("name") or ""
-            if dn:
-                display_names[name] = dn
-        except Exception:
-            pass
-    return display_names
-
-
-def list_flake_tag_names(family: str | None = None, kind: str = "img") -> dict[str, list[str]]:
-    """Map of flake name -> tag-name LoRA names to surface on the flake item.
-
-    Lets the Load picker show the same tag line as the grid (#297) without each
-    item fetching its full flake. Only flakes with at least one tag-name LoRA
-    appear in the result.
-    """
-    result: dict[str, list[str]] = {}
-    for name in list_flakes(family=family, kind=kind):
-        try:
-            raw = read_flake_raw(name)
+            raw = raws[name] = read_flake_raw(name)
         except Exception:
             continue
+        if raw.get("name"):
+            display_names[name] = raw["name"]
         loras = raw.get("loras")
-        if not isinstance(loras, list):
-            continue
-        tags = [
+        if isinstance(loras, list) and (tags := [
             str(lora.get("name")).strip()
             for lora in loras
             if isinstance(lora, dict) and lora.get("tag_name") and str(lora.get("name") or "").strip()
-        ]
-        if tags:
-            result[name] = tags
-    return result
-
-
-def list_flake_favorites(family: str | None = None, kind: str = "img") -> list[str]:
-    """Names of flakes saved with ``favorite: true`` (#402)."""
-    result: list[str] = []
-    for name in list_flakes(family=family, kind=kind):
-        try:
-            raw = read_flake_raw(name)
-        except Exception:
-            continue
+        ]):
+            tag_names[name] = tags
         if raw.get("favorite"):
-            result.append(name)
-    return result
+            favorites.append(name)
+    folder_covers = list_folder_covers(names, dirs, favorites, lambda n: cover_file(n, raws.get(n, {})) is not None)
+    return {"flakes": names, "directories": dirs, "display_names": display_names, "tag_names": tag_names, "favorites": favorites, "folder_covers": folder_covers}
 
 
-def list_folder_covers(names: list[str], dirs: list[str], favorites: list[str]) -> dict[str, str]:
+def list_folder_covers(names: list[str], dirs: list[str], favorites: list[str], has_cover) -> dict[str, str]:
     """Map of folder -> flake whose cover the Load picker shows on its tile
     (#424): the first favorite directly inside, else the first flake directly
     inside, else the first subfolder's. Only flakes with a cover count."""
@@ -527,7 +507,7 @@ def list_folder_covers(names: list[str], dirs: list[str], favorites: list[str]) 
     def cover(folder: str) -> str | None:
         if folder not in covers:
             direct = sorted(by_folder.get(folder, []), key=lambda n: (n not in fav, n.lower()))
-            covers[folder] = next((n for n in direct if cover_file(n)), None) or next(
+            covers[folder] = next((n for n in direct if has_cover(n)), None) or next(
                 (c for sub in sorted(subs.get(folder, []), key=str.lower) if (c := cover(sub))), None)
         return covers[folder]
 
@@ -582,7 +562,7 @@ def _find_flake_root_index(name: str) -> int:
 def read_flake_raw(name: str) -> dict[str, Any]:
     path = _resolve_file(name)
     with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
+        data = yaml.load(f, Loader=_YamlLoader) or {}
     # Hide stray top-level `path` / `strength` from callers when the modern
     # `loras:` list is present; they are leftover from an old save bug.
     if isinstance(data, dict) and "loras" in data:
@@ -1167,7 +1147,7 @@ def _combine_variant_stem(base: str | None, variant_stem: str) -> str:
 def load_flake(name: str) -> Flake:
     path = _resolve_file(name)
     with open(path, encoding="utf-8") as f:
-        raw: dict[str, Any] = yaml.safe_load(f) or {}
+        raw: dict[str, Any] = yaml.load(f, Loader=_YamlLoader) or {}
     return _flake_from_raw(name, raw)
 
 
@@ -1400,11 +1380,8 @@ def _cover_path(name: str, legacy_only: bool = False) -> str | None:
         for root in _flakes_roots():
             for e in _COVER_EXTENSIONS:
                 candidate = os.path.join(root, f"{stem}{e}")
-                try:
-                    _ensure_inside(candidate, root)
-                except ValueError:
-                    continue
-                if os.path.isfile(candidate):
+                # isfile first: the realpath containment check is only worth it on a hit.
+                if os.path.isfile(candidate) and _is_inside(candidate, root):
                     return candidate
     return None
 
@@ -1414,8 +1391,9 @@ def _delete_cover(name: str, legacy_only: bool = False) -> None:
         os.remove(path)
 
 
-def cover_file(name: str) -> str | None:
-    """Path of the flake's cover image, or None if it has none."""
+def cover_file(name: str, raw: dict[str, Any] | None = None) -> str | None:
+    """Path of the flake's cover image, or None if it has none. *raw* is the
+    flake's parsed yaml when the caller already has it."""
     path = _cover_path(name)
     if path:
         return path
@@ -1423,7 +1401,7 @@ def cover_file(name: str) -> str | None:
     # under the LoRA tree (path may end with .png/.jpg/etc., or with
     # .safetensors for legacy flakes — in which case we look for a sibling).
     try:
-        cover_source = read_flake_raw(name).get("cover_image")
+        cover_source = (read_flake_raw(name) if raw is None else raw).get("cover_image")
         if cover_source:
             return _cover_source_file(_owned_file_path(cover_source, name))
     except Exception:
@@ -1560,7 +1538,7 @@ def list_preset_display_names(family: str | None = None, kind: str = "img") -> d
 def read_preset_raw(name: str) -> dict[str, Any]:
     path = _resolve_preset_file(name)
     with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        return yaml.load(f, Loader=_YamlLoader) or {}
 
 
 def save_preset(
@@ -1864,7 +1842,7 @@ def collect_bundle(flakes: list[str], presets: list[str]) -> dict[str, Any]:
             return
         with open(path, encoding="utf-8") as f:
             text = f.read()
-        targets = _link_targets(yaml.safe_load(text) or {})
+        targets = _link_targets(yaml.load(text, Loader=_YamlLoader) or {})
         base = key.rsplit("/", 1)[-1]
         text = _bundle_yaml(text, base, base, {t: _LOCAL_PREFIX_RE.sub("", t) for t in targets})
         bundle[kind][key] = {"yaml": text, "files": _bundle_files(path, bundle["files"])}
@@ -1892,7 +1870,7 @@ def _retarget_links(data: Any, renames: dict[str, str]) -> Any:
 def _bundle_yaml(text: str, old_base: str, new_base: str, renames: dict[str, str]) -> str:
     """*text* with its ``./<old_base>/`` paths and renamed link targets
     rewritten; the original text when nothing changes."""
-    data = yaml.safe_load(text) or {}
+    data = yaml.load(text, Loader=_YamlLoader) or {}
     new = _retarget_links(_rewrite_prefix(data, f"./{old_base}/", f"./{new_base}/"), renames)
     return text if new == data else yaml.safe_dump(new, sort_keys=False, allow_unicode=True)
 

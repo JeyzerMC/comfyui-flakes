@@ -174,11 +174,21 @@ def test_list_dirs_skips_owned_folders():
         assert fio.list_dirs() == ["chars", "chars/loose"]
 
 
-def test_list_flake_favorites():
+def test_list_flake_info():
     with _flakes_root() as root:
-        _write(os.path.join(root, "chars", "fennec.yaml"), b"favorite: true\npositive: fluffy tail\n")
-        _write(os.path.join(root, "solo.yml"), b"favorite: false\n")
-        assert fio.list_flake_favorites() == ["chars/fennec"]
+        _write(os.path.join(root, "chars", "fennec.yaml"), b"name: Fennec\nfavorite: true\nloras:\n  - {name: ' swish ', tag_name: true}\n  - {name: plain}\n")
+        _write(os.path.join(root, "chars", "musashi", "musashi.png"), PNG)
+        _write(os.path.join(root, "heroes", "solo.yml"), b"favorite: false\ncover_image: ./solo/hero.png\n")
+        _write(os.path.join(root, "heroes", "solo", "hero.png"), PNG)
+        _write(os.path.join(root, "broken.yaml"), b"name: [unclosed\n")
+        assert fio.list_flake_info() == {
+            "flakes": ["broken", "chars/fennec", "chars/musashi", "heroes/solo"],
+            "directories": ["chars", "heroes"],
+            "display_names": {"chars/fennec": "Fennec"},
+            "tag_names": {"chars/fennec": ["swish"]},
+            "favorites": ["chars/fennec"],
+            "folder_covers": {"chars": "chars/musashi", "heroes": "heroes/solo"},
+        }
 
 
 def _get_full_path(loras):

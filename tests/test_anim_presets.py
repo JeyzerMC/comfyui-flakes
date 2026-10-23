@@ -199,14 +199,14 @@ def test_anim_flake_lists_cover_and_delete():
 
         assert fio.list_flakes() == [img]
         assert fio.list_dirs() == ["img", "img/sdxl"]
-        assert fio.list_flake_favorites() == [img]
+        assert fio.list_flake_info()["favorites"] == [img]
         assert fio.list_series() == ["Heroes"]
         assert fio.list_flakes(kind="anim") == [mh3, wan]
         assert fio.list_flakes(family="Wan 2.2", kind="anim") == [wan]
         assert fio.list_dirs(kind="anim") == ["video", "video/mh3", "video/wan22", "video/wan22/chars"]
         assert fio.list_dirs(family="MiniMax H3", kind="anim") == ["video/mh3"]
-        assert fio.list_flake_display_names(kind="anim") == {wan: "Wave"}
-        assert fio.list_flake_favorites(kind="anim") == [wan]
+        assert fio.list_flake_info(kind="anim")["display_names"] == {wan: "Wave"}
+        assert fio.list_flake_info(kind="anim")["favorites"] == [wan]
         assert fio.list_series(kind="anim") == ["Fennec"]
         assert _raises_value_error(lambda: fio.list_flakes(family="SDXL/Base", kind="anim"))
 
