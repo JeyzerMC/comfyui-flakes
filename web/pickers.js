@@ -1,6 +1,6 @@
 import { openOverlay } from "./modal.js";
 import { css, makeButton, makeComfyInput, makeComfyValueSlider, familyFolder, renderFlakeLabel, ANIM_DIR } from "./utils.js";
-import { getCoverUrl, getVariantImageUrl, fetchBrowse, fetchLoras, fetchCheckpoints, fetchAnimFamily, pickedImageUrl, uploadInputImage } from "./api.js";
+import { getCoverUrl, getPresetCoverUrl, getVariantImageUrl, THUMB, fetchBrowse, fetchLoras, fetchCheckpoints, fetchAnimFamily, pickedImageUrl, uploadInputImage } from "./api.js";
 
 const BROWSE_TYPE_LABELS = {
     checkpoints: "models/checkpoints",
@@ -28,7 +28,7 @@ export async function openFileLoadPicker({ flakes, directories, family = "", kin
     return openNamePicker({
         title: "Load existing flake", kind: "flakes", drivesKind: kind === "anim" ? "anim" : "flakes", noun: "flake", base: "models/flakes/",
         names: withoutPresets(flakes), directories: withoutPresets(directories), family, startFolder: animFolder ? `${ANIM_DIR}/${animFolder}` : null,
-        coverUrl: getCoverUrl, favorites, folderCovers,
+        coverUrl: (name) => getCoverUrl(name, THUMB), favorites, folderCovers,
         // Stacked label with a dimmer tag line, matching the grid (#297).
         renderLabel: (el, name) => renderFlakeLabel(el, { name: displayNames[name] || name.split("/").pop(), tags: tagNames[name] || [] }),
     });
@@ -50,7 +50,7 @@ export async function openPresetPicker({ selected = "", family = "", kind = "img
     return openNamePicker({
         title: "Select a Preset", kind: "presets", noun: "preset", base: "model_presets/",
         names: presets, family, selected, startFolder: animFolder ? `${ANIM_DIR}/${animFolder}` : null,
-        coverUrl: (name) => `/flakes/preset_cover?name=${encodeURIComponent(name)}`,
+        coverUrl: (name) => getPresetCoverUrl(name, THUMB),
         renderLabel: (el, name) => { el.textContent = displayNames[name] || name.replace(/\\/g, "/").split("/").pop(); },
     });
 }
@@ -332,7 +332,7 @@ export function openVariantMultiPicker({ flakeName, group, choices, selected = [
             initial.textContent = choice.trim().charAt(0).toUpperCase();
             css(initial, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:600;color:#555;");
             const img = document.createElement("img");
-            img.src = getVariantImageUrl(flakeName, group, choice);
+            img.src = getVariantImageUrl(flakeName, group, choice, THUMB);
             img.addEventListener("error", () => img.remove());
             css(img, "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;");
             const nameEl = document.createElement("div");

@@ -527,7 +527,7 @@ def list_folder_covers(names: list[str], dirs: list[str], favorites: list[str]) 
     def cover(folder: str) -> str | None:
         if folder not in covers:
             direct = sorted(by_folder.get(folder, []), key=lambda n: (n not in fav, n.lower()))
-            covers[folder] = next((n for n in direct if read_cover(n)), None) or next(
+            covers[folder] = next((n for n in direct if cover_file(n)), None) or next(
                 (c for sub in sorted(subs.get(folder, []), key=str.lower) if (c := cover(sub))), None)
         return covers[folder]
 
@@ -750,7 +750,7 @@ def _cn_batch(path: str) -> list[str]:
     for fn in os.listdir(folder):
         stem, ext = os.path.splitext(fn)
         other = _CN_BATCH_RE.match(stem)
-        if other and other.group(1) == match.group(1) and ext.lower() in _COVER_MIME_MAP and os.path.isfile(os.path.join(folder, fn)):
+        if other and other.group(1) == match.group(1) and ext.lower() in _COVER_EXTENSIONS and os.path.isfile(os.path.join(folder, fn)):
             batch.append(os.path.join(folder, fn))
     return batch
 
@@ -771,7 +771,7 @@ def _external_image(value: Any, moved: dict[str, str]) -> str | None:
     # the current one makes it raise (os.path.relpath across mounts).
     lora_tree = None if os.path.isabs(value) else folder_paths.get_full_path("loras", value)
     for path in (direct, *(direct + e for e in (".png", ".jpg", ".jpeg", ".webp")), lora_tree):
-        if not path or os.path.splitext(path)[1].lower() not in _COVER_MIME_MAP:
+        if not path or os.path.splitext(path)[1].lower() not in _COVER_EXTENSIONS:
             continue
         path = os.path.abspath(path)
         if not any(_is_inside(path, root) for root in roots):
@@ -1363,48 +1363,27 @@ def variant_defaults(flake: Flake) -> dict[str, str]:
 
 _COVER_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif")
 
-_COVER_MIME_MAP = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-    ".gif": "image/gif",
-}
 
-
-def _resolve_cover_source(cover_source: str) -> tuple[bytes, str] | None:
-    """Resolve a ``cover_image`` string from a flake/preset YAML to raw bytes.
+def _cover_source_file(cover_source: str) -> str | None:
+    """Resolve a ``cover_image`` string from a flake/preset YAML to an image file.
 
     The value can either be an absolute path to an image anywhere on disk
     (#259 — manually added covers are stored by reference, never copied), a
     direct image path under the LoRA tree, or — for legacy flakes — a
     ``.safetensors`` path whose sibling image we fall back to.
     """
-    # Absolute-path reference: read the file directly (image extensions only).
     if os.path.isabs(cover_source):
-        if os.path.isfile(cover_source):
-            ext = os.path.splitext(cover_source)[1].lower()
-            if ext in _COVER_MIME_MAP:
-                with open(cover_source, "rb") as f:
-                    return f.read(), _COVER_MIME_MAP[ext]
+        if os.path.isfile(cover_source) and os.path.splitext(cover_source)[1].lower() in _COVER_EXTENSIONS:
+            return cover_source
         return None
 
     direct = folder_paths.get_full_path("loras", cover_source)
     if direct and os.path.isfile(direct):
-        ext = os.path.splitext(direct)[1].lower()
-        if ext in _COVER_MIME_MAP:
-            mime = _COVER_MIME_MAP[ext]
-            with open(direct, "rb") as f:
-                return f.read(), mime
+        if os.path.splitext(direct)[1].lower() in _COVER_EXTENSIONS:
+            return direct
         # Legacy: path points at the weight file; find a sibling image.
-        dir_path = os.path.dirname(direct)
-        basename = os.path.splitext(os.path.basename(direct))[0]
-        for ext in _COVER_EXTENSIONS:
-            sibling = os.path.join(dir_path, basename + ext)
-            if os.path.isfile(sibling):
-                mime = _COVER_MIME_MAP.get(ext, "application/octet-stream")
-                with open(sibling, "rb") as f:
-                    return f.read(), mime
+        stem = os.path.splitext(direct)[0]
+        return next((p for ext in _COVER_EXTENSIONS if os.path.isfile(p := stem + ext)), None)
     return None
 
 
@@ -1435,30 +1414,24 @@ def _delete_cover(name: str, legacy_only: bool = False) -> None:
         os.remove(path)
 
 
-def read_cover(name: str) -> tuple[bytes, str] | None:
-    """Return (data, mime_type) or None if no cover exists."""
+def cover_file(name: str) -> str | None:
+    """Path of the flake's cover image, or None if it has none."""
     path = _cover_path(name)
-    if not path:
-        # Fallback: check if flake YAML has cover_image referencing an image
-        # under the LoRA tree (path may end with .png/.jpg/etc., or with
-        # .safetensors for legacy flakes — in which case we look for a sibling).
-        try:
-            raw = read_flake_raw(name)
-            cover_source = raw.get("cover_image")
-            if cover_source:
-                resolved = _resolve_cover_source(_owned_file_path(cover_source, name))
-                if resolved:
-                    return resolved
-        except Exception:
-            pass
-        return None
-    ext = os.path.splitext(path)[1].lower()
-    mime = _COVER_MIME_MAP.get(ext, "application/octet-stream")
-    with open(path, "rb") as f:
-        return f.read(), mime
+    if path:
+        return path
+    # Fallback: check if flake YAML has cover_image referencing an image
+    # under the LoRA tree (path may end with .png/.jpg/etc., or with
+    # .safetensors for legacy flakes — in which case we look for a sibling).
+    try:
+        cover_source = read_flake_raw(name).get("cover_image")
+        if cover_source:
+            return _cover_source_file(_owned_file_path(cover_source, name))
+    except Exception:
+        pass
+    return None
 
 
-def _resolve_input_image(image_source: str) -> tuple[bytes, str] | None:
+def _input_image_file(image_source: str) -> str | None:
     """Resolve an image path relative to the ComfyUI input directory."""
     input_dir = folder_paths.get_input_directory()
     if not input_dir:
@@ -1468,18 +1441,13 @@ def _resolve_input_image(image_source: str) -> tuple[bytes, str] | None:
         _ensure_inside(candidate, input_dir)
     except ValueError:
         return None
-    if not os.path.isfile(candidate):
+    if not os.path.isfile(candidate) or os.path.splitext(candidate)[1].lower() not in _COVER_EXTENSIONS:
         return None
-    ext = os.path.splitext(candidate)[1].lower()
-    mime = _COVER_MIME_MAP.get(ext)
-    if not mime:
-        return None
-    with open(candidate, "rb") as f:
-        return f.read(), mime
+    return candidate
 
 
-def read_variant_image(name: str, group: str, choice: str) -> tuple[bytes, str] | None:
-    """Return (data, mime_type) for a variant choice's ``image`` path, or None.
+def variant_image_file(name: str, group: str, choice: str) -> str | None:
+    """Path of a variant choice's ``image``, or None.
 
     The ``image`` value is resolved either as a path under the ComfyUI input
     directory (where the image picker sources from) or, like ``cover_image``,
@@ -1496,19 +1464,19 @@ def read_variant_image(name: str, group: str, choice: str) -> tuple[bytes, str] 
     if not image_source:
         return None
     if image_source.startswith("./"):
-        return read_flake_asset(name, image_source)
-    return _resolve_input_image(image_source) or _resolve_cover_source(image_source)
+        return flake_asset_file(name, image_source)
+    return _input_image_file(image_source) or _cover_source_file(image_source)
 
 
-def read_flake_asset(name: str, path: str) -> tuple[bytes, str] | None:
-    """Return (data, mime_type) for a ``./`` image path relative to the flake
-    yaml's directory, or None when it is missing or not an image."""
+def flake_asset_file(name: str, path: str) -> str | None:
+    """Path of a ``./`` image relative to the flake yaml's directory, or None
+    when it is missing or not an image."""
     if not path.startswith("./"):
         raise ValueError("asset path must start with './'")
     flake_dir = os.path.dirname(_resolve_file(name))
     full = os.path.normpath(os.path.join(flake_dir, path[2:]))
     _ensure_inside(full, flake_dir)
-    return _resolve_cover_source(full)
+    return _cover_source_file(full)
 
 
 # ---------------------------------------------------------------------------
@@ -1754,31 +1722,22 @@ def save_preset_cover(name: str, ext: str, data: bytes) -> None:
         f.write(data)
 
 
-def read_preset_cover(name: str) -> tuple[bytes, str] | None:
-    """Return (data, mime_type) or None if no cover exists."""
+def preset_cover_file(name: str) -> str | None:
+    """Path of the preset's cover image, or None if it has none."""
     path = _preset_cover_path(name)
-    if not path:
-        # Fallback: use the sibling image next to the preset's checkpoint
-        try:
-            preset = load_preset(name)
-            if preset.checkpoint:
-                ckpt_path = folder_paths.get_full_path("checkpoints", preset.checkpoint)
-                if ckpt_path and os.path.isfile(ckpt_path):
-                    dir_path = os.path.dirname(ckpt_path)
-                    basename = os.path.splitext(os.path.basename(ckpt_path))[0]
-                    for ext in _COVER_EXTENSIONS:
-                        sibling = os.path.join(dir_path, basename + ext)
-                        if os.path.isfile(sibling):
-                            mime = _COVER_MIME_MAP.get(ext, "application/octet-stream")
-                            with open(sibling, "rb") as f:
-                                return f.read(), mime
-        except Exception:
-            pass
-        return None
-    ext = os.path.splitext(path)[1].lower()
-    mime = _COVER_MIME_MAP.get(ext, "application/octet-stream")
-    with open(path, "rb") as f:
-        return f.read(), mime
+    if path:
+        return path
+    # Fallback: use the sibling image next to the preset's checkpoint
+    try:
+        preset = load_preset(name)
+        if preset.checkpoint:
+            ckpt_path = folder_paths.get_full_path("checkpoints", preset.checkpoint)
+            if ckpt_path and os.path.isfile(ckpt_path):
+                stem = os.path.splitext(ckpt_path)[0]
+                return next((p for ext in _COVER_EXTENSIONS if os.path.isfile(p := stem + ext)), None)
+    except Exception:
+        pass
+    return None
 
 
 def load_preset(name: str) -> ModelPreset:

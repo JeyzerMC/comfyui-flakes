@@ -51,6 +51,11 @@ def _write(path, data=b""):
         f.write(data)
 
 
+def _read(path):
+    with open(path, "rb") as f:
+        return f.read()
+
+
 def _raises_value_error(fn):
     try:
         fn()
@@ -149,7 +154,7 @@ def test_anim_preset_cover_and_delete():
     with _roots() as (_, presets):
         name = fio.save_preset("w", {}, family="Wan 2.2", kind="anim")
         fio.save_preset_cover(name, ".png", b"png")
-        assert fio.read_preset_cover(name) == (b"png", "image/png")
+        assert _read(fio.preset_cover_file(name)) == b"png"
         fio.delete_preset(name)
         assert fio.list_presets(kind="anim") == []
         assert not os.path.exists(os.path.join(presets, "video", "wan22", "w.png"))
@@ -206,7 +211,7 @@ def test_anim_flake_lists_cover_and_delete():
         assert _raises_value_error(lambda: fio.list_flakes(family="SDXL/Base", kind="anim"))
 
         _write(os.path.join(root, "video", "wan22", "chars", "wave", "wave.png"), b"png")
-        assert fio.read_cover(wan) == (b"png", "image/png")
+        assert _read(fio.cover_file(wan)) == b"png"
         fio.delete_flake(wan)
         assert fio.list_flakes(kind="anim") == [mh3]
 
@@ -261,8 +266,8 @@ def test_import_anim_flake_copies_prompts_and_files():
                 "dress": {"positive": "blue dress"},
             }},
         }
-        assert fio.read_cover(name) == (b"cover", "image/png")
-        assert fio.read_variant_image(name, "outfit", "armor") == (b"armor", "image/png")
+        assert _read(fio.cover_file(name)) == b"cover"
+        assert _read(fio.variant_image_file(name, "outfit", "armor")) == b"armor"
         assert fio.list_flakes(kind="anim") == [name]
         # The source flake and its files are untouched.
         assert sorted(os.path.join(d, f) for d, _, fs in os.walk(src_dir) for f in fs) == before

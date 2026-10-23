@@ -75,6 +75,11 @@ def _write(path, data=b""):
         f.write(data)
 
 
+def _read(path):
+    with open(path, "rb") as f:
+        return f.read()
+
+
 def _raises_value_error(fn):
     try:
         fn()
@@ -121,31 +126,31 @@ def test_inline_flake_keeps_dot_paths():
 def test_variant_image_dot_path():
     with _flakes_root() as root:
         _write(os.path.join(root, "chars", "musashi", "musashi_outfit_armor.png"), PNG)
-        assert fio.read_variant_image("chars/musashi", "outfit", "armor") == (PNG, "image/png")
+        assert _read(fio.variant_image_file("chars/musashi", "outfit", "armor")) == PNG
 
 
 def test_asset_served_under_yaml_dir():
     with _flakes_root() as root:
         _write(os.path.join(root, "chars", "musashi", "cnets", "001_x_3_hed.png"), PNG)
-        assert fio.read_flake_asset("chars/musashi", "./musashi/cnets/001_x_3_hed.png") == (PNG, "image/png")
-        assert fio.read_flake_asset("chars/musashi", "./musashi/missing.png") is None
+        assert _read(fio.flake_asset_file("chars/musashi", "./musashi/cnets/001_x_3_hed.png")) == PNG
+        assert fio.flake_asset_file("chars/musashi", "./musashi/missing.png") is None
 
 
 def test_asset_rejects_non_image_and_bad_paths():
     with _flakes_root() as root:
         _write(os.path.join(root, "chars", "musashi", "musashi_hero.safetensors"), b"weights")
         _write(os.path.join(root, "secret.png"), PNG)
-        assert fio.read_flake_asset("chars/musashi", "./musashi/musashi_hero.safetensors") is None
-        assert _raises_value_error(lambda: fio.read_flake_asset("chars/musashi", "musashi/cnets/x.png"))
-        assert _raises_value_error(lambda: fio.read_flake_asset("chars/musashi", "./../secret.png"))
+        assert fio.flake_asset_file("chars/musashi", "./musashi/musashi_hero.safetensors") is None
+        assert _raises_value_error(lambda: fio.flake_asset_file("chars/musashi", "musashi/cnets/x.png"))
+        assert _raises_value_error(lambda: fio.flake_asset_file("chars/musashi", "./../secret.png"))
 
 
 def test_cover_prefers_owned_location():
     with _flakes_root() as root:
         _write(os.path.join(root, "chars", "musashi.jpg"), b"legacy")
-        assert fio.read_cover("chars/musashi") == (b"legacy", "image/jpeg")
+        assert _read(fio.cover_file("chars/musashi")) == b"legacy"
         _write(os.path.join(root, "chars", "musashi", "musashi.png"), PNG)
-        assert fio.read_cover("chars/musashi") == (PNG, "image/png")
+        assert _read(fio.cover_file("chars/musashi")) == PNG
 
 
 def test_delete_flake_keeps_owned_folder():
@@ -317,7 +322,7 @@ def test_save_moves_external_cover():
         assert "cover_image" not in fio.read_flake_raw("chars/musashi")
         assert not os.path.exists(source)
         assert not _exists(root, "chars", "musashi.png")
-        assert fio.read_cover("chars/musashi") == (b"jpg", "image/jpeg")
+        assert _read(fio.cover_file("chars/musashi")) == b"jpg"
 
 
 def test_save_leaves_cover_outside_input_and_loras():
@@ -328,6 +333,9 @@ def test_save_leaves_cover_outside_input_and_loras():
         assert fio.read_flake_raw("chars/musashi")["cover_image"] == source
         assert os.path.isfile(source)
         assert not os.path.isdir(os.path.join(root, "chars", "musashi"))
+        assert fio.cover_file("chars/musashi") == source
+        os.remove(source)
+        assert fio.cover_file("chars/musashi") is None
 
 
 def test_save_references_cover_already_owned_in_place():
@@ -338,7 +346,7 @@ def test_save_references_cover_already_owned_in_place():
         fio.save_flake("chars/musashi", {"controlnets": [{"type": "openpose", "image": "001_x_1_hed.png"}], "cover_image": "001_x_2_cover.png"})
         assert fio.read_flake_raw("chars/musashi")["cover_image"] == "./musashi/cnets/001_x_2_cover.png"
         assert not _exists(root, "chars", "musashi", "musashi.jpg")
-        assert fio.read_cover("chars/musashi") == (PNG, "image/png")
+        assert _read(fio.cover_file("chars/musashi")) == PNG
 
 
 def test_save_keeps_owned_images_in_place():
@@ -370,7 +378,7 @@ def test_save_moves_image_from_extra_model_path():
         finally:
             fp.folder_names_and_paths.pop("upscale_models")
         assert not os.path.exists(source)
-        assert fio.read_cover("chars/musashi") == (PNG, "image/png")
+        assert _read(fio.cover_file("chars/musashi")) == PNG
 
 
 def test_save_in_place_through_junctioned_flakes_root():
@@ -441,7 +449,7 @@ def test_rename_moves_owned_folder():
         assert raw["loras"][0]["path"] == "./miyamoto/musashi_hero.safetensors"
         assert raw["flake_links"] == [{"target": "chars/other"}]
         assert _exists(root, "solo", "miyamoto", "musashi_hero.safetensors")
-        assert fio.read_cover("solo/miyamoto") == (PNG, "image/png")
+        assert _read(fio.cover_file("solo/miyamoto")) == PNG
 
 
 # Portable bundles (#427): a source machine's flakes travel inside the image.
@@ -498,9 +506,9 @@ def test_bundle_round_trip():
         assert result["flakes"] == result["presets"] == {}
         with open(os.path.join(root, "chars", "musashi.yaml"), encoding="utf-8") as f:
             assert f.read() == BUNDLE_MUSASHI
-        assert fio.read_cover("chars/musashi") == (PNG, "image/png")
-        assert fio.read_cover("chars/horse") == (PNG, "image/png")
-        assert fio.read_preset_cover("img/sdxl/base") == (b"preset cover", "image/png")
+        assert _read(fio.cover_file("chars/musashi")) == PNG
+        assert _read(fio.cover_file("chars/horse")) == PNG
+        assert _read(fio.preset_cover_file("img/sdxl/base")) == b"preset cover"
         assert fio.resolve({"name": "chars/musashi"}).controlnets[0].image_name ==os.path.join(root, "chars", "musashi", "cnets", "pose.png")
         assert not _exists(root, "chars", "musashi", "musashi_hero.safetensors")
         assert fio.install_bundle(bundle) == {"installed": [], "flakes": {}, "presets": {}}
@@ -516,7 +524,7 @@ def test_bundle_collision_installs_imported_copy():
         assert sorted(result["installed"]) == ["chars/horse (imported)", "chars/musashi", "img/sdxl/base"]
         assert fio.read_flake_raw("chars/horse")["prompt"] == {"positive": "pony"}
         assert fio.read_flake_raw("chars/horse (imported)")["prompt"] == {"positive": "horse"}
-        assert fio.read_cover("chars/horse (imported)") == (PNG, "image/png")
+        assert _read(fio.cover_file("chars/horse (imported)")) == PNG
         # Links follow the rename, in flakes and presets.
         assert fio.read_flake_raw("chars/musashi")["flake_links"] == [{"target": "chars/horse (imported)"}]
         assert fio.read_preset_raw("img/sdxl/base")["flake_links"] == [{"target": "chars/horse (imported)"}]
@@ -564,8 +572,8 @@ def test_stage_bundle_keeps_flakes_local():
         # Staged flakes resolve like installed ones, links retargeted.
         assert fio.read_flake_raw(p + "chars/musashi")["flake_links"] == [{"target": p + "chars/horse"}]
         assert fio.read_preset_raw(p + "img/sdxl/base")["flake_links"] == [{"target": p + "chars/horse"}]
-        assert fio.read_cover(p + "chars/musashi") == (PNG, "image/png")
-        assert fio.read_preset_cover(p + "img/sdxl/base") == (b"preset cover", "image/png")
+        assert _read(fio.cover_file(p + "chars/musashi")) == PNG
+        assert _read(fio.preset_cover_file(p + "img/sdxl/base")) == b"preset cover"
         pose = fio.resolve({"name": p + "chars/musashi"}).controlnets[0].image_name
         assert pose.startswith(fp.get_temp_directory()) and os.path.isfile(pose)
         # Listings leave them out; the preset node still accepts them.
@@ -588,8 +596,8 @@ def test_save_local_installs_with_linked_flakes():
             "flakes": {p + "chars/musashi": "chars/musashi", p + "chars/horse": "chars/horse (imported)"}, "presets": {}}
         assert fio.read_flake_raw("chars/musashi")["flake_links"] == [{"target": "chars/horse (imported)"}]
         assert fio.read_flake_raw("chars/horse")["prompt"] == {"positive": "pony"}
-        assert fio.read_cover("chars/musashi") == (PNG, "image/png")
-        assert fio.read_cover("chars/horse (imported)") == (PNG, "image/png")
+        assert _read(fio.cover_file("chars/musashi")) == PNG
+        assert _read(fio.cover_file("chars/horse (imported)")) == PNG
         # The preset reuses the already saved horse.
         assert fio.save_local(p + "img/sdxl/base") == {
             "flakes": {p + "chars/horse": "chars/horse (imported)"}, "presets": {p + "img/sdxl/base": "img/sdxl/base"}}

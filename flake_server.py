@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
 import os
@@ -9,7 +10,7 @@ from server import PromptServer
 
 import folder_paths
 import latent_preview
-from . import flake_families, flake_io
+from . import flake_families, flake_io, flake_thumbs
 from .flake_compose import anima_cn_files
 
 routes = PromptServer.instance.routes
@@ -396,22 +397,32 @@ async def _list_embeddings(_request: web.Request) -> web.Response:
 # Cover image (Phase 3)
 # ---------------------------------------------------------------------------
 
+async def _image_file_response(request: web.Request, resolve, missing: str) -> web.Response:
+    """Serve the image file ``resolve()`` finds as a file (ETag / Last-Modified,
+    so browsers revalidate with 304s), or with ``?thumb=<px>`` its cached
+    downscaled copy for grids and pickers (#451)."""
+    try:
+        path = resolve()
+        if path and "thumb" in request.query:
+            path = await asyncio.to_thread(flake_thumbs.thumbnail, path, int(request.query["thumb"]))
+    except FileNotFoundError as exc:
+        return _not_found(str(exc))
+    except ValueError as exc:
+        return _bad_request(str(exc))
+    except Exception as exc:
+        logging.exception("[flakes] failed to serve %s", request.path_qs)
+        return _server_error(str(exc))
+    if path is None:
+        return _not_found(missing)
+    return web.FileResponse(path)
+
+
 @routes.get("/flakes/cover")
 async def _get_cover(request: web.Request) -> web.Response:
     name = request.query.get("name", "").strip()
     if not name:
         return _bad_request("missing 'name' query param")
-    try:
-        result = flake_io.read_cover(name)
-    except ValueError as exc:
-        return _bad_request(str(exc))
-    except Exception as exc:
-        logging.exception("[flakes] failed to read cover for %s", name)
-        return _server_error(str(exc))
-    if result is None:
-        return _not_found(f"no cover for '{name}'")
-    data, mime = result
-    return web.Response(body=data, content_type=mime)
+    return await _image_file_response(request, lambda: flake_io.cover_file(name), f"no cover for '{name}'")
 
 
 @routes.get("/flakes/variant_image")
@@ -421,17 +432,8 @@ async def _get_variant_image(request: web.Request) -> web.Response:
     choice = request.query.get("choice", "").strip()
     if not name or not group or not choice:
         return _bad_request("missing 'name', 'group' or 'choice' query param")
-    try:
-        result = flake_io.read_variant_image(name, group, choice)
-    except ValueError as exc:
-        return _bad_request(str(exc))
-    except Exception as exc:
-        logging.exception("[flakes] failed to read variant image for %s/%s/%s", name, group, choice)
-        return _server_error(str(exc))
-    if result is None:
-        return _not_found(f"no variant image for '{name}' {group}/{choice}")
-    data, mime = result
-    return web.Response(body=data, content_type=mime)
+    return await _image_file_response(request, lambda: flake_io.variant_image_file(name, group, choice),
+                                      f"no variant image for '{name}' {group}/{choice}")
 
 
 @routes.get("/flakes/asset")
@@ -441,19 +443,7 @@ async def _get_asset(request: web.Request) -> web.Response:
     path = request.query.get("path", "").strip()
     if not name or not path:
         return _bad_request("missing 'name' or 'path' query param")
-    try:
-        result = flake_io.read_flake_asset(name, path)
-    except FileNotFoundError as exc:
-        return _not_found(str(exc))
-    except ValueError as exc:
-        return _bad_request(str(exc))
-    except Exception as exc:
-        logging.exception("[flakes] failed to read asset %s for %s", path, name)
-        return _server_error(str(exc))
-    if result is None:
-        return _not_found(f"no image '{path}' for '{name}'")
-    data, mime = result
-    return web.Response(body=data, content_type=mime)
+    return await _image_file_response(request, lambda: flake_io.flake_asset_file(name, path), f"no image '{path}' for '{name}'")
 
 
 @routes.delete("/flakes/cover")
@@ -778,17 +768,7 @@ async def _get_preset_cover(request: web.Request) -> web.Response:
     name = request.query.get("name", "").strip()
     if not name:
         return _bad_request("missing 'name' query param")
-    try:
-        result = flake_io.read_preset_cover(name)
-    except ValueError as exc:
-        return _bad_request(str(exc))
-    except Exception as exc:
-        logging.exception("[flakes] failed to read preset cover for %s", name)
-        return _server_error(str(exc))
-    if result is None:
-        return _not_found(f"no cover for preset '{name}'")
-    data, mime = result
-    return web.Response(body=data, content_type=mime)
+    return await _image_file_response(request, lambda: flake_io.preset_cover_file(name), f"no cover for preset '{name}'")
 
 
 @routes.post("/flakes/preset_cover")

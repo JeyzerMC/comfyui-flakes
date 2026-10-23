@@ -6,7 +6,7 @@ import {
 import { saveLocalToDisk } from "../bundle.js";
 import { openPresetPicker } from "../pickers.js";
 import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
-import { fetchPreset } from "../api.js";
+import { fetchPreset, getPresetCoverUrl, THUMB } from "../api.js";
 import { getGeneratingUid, newItemUid } from "../queue.js";
 
 export function makeModelComboBlock({ preset, display_name, idx, isActive, isBypassed, isGenerating, overrides, onOverrideChange, onActivate, onToggleBypass, onSingleOut, onDuplicate, onRemove, onReplace, onEdit, onDragStart, onDragOver, onDrop, onDragEnd }) {
@@ -18,7 +18,7 @@ export function makeModelComboBlock({ preset, display_name, idx, isActive, isByp
     // border-radius. Mirrors the Flake Stack grid block (#303).
     css(block, `position:relative;height:80px;background:#2a2a2a;border:${
         isGenerating ? "2px solid #4a9eff" : "1px solid #444"
-    };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;background-image:url(/flakes/preset_cover?name=${encodeURIComponent(preset)});background-size:cover;background-position:center;${
+    };border-radius:4px;cursor:pointer;font-size:11px;color:#ddd;user-select:none;box-sizing:border-box;background-image:url(${getPresetCoverUrl(preset, THUMB)});background-size:cover;background-position:center;${
         isGenerating ? "box-shadow:inset 0 0 0 2px rgba(74,158,255,0.7);" : ""
     }${isBypassed ? "opacity:0.45;" : ""}`);
 

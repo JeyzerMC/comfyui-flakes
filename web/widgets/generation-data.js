@@ -1,6 +1,6 @@
 import { css, effectiveVariant, expandEntryVariants, choiceFlakeLinks } from "../utils.js";
 import { openOverlay } from "../modal.js";
-import { fetchFlake, fetchPreset, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, pickedImageUrl } from "../api.js";
+import { fetchFlake, fetchPreset, getCoverUrl, getPresetCoverUrl, getVariantImageUrl, THUMB, fetchFlakeMeta, cachedVariantDefaults, pickedImageUrl } from "../api.js";
 import { getActiveBatch, subscribeBatch, variantKey, itemImageJobs, stackImageJobs } from "../queue.js";
 
 // Cartesian product of a flake's variant groups ({group:[choices]}) -> one
@@ -40,6 +40,9 @@ function makeFlakeCard(e, itemKey) {
         coverUrl: variantCover || baseCover,
         baseCoverUrl: baseCover,
         variantCoverUrl: variantCover,
+        // The axis cards are small: they load thumbnails (#451).
+        thumbUrl: getCoverUrl(e.name, THUMB),
+        variantThumbUrl: variantSel ? getVariantImageUrl(e.name, variantSel[0], variantSel[1], THUMB) : null,
         itemKey,
     };
 }
@@ -143,7 +146,8 @@ export async function buildModel(startNode) {
                 items: presets.map(({ p, uid }) => ({
                     label: (node.properties?._combo_display_names?.[p]) || p.split(/[\/\\]+/).pop() || p,
                     presetName: p,
-                    coverUrl: `/flakes/preset_cover?name=${encodeURIComponent(p)}`,
+                    coverUrl: getPresetCoverUrl(p),
+                    thumbUrl: getPresetCoverUrl(p, THUMB),
                     itemKey: uid,
                 })),
             });
@@ -676,18 +680,18 @@ export function openGenerationDataOverlay(model, getImages, opts = {}) {
                 // matching the flake-combo node grid behavior. Without this the
                 // card showed no image when a missing variant choice image was
                 // selected.
-                if (item.variantCoverUrl) {
+                if (item.variantThumbUrl) {
                     const probe = new Image();
-                    probe.onload = () => { card.style.backgroundImage = `url(${item.variantCoverUrl})`; };
+                    probe.onload = () => { card.style.backgroundImage = `url(${item.variantThumbUrl})`; };
                     probe.onerror = () => {
-                        if (item.baseCoverUrl) card.style.backgroundImage = `url(${item.baseCoverUrl})`;
+                        card.style.backgroundImage = `url(${item.thumbUrl})`;
                     };
-                    probe.src = item.variantCoverUrl;
+                    probe.src = item.variantThumbUrl;
                     // Show base immediately while probe resolves so there's
                     // never an empty cell.
-                    if (item.baseCoverUrl) card.style.backgroundImage = `url(${item.baseCoverUrl})`;
-                } else if (item.coverUrl) {
-                    card.style.backgroundImage = `url(${item.coverUrl})`;
+                    card.style.backgroundImage = `url(${item.thumbUrl})`;
+                } else if (item.thumbUrl || item.coverUrl) {
+                    card.style.backgroundImage = `url(${item.thumbUrl || item.coverUrl})`;
                 }
                 // Progress bar (above the caption) — shown while the active
                 // batch's running prompt includes this (nodeId, itemKey) pair.

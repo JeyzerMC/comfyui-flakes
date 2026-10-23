@@ -6,7 +6,7 @@ import {
     isLocalName, markLocal, SAVE_TO_DISK_SVG,
 } from "../utils.js";
 import { saveLocalToDisk } from "../bundle.js";
-import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, fetchFlakeMeta, cachedVariantDefaults, invalidateList, importAnimFlakeApi, pickedImageUrl } from "../api.js";
+import { fetchList, fetchFlake, getCoverUrl, getVariantImageUrl, THUMB, fetchFlakeMeta, cachedVariantDefaults, invalidateList, importAnimFlakeApi, pickedImageUrl } from "../api.js";
 import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker, makeItemImagesButton, makeItemImagesDropTarget } from "../pickers.js";
 import { stackImageJobs } from "../queue.js";
@@ -50,14 +50,14 @@ function makeBlock({ entry, idx, kind, onEdit, onRemove, onReplace, onToggleBypa
             return;
         }
         if (!hasCover) return;
-        const baseUrl = getCoverUrl(entry.name);
+        const baseUrl = getCoverUrl(entry.name, THUMB);
         const sel = Object.entries(effectiveVariant(entry.variant, cachedVariantDefaults(entry.name)))[0];
         if (!sel) {
             block.style.backgroundImage = `url(${baseUrl})`;
             return;
         }
         const [group, choice] = sel;
-        const variantUrl = getVariantImageUrl(entry.name, group, choice);
+        const variantUrl = getVariantImageUrl(entry.name, group, choice, THUMB);
         const probe = new Image();
         probe.onload = () => { block.style.backgroundImage = `url(${variantUrl})`; };
         probe.onerror = () => { block.style.backgroundImage = `url(${baseUrl})`; };

@@ -187,12 +187,21 @@ export async function fetchAnimFamily(label) {
 
 // --- Cover ---
 
-export function getCoverUrl(name) {
-    return `/flakes/cover?name=${encodeURIComponent(name)}`;
+// Pass a `thumb` size (e.g. THUMB) for small displays: the server sends a
+// cached downscaled copy instead of the full image (#451).
+export const THUMB = 256;
+const thumbParam = (thumb) => thumb ? `&thumb=${thumb}` : "";
+
+export function getCoverUrl(name, thumb) {
+    return `/flakes/cover?name=${encodeURIComponent(name)}${thumbParam(thumb)}`;
 }
 
-export function getVariantImageUrl(name, group, choice) {
-    return `/flakes/variant_image?name=${encodeURIComponent(name)}&group=${encodeURIComponent(group)}&choice=${encodeURIComponent(choice)}`;
+export function getPresetCoverUrl(name, thumb) {
+    return `/flakes/preset_cover?name=${encodeURIComponent(name)}${thumbParam(thumb)}`;
+}
+
+export function getVariantImageUrl(name, group, choice, thumb) {
+    return `/flakes/variant_image?name=${encodeURIComponent(name)}&group=${encodeURIComponent(group)}&choice=${encodeURIComponent(choice)}${thumbParam(thumb)}`;
 }
 
 // /view drops any folder in `filename`, so a path under input/ goes as `subfolder`.
