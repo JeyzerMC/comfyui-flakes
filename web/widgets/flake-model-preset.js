@@ -354,13 +354,6 @@ export function setupFlakeModelPresetWidget(node, { kind = "img" } = {}) {
         coverImg.style.display = "block";
     });
 
-    const origOnConfigure = node.onConfigure;
-    node.onConfigure = function () {
-        const r = origOnConfigure?.apply(this, arguments);
-        render();
-        return r;
-    };
-
     const origSetValue = presetWidget.setValue;
     presetWidget.setValue = function (v) {
         const r = origSetValue?.apply(this, arguments);

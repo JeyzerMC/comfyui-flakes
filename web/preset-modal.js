@@ -5,7 +5,7 @@ import {
     makeTextarea, makeHoverRemoveWrapper, attachAutoGrow,
     familyFolder, familyFromFolder, familySpec, ensureFamilies, ANIM_DIR,
 } from "./utils.js";
-import { fetchPreset, fetchPresetRootIndex, fetchCheckpoints, fetchEmbeddings, inputImageUrl, fetchAnimFamilies, fetchAnimFamily } from "./api.js";
+import { fetchPreset, invalidatePresets, fetchPresetRootIndex, fetchCheckpoints, fetchEmbeddings, inputImageUrl, fetchAnimFamilies, fetchAnimFamily } from "./api.js";
 import { openFileBrowser, IMAGE_ROOTS, makeImageDropTarget } from "./pickers.js";
 import { pickFlakeTarget, renderLoraList, serializeLoras, normalizeLinks, renderLinkList, serializeLinks } from "./list-editors.js";
 import { app } from "../../scripts/app.js";
@@ -737,6 +737,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                 if (!window.confirm(`Delete preset '${name}'?`)) return;
                 try {
                     await fetch(`/flakes/presets/delete?name=${encodeURIComponent(name)}`, { method: "DELETE" });
+                    invalidatePresets();
                     close({ deleted: true, name });
                 } catch (err) {
                     window.alert(`Delete failed: ${err.message}`);
@@ -818,6 +819,7 @@ pathWrap.appendChild(makeComfyLabel("Output path"));
                     const err = await r.json().catch(() => ({}));
                     throw new Error(err.error || `HTTP ${r.status}`);
                 }
+                invalidatePresets();
                 const savedName = (await r.json()).name || outputPath;
                 if (mode === "create") {
                     close({ created: true, name: savedName });

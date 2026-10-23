@@ -1,17 +1,17 @@
 // ---------- API ----------
 
-let LIST_PROMISE = null;
-let LIST_KEY = null;
+// "kind:family" -> list promise.
+const LIST_PROMISES = new Map();
 
-export function invalidateList() { LIST_PROMISE = null; LIST_KEY = null; }
+export function invalidateList() { LIST_PROMISES.clear(); }
 
 // `kind` "anim" lists the animate flakes under video/ (#431); `family` is then
 // an animate family label.
 export async function fetchList(family = "", kind = "img") {
-    const query = new URLSearchParams({ family: family || "", kind });
-    if (!LIST_PROMISE || LIST_KEY !== `${kind}:${family}`) {
-        LIST_KEY = `${kind}:${family}`;
-        LIST_PROMISE = fetch(`/flakes/list?${query}`).then(r => r.json()).then(d => ({
+    const key = `${kind}:${family}`;
+    if (!LIST_PROMISES.has(key)) {
+        const query = new URLSearchParams({ family: family || "", kind });
+        LIST_PROMISES.set(key, fetch(`/flakes/list?${query}`).then(r => r.json()).then(d => ({
             flakes: Array.isArray(d.flakes) ? d.flakes : [],
             directories: Array.isArray(d.directories) ? d.directories : [],
             display_names: d.display_names || {},
@@ -20,9 +20,9 @@ export async function fetchList(family = "", kind = "img") {
             tag_names: d.tag_names || {},
             favorites: Array.isArray(d.favorites) ? d.favorites : [],
             folder_covers: d.folder_covers || {},
-        }));
+        })));
     }
-    return LIST_PROMISE;
+    return LIST_PROMISES.get(key);
 }
 
 export async function fetchFlake(name) {
@@ -128,13 +128,26 @@ export async function fetchBrowse(type, path = "", drive = "") {
     return (await r.json());
 }
 
+// name -> preset data promise, cleared when a preset is saved or deleted.
+const PRESET_CACHE = new Map();
+
+export function invalidatePresets() { PRESET_CACHE.clear(); }
+
+// Each caller gets its own copy: the preset editor fills blanks in place.
 export async function fetchPreset(name) {
-    const r = await fetch(`/flakes/preset?name=${encodeURIComponent(name)}`);
-    if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${r.status}`);
+    if (!PRESET_CACHE.has(name)) {
+        PRESET_CACHE.set(name, fetch(`/flakes/preset?name=${encodeURIComponent(name)}`).then(async r => {
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({}));
+                throw new Error(err.error || `HTTP ${r.status}`);
+            }
+            return (await r.json()).data || {};
+        }).catch(e => {
+            PRESET_CACHE.delete(name);
+            throw e;
+        }));
     }
-    return (await r.json()).data || {};
+    return structuredClone(await PRESET_CACHE.get(name));
 }
 
 // Resolve which registered model_presets root the preset currently lives in,

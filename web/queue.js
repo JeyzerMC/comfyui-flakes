@@ -152,9 +152,15 @@ function activeState() {
     return _batchStates.get(activeWorkflow());
 }
 
+// Combo node -> the running uid its last render highlighted.
+const _shownUids = new WeakMap();
+
 // Uid of the running item of a FlakeCombo / FlakeModelCombo node, if any.
+// Called by the node's render.
 export function getGeneratingUid(node) {
-    return activeState()?.generating[node.id];
+    const uid = activeState()?.generating[node.id];
+    _shownUids.set(node, uid);
+    return uid;
 }
 
 // { combo: {comboKey: img}, ad: {comboKey: img}, ab, last, lastKey } for a FlakeGenerate
@@ -173,9 +179,11 @@ export function subscribeBatch(fn) {
     return () => _batchListeners.delete(fn);
 }
 
+// Re-renders only the combo nodes whose highlighted item changed.
 function renderHighlights(state) {
     if (activeState() !== state) return;
     for (const n of app.graph.nodes) {
+        if (_shownUids.has(n) && _shownUids.get(n) === state?.generating[n.id]) continue;
         if (FLAKE_COMBO_TYPES.includes(n.type)) n._combo_render?.();
         else if (MODEL_COMBO_TYPES.includes(n.type)) n._model_combo_render?.();
     }
