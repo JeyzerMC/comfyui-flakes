@@ -17,21 +17,21 @@ function flakeEntries(node) {
 // Point the nodes' flakes and presets at their new names. A name staged from
 // an earlier bundle matches by its original name.
 function renameInNodes({ flakes, presets }) {
-    const renamed = (map, name) => map[name] ?? map[name?.replace(LOCAL_PREFIX, "")];
+    const renamed = (map, name) => map[name] ?? map[name?.replace(LOCAL_PREFIX, "")] ?? name;
     for (const node of graphNodes()) {
         const [flakesWidget, entries] = flakeEntries(node);
-        if (entries.some(e => renamed(flakes, e.name))) {
-            for (const e of entries) e.name = renamed(flakes, e.name) ?? e.name;
+        if (entries.some(e => renamed(flakes, e.name) !== e.name)) {
+            for (const e of entries) e.name = renamed(flakes, e.name);
             flakesWidget.value = JSON.stringify(entries);
             (node._flakes_render ?? node._combo_render)?.();
         }
         const presetWidget = node.widgets?.find(w => w.name === "preset");
         const combo = node.properties?._combo_presets;
-        if (presetWidget && [presetWidget.value, ...(combo ?? [])].some(p => renamed(presets, p))) {
-            presetWidget.value = renamed(presets, presetWidget.value) ?? presetWidget.value;
+        if (presetWidget && [presetWidget.value, ...(combo ?? [])].some(p => renamed(presets, p) !== p)) {
+            presetWidget.value = renamed(presets, presetWidget.value);
             if (combo) {
-                node.properties._combo_presets = combo.map(p => renamed(presets, p) ?? p);
-                node.properties._combo_bypassed = (node.properties._combo_bypassed ?? []).map(p => renamed(presets, p) ?? p);
+                node.properties._combo_presets = combo.map(p => renamed(presets, p));
+                node.properties._combo_bypassed = (node.properties._combo_bypassed ?? []).map(p => renamed(presets, p));
             }
             (node._preset_render ?? node._model_combo_render)?.();
         }
@@ -67,21 +67,41 @@ export async function saveLocalToDisk(name) {
     if (!graphUsesLocal()) delete app.graph.extra?.flake_bundle;
 }
 
-// A dropped Flake Generate image carries the flakes and presets it used in
-// workflow.extra.flake_bundle (#427). They stay local to the workflow (#437):
-// staged in ComfyUI's temp folder on every load, nothing installed on disk.
-app.registerExtension({
-    name: "comfyui-flakes.Bundle",
-    async afterConfigureGraph() {
-        const bundle = app.graph.extra?.flake_bundle;
-        if (!bundle) return;
-        const r = await fetch("/flakes/bundle/stage", {
+// Staging results by bundle JSON: a tab switch reloads a bundle this session
+// already staged.
+const STAGED = new Map();
+
+function stageBundle(bundle) {
+    const body = JSON.stringify(bundle);
+    if (!STAGED.has(body)) {
+        STAGED.set(body, fetch("/flakes/bundle/stage", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(bundle),
+            body,
+        }).then(async r => {
+            const result = await r.json();
+            if (!r.ok) throw new Error(`[flakes] bundle staging failed: ${result.error}`);
+            return result;
+        }).catch(e => {
+            STAGED.delete(body);
+            throw e;
+        }));
+    }
+    return STAGED.get(body);
+}
+
+// A dropped Flake Generate image carries the flakes and presets it used in
+// workflow.extra.flake_bundle (#427). They stay local to the workflow (#437):
+// staged in ComfyUI's temp folder, nothing installed on disk. Loading doesn't
+// wait for staging; the nodes are renamed once it's done, unless another
+// workflow was loaded meanwhile.
+app.registerExtension({
+    name: "comfyui-flakes.Bundle",
+    afterConfigureGraph() {
+        const bundle = app.graph.extra?.flake_bundle;
+        if (!bundle) return;
+        stageBundle(bundle).then(result => {
+            if (app.graph.extra?.flake_bundle === bundle) renameInNodes(result);
         });
-        const result = await r.json();
-        if (!r.ok) throw new Error(`[flakes] bundle staging failed: ${result.error}`);
-        renameInNodes(result);
     },
 });
