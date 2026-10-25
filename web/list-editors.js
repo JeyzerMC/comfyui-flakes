@@ -343,7 +343,14 @@ export function renderLoraList(box, loras, { family, tagName = false, onOutputTa
                         return chk;
                     };
                     // Tag-name checkbox (#274): append this LoRA's name to the grid display name.
-                    if (tagName) addToggle("Tag flake with this LoRA's name", "tag_name");
+                    if (tagName) {
+                        const tagChk = addToggle("Tag flake with this LoRA's name", "tag_name");
+                        // Typing a name into an empty field turns tagging on unless it was set explicitly (#459).
+                        nameInput.addEventListener("input", () => {
+                            if (lora.tag_name !== undefined || lora.name) return;
+                            lora.tag_name = tagChk.checked = true;
+                        });
+                    }
                     if (onOutputTag) {
                         // _tag_output is runtime-only and stripped on save.
                         const spacer = document.createElement("span");
