@@ -250,21 +250,22 @@ export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Bas
 
         // ---- Prefill chain (#272/#273/#274) ----
         // In create mode, while a field hasn't been manually edited, compose
-        // Output Path and Output Stem from Serie -> Display Name -> tagged LoRA
-        // names. Serie precedes the display name; tagged LoRA names follow it.
+        // Output Path and Output Stem from Serie -> Display Name -> LoRA names
+        // toggled "Add to output path" (#458). Serie precedes the display name;
+        // LoRA names follow it.
         let pathManuallyEdited = mode !== "create";
         let stemManuallyEdited = mode !== "create";
         function slugPart(s) { return (s || "").trim().replace(/ /g, "_").toLowerCase(); }
-        function taggedLoraSlugs() {
+        function outputLoraSlugs() {
             return (fieldState.loras || [])
-                .filter(l => l && l.tag_name && (l.name || "").trim())
+                .filter(l => l && l._tag_output && (l.name || "").trim())
                 .map(l => slugPart(l.name));
         }
         function recomputePrefills() {
             if (mode !== "create") return;
             const dn = slugPart(displayNameInput?.value);
             const serie = slugPart(serieInput?.value);
-            const tags = taggedLoraSlugs();
+            const tags = outputLoraSlugs();
             if (!pathManuallyEdited && pathInput) {
                 const typeFolder = selectedType ? selectedType.toLowerCase() + "s" : "";
                 pathInput.value = [typeFolder, serie, dn, ...tags].filter(Boolean).join("/");
@@ -834,7 +835,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     fieldWrap.appendChild(loraBox);
                     renderLoraList(loraBox, fieldState.loras, {
                         family: currentFamily,
-                        onTagChange: recomputePrefills,
+                        tagName: true,
+                        onOutputTag: mode === "create" ? recomputePrefills : null,
                         onFirstPath: (path) => setCoverFromLora?.(path),
                         loraDir: flakeDir,
                         defaultStrength: defaultLoraStrength(),

@@ -154,13 +154,15 @@ export async function pickFlakeTarget(family, exclude, kind = "img") {
     } catch { return null; }
 }
 
-// LoRA cards for `loras`. `onTagChange` enables the tag-name checkbox (#274);
+// LoRA cards for `loras`. `tagName` enables the tag-name checkbox (#274);
+// `onOutputTag` adds a toggle putting the LoRA's name in the output stem and
+// path, and is called when that changes (#458).
 // `onFirstPath` is called when the first LoRA's file changes.
 // `loraDir()` gives the folder the LoRA picker opens in (the flake's own
 // path, e.g. img/anima/characters); defaults to the family folder.
 // `lowFile` adds a LOW file (`path_low`) under the HIGH one, sharing the
 // strength (Wan 2.2 animate flakes, #431).
-export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, loraDir, showAdd = true, defaultStrength = 1.0, lowFile = false } = {}) {
+export function renderLoraList(box, loras, { family, tagName = false, onOutputTag, onFirstPath, loraDir, showAdd = true, defaultStrength = 1.0, lowFile = false } = {}) {
     const folder = familyFolder(family);
     // File row for `lora[key]`; only the first LoRA's `path` calls onFirstPath.
     function makePathRow(lora, i, key, label) {
@@ -307,7 +309,7 @@ export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, l
                 const nameInput = nameDD.element;
                 nameInput.addEventListener("change", () => {
                     lora.name = nameInput.value;
-                    if (lora.tag_name) onTagChange?.();
+                    if (lora._tag_output) onOutputTag?.();
                     renderLoras();
                 });
                 const urlInput = makeComfyInput(lora.url || "", "https://civitai.com/models/...");
@@ -323,26 +325,32 @@ export function renderLoraList(box, loras, { family, onTagChange, onFirstPath, l
                     editRow.appendChild(makeLabel("LOW name"));
                     editRow.appendChild(lowNameDD.container);
                 }
-                if (onTagChange) {
-                    // Tag-name checkbox (#274): append this LoRA's name to the
-                    // output stem, output path, and grid display name.
+                if (tagName || onOutputTag) {
                     const tagRow = document.createElement("div");
                     css(tagRow, "display:flex;align-items:center;gap:6px;margin-top:2px;");
-                    const tagChk = document.createElement("input");
-                    tagChk.type = "checkbox";
-                    tagChk.checked = !!lora.tag_name;
-                    css(tagChk, "cursor:pointer;margin:0;");
-                    const tagLbl = document.createElement("label");
-                    tagLbl.textContent = "Tag flake with this LoRA's name";
-                    css(tagLbl, "font-size:11px;color:#aaa;cursor:pointer;");
-                    const toggleTag = () => {
-                        lora.tag_name = tagChk.checked;
-                        onTagChange();
+                    const addToggle = (text, key, onChange) => {
+                        const chk = document.createElement("input");
+                        chk.type = "checkbox";
+                        chk.checked = !!lora[key];
+                        css(chk, "cursor:pointer;margin:0;");
+                        const lbl = document.createElement("label");
+                        lbl.textContent = text;
+                        css(lbl, "font-size:11px;color:#aaa;cursor:pointer;");
+                        const toggle = () => { lora[key] = chk.checked; onChange?.(); };
+                        chk.addEventListener("change", toggle);
+                        lbl.addEventListener("click", () => { chk.checked = !chk.checked; toggle(); });
+                        tagRow.append(chk, lbl);
+                        return chk;
                     };
-                    tagChk.addEventListener("change", toggleTag);
-                    tagLbl.addEventListener("click", () => { tagChk.checked = !tagChk.checked; toggleTag(); });
-                    tagRow.appendChild(tagChk);
-                    tagRow.appendChild(tagLbl);
+                    // Tag-name checkbox (#274): append this LoRA's name to the grid display name.
+                    if (tagName) addToggle("Tag flake with this LoRA's name", "tag_name");
+                    if (onOutputTag) {
+                        // _tag_output is runtime-only and stripped on save.
+                        const spacer = document.createElement("span");
+                        css(spacer, "flex:1;");
+                        tagRow.appendChild(spacer);
+                        addToggle("Add to output path", "_tag_output", onOutputTag);
+                    }
                     editRow.appendChild(tagRow);
                 }
                 editRow.appendChild(makeLabel("URL"));
