@@ -416,10 +416,23 @@ _STACK_DEFAULT_ENTRY = {"inline": True, "content": {"prompt": {"positive": ""}},
 
 def _used_entry(entry):
     """A stack entry as it ran: All Variants / Multiple collapsed to the variant
-    queue.js queued, combo-only fields dropped."""
+    queue.js queued, combo-only fields dropped, per-choice overrides kept for
+    the used choices only."""
     entry = {k: v for k, v in entry.items() if k not in ("_uid", "_all_variants")}
     if "variant" in entry:
         entry["variant"] = {g: c[0] if isinstance(c, list) else c for g, c in entry["variant"].items()}
+    keys = [k for k in ("variant_loras", "variant_link_overrides") if isinstance(entry.get(k), dict)]
+    if keys and not entry.get("inline"):
+        try:
+            used = flake_io.resolve(entry).used_variants.get(entry["name"], {})
+        except FileNotFoundError:
+            return entry
+        for k in keys:
+            kept = {g: {c: v for c, v in choices.items() if c in used.get(g, ())}
+                    for g, choices in entry[k].items() if isinstance(choices, dict)}
+            entry[k] = {g: choices for g, choices in kept.items() if choices}
+            if not entry[k]:
+                del entry[k]
     return entry
 
 

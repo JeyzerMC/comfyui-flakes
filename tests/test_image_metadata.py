@@ -260,6 +260,17 @@ def test_bundle_holds_flakes_and_preset_feeding_generate(monkeypatch):
         {"Characters/alice": {"outfit": {"red"}, "hair": {"long"}}, "Styles/ink": {"mood": {"calm"}}, "Places/beach": {"time": {"dusk", "noon"}}})
 
 
+def test_entry_keeps_overrides_of_used_choices_only(monkeypatch):
+    fio = _mod.flake_io
+    variants = {"outfit": {"red": {"default": True}, "blue": {}}, "hat": {"cap": {}}}
+    monkeypatch.setattr(fio, "load_flake", lambda name: fio.Flake(name=name, variants=variants))
+    entry = {"name": "Characters/alice", "variant": {"hat": ["cap"]},
+             "variant_loras": {"outfit": {"red": [0.5], "blue": [0.7]}, "hat": {"cap": [0.2]}},
+             "variant_link_overrides": {"outfit": {"blue": [{"variant": {"style": "beret"}}]}}}
+    assert _mod._used_entry(entry) == {"name": "Characters/alice", "variant": {"hat": "cap"},
+                                       "variant_loras": {"outfit": {"red": [0.5]}, "hat": {"cap": [0.2]}}}
+
+
 def test_without_workflow():
     prompt, extra = _fixture()
     meta_prompt, meta_extra = _mod._used_only_metadata(prompt, None)
