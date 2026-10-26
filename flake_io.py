@@ -301,6 +301,9 @@ class Flake:
     # for the first link so older readers keep working.
     flake_links: list[FlakeLink] = field(default_factory=list)
     flake_link: FlakeLink | None = None
+    # Set by resolve(): {flake name: {group: {choices}}} it applied, linked
+    # flakes included, so saved images can drop the unused choices.
+    used_variants: dict[str, dict[str, set[str]]] = field(default_factory=dict)
 
 # ---------------------------------------------------------------------------
 # Directory helpers
@@ -1210,6 +1213,8 @@ def resolve(entry: dict[str, Any]) -> Flake:
         if not selected.get(group):
             selected[group] = default
     for group, choice in selected.items():
+        if choice in flake.variants.get(group, {}):
+            flake.used_variants.setdefault(flake.name, {}).setdefault(group, set()).add(choice)
         variant = flake.variants.get(group, {}).get(choice)
         if not variant:
             continue
@@ -1337,6 +1342,8 @@ def _apply_single_link(host: "Flake", link: "FlakeLink", grid_override: dict[str
         print(f"[flakes] flake_link target not found: {link.target} (host: {host.name})")
         return
 
+    merge_used_variants(host.used_variants, linked.used_variants)
+
     # Append linked flake's loras to host's list, under the link's schedule.
     for lr in linked.loras:
         lr.schedule = multiply_schedules(link.schedule, lr.schedule)
@@ -1353,6 +1360,13 @@ def _apply_single_link(host: "Flake", link: "FlakeLink", grid_override: dict[str
         host.positive = _join_prompt_text([host.positive, linked.positive])
         host.negative = _join_prompt_text([host.negative, linked.negative])
     host.scheduled_prompts.extend(linked.scheduled_prompts)
+
+
+def merge_used_variants(into: dict[str, dict[str, set[str]]], used: dict[str, dict[str, set[str]]]) -> None:
+    """Add a ``Flake.used_variants`` map into *into*."""
+    for name, groups in used.items():
+        for group, choices in groups.items():
+            into.setdefault(name, {}).setdefault(group, set()).update(choices)
 
 
 def variant_defaults(flake: Flake) -> dict[str, str]:
@@ -1823,25 +1837,65 @@ def load_anim_preset(name: str) -> AnimPreset:
 _WEIGHT_EXTENSIONS = (".safetensors", ".ckpt", ".pt", ".pth", ".gguf", ".bin")
 
 
-def _bundle_files(yaml_path: str, blobs: dict[str, str]) -> dict[str, str]:
+def _bundle_files(yaml_path: str, blobs: dict[str, str], skip: set[str] = frozenset()) -> dict[str, str]:
     """{path relative to the yaml's folder: content hash} of the files a flake
     or preset owns: the ``<base><ext>`` cover beside it and its ``<base>/``
-    folder, minus model weights and yamls. Each content goes into *blobs*
-    once, so a file shared by several flakes is not duplicated."""
+    folder, minus model weights, yamls and *skip*. Each content goes into
+    *blobs* once, so a file shared by several flakes is not duplicated."""
     folder, base = os.path.split(os.path.splitext(yaml_path)[0])
     paths = [os.path.join(folder, base + e) for e in _COVER_EXTENSIONS]
     for dirpath, _, filenames in os.walk(os.path.join(folder, base)):
         paths += [os.path.join(dirpath, fn) for fn in filenames]
     files = {}
     for path in paths:
-        if not os.path.isfile(path) or os.path.splitext(path)[1].lower() in _WEIGHT_EXTENSIONS + (".yaml", ".yml"):
+        rel = os.path.relpath(path, folder).replace(os.sep, "/")
+        if not os.path.isfile(path) or os.path.splitext(path)[1].lower() in _WEIGHT_EXTENSIONS + (".yaml", ".yml") or rel in skip:
             continue
         with open(path, "rb") as f:
             data = f.read()
         key = hashlib.sha256(data).hexdigest()
         blobs.setdefault(key, base64.b64encode(data).decode("ascii"))
-        files[os.path.relpath(path, folder).replace(os.sep, "/")] = key
+        files[rel] = key
     return files
+
+
+def _owned_refs(value: Any, folder: str, base: str) -> set[str]:
+    """Files under *folder* the ``./<base>/`` paths in *value* point at, as
+    paths relative to *folder*, ControlNet batches expanded."""
+    if isinstance(value, dict):
+        return set().union(*(_owned_refs(v, folder, base) for v in value.values()))
+    if isinstance(value, list):
+        return set().union(*(_owned_refs(v, folder, base) for v in value))
+    if not (isinstance(value, str) and value.startswith(f"./{base}/")):
+        return set()
+    path = os.path.join(folder, value[2:])
+    paths = _cn_batch(path) if os.path.isfile(path) else [path]
+    return {os.path.relpath(p, folder).replace(os.sep, "/") for p in paths}
+
+
+def _used_variants_only(raw: dict[str, Any], used: dict[str, set[str]], yaml_path: str) -> tuple[dict[str, Any], set[str]]:
+    """*raw* keeping only the *used* ``{group: {choices}}`` variant choices,
+    and the files (as ``_bundle_files`` keys) only the dropped ones use."""
+    key = "variants" if "variants" in raw else "options"
+    variants = raw.get(key)
+    if not isinstance(variants, dict):
+        return raw, set()
+    kept, dropped = {}, []
+    for group, choices in variants.items():
+        for choice, body in (choices or {}).items():
+            if choice in used.get(group, ()):
+                kept.setdefault(group, {})[choice] = body
+            else:
+                dropped.append(body)
+    if not dropped:
+        return raw, set()
+    raw = dict(raw)
+    if kept:
+        raw[key] = kept
+    else:
+        del raw[key]
+    folder, base = os.path.split(os.path.splitext(yaml_path)[0])
+    return raw, _owned_refs(dropped, folder, base) - _owned_refs(raw, folder, base)
 
 
 def _link_targets(raw: dict[str, Any]) -> list[str]:
@@ -1851,12 +1905,14 @@ def _link_targets(raw: dict[str, Any]) -> list[str]:
     return [link.target for body in bodies for link in _parse_link_list(body)]
 
 
-def collect_bundle(flakes: list[str], presets: list[str]) -> dict[str, Any]:
+def collect_bundle(flakes: list[str], presets: list[str], used: dict[str, dict[str, set[str]]] | None = None) -> dict[str, Any]:
     """The portable bundle of *flakes*, *presets* and every flake they link
     to: ``{version, files: {hash: base64}, flakes: {name: {yaml, files:
     {rel: hash}}}, presets: {...}}``. A flake comes before the flakes it
     links to. Missing link targets are left out, as ``resolve`` skips them.
-    Workflow-local flakes go in under their original names, links included."""
+    Workflow-local flakes go in under their original names, links included.
+    Given a merged ``Flake.used_variants`` map *used*, flakes keep only those
+    variant choices, with the files and linked flakes the others bring."""
     bundle: dict[str, Any] = {"version": 1, "files": {}, "flakes": {}, "presets": {}}
 
     def add(kind: str, name: str) -> None:
@@ -1869,10 +1925,15 @@ def collect_bundle(flakes: list[str], presets: list[str]) -> dict[str, Any]:
             return
         with open(path, encoding="utf-8") as f:
             text = f.read()
-        targets = _link_targets(yaml.load(text, Loader=_YamlLoader) or {})
+        raw, skip = yaml.load(text, Loader=_YamlLoader) or {}, set()
+        if kind == "flakes" and used is not None:
+            stripped, skip = _used_variants_only(raw, used.get(name, {}), path)
+            if stripped is not raw:
+                raw, text = stripped, yaml.safe_dump(stripped, sort_keys=False, allow_unicode=True)
+        targets = _link_targets(raw)
         base = key.rsplit("/", 1)[-1]
         text = _bundle_yaml(text, base, base, {t: _LOCAL_PREFIX_RE.sub("", t) for t in targets})
-        bundle[kind][key] = {"yaml": text, "files": _bundle_files(path, bundle["files"])}
+        bundle[kind][key] = {"yaml": text, "files": _bundle_files(path, bundle["files"], skip)}
         for target in targets:
             add("flakes", target)
 

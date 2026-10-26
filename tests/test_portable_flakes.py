@@ -628,6 +628,76 @@ def test_collect_bundle_strips_local_prefix():
     assert again["files"] == bundle["files"]
 
 
+# Saved images bundle only the variant choices they used.
+BUNDLE_SORA = """prompt: {positive: sora}
+variants:
+  outfit:
+    red: {default: true, positive: red, image: ./sora/red.png, controlnets: [{type: depth, model: d.safetensors, image: ./sora/cn/pose_1_d.png}]}
+    blue: {positive: blue, image: ./sora/shared.png, flake_links: [{target: chars/hat, variant: {style: cap}}]}
+    green: {positive: green, image: ./sora/green.png, controlnets: [{type: depth, model: d.safetensors, image: ./sora/cn/walk_1_d.png}]}
+  mood:
+    calm: {positive: calm}
+"""
+BUNDLE_HAT = """variants:
+  style:
+    cap: {positive: cap, image: ./hat/cap.png}
+    beret: {positive: beret, image: ./hat/beret.png}
+"""
+
+
+def _sora_bundle(*entries):
+    with _machine() as root:
+        _write(os.path.join(root, "chars", "sora.yaml"), BUNDLE_SORA.encode())
+        for fn in ("sora.png", "red.png", "shared.png", "green.png", "cn/pose_1_d.png", "cn/pose_2_d.png", "cn/walk_1_d.png", "cn/walk_2_d.png"):
+            _write(os.path.join(root, "chars", "sora", *fn.split("/")), fn.encode())
+        _write(os.path.join(root, "chars", "hat.yaml"), BUNDLE_HAT.encode())
+        _write(os.path.join(root, "chars", "hat", "cap.png"), b"cap")
+        _write(os.path.join(root, "chars", "hat", "beret.png"), b"beret")
+        used = {}
+        for entry in entries:
+            fio.merge_used_variants(used, fio.resolve(entry).used_variants)
+        return used, fio.collect_bundle(["chars/sora"], [], used)
+
+
+def test_resolve_records_used_variants():
+    used, _ = _sora_bundle({"name": "chars/sora", "variant": {"outfit": "blue", "mood": "__none__"}})
+    assert used == {"chars/sora": {"outfit": {"blue"}}, "chars/hat": {"style": {"cap"}}}
+
+
+def test_bundle_keeps_only_used_choices():
+    _, bundle = _sora_bundle({"name": "chars/sora", "variant": {"outfit": "blue"}})
+    sora = yaml.safe_load(bundle["flakes"]["chars/sora"]["yaml"])
+    assert sora["variants"] == {"outfit": {"blue": yaml.safe_load(BUNDLE_SORA)["variants"]["outfit"]["blue"]}}
+    assert sorted(bundle["flakes"]["chars/sora"]["files"]) == ["sora/shared.png", "sora/sora.png"]
+    assert list(yaml.safe_load(bundle["flakes"]["chars/hat"]["yaml"])["variants"]["style"]) == ["cap"]
+    assert list(bundle["flakes"]["chars/hat"]["files"]) == ["hat/cap.png"]
+    assert len(bundle["files"]) == 3
+
+
+def test_bundle_keeps_default_choice_and_drops_choice_links():
+    _, bundle = _sora_bundle({"name": "chars/sora"})
+    assert list(bundle["flakes"]) == ["chars/sora"]
+    assert list(yaml.safe_load(bundle["flakes"]["chars/sora"]["yaml"])["variants"]) == ["outfit"]
+    assert sorted(bundle["flakes"]["chars/sora"]["files"]) == ["sora/cn/pose_1_d.png", "sora/cn/pose_2_d.png", "sora/red.png", "sora/sora.png"]
+
+
+def test_bundle_keeps_choices_of_every_use():
+    _, bundle = _sora_bundle({"name": "chars/sora", "variant": {"outfit": "green"}},
+                             {"name": "chars/sora", "variant": {"outfit": "red", "mood": "calm"}})
+    sora = yaml.safe_load(bundle["flakes"]["chars/sora"]["yaml"])
+    assert {g: list(c) for g, c in sora["variants"].items()} == {"outfit": ["red", "green"], "mood": ["calm"]}
+    assert "sora/shared.png" not in bundle["flakes"]["chars/sora"]["files"]
+
+
+def test_bundle_without_used_keeps_every_choice():
+    with _machine() as root:
+        _write(os.path.join(root, "chars", "sora.yaml"), BUNDLE_SORA.encode())
+        _write(os.path.join(root, "chars", "hat.yaml"), BUNDLE_HAT.encode())
+        bundle = fio.collect_bundle(["chars/sora"], [])
+    assert bundle["flakes"]["chars/sora"]["yaml"] == BUNDLE_SORA
+    assert list(bundle["flakes"]) == ["chars/sora", "chars/hat"]
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

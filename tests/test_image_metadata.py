@@ -249,9 +249,15 @@ def test_generate_points_at_saved_image():
 def test_bundle_holds_flakes_and_preset_feeding_generate(monkeypatch):
     prompt, _ = _mod._used_only_metadata(*_fixture())
     prompt["6"] = {"class_type": "FlakeStack", "inputs": {"flake_data": ["1", 0], "flakes_json": json.dumps([{"name": "Other/unused"}])}}
-    monkeypatch.setattr(_mod.flake_io, "collect_bundle", lambda flakes, presets: (sorted(flakes), presets))
+    fio = _mod.flake_io
+    variants = {"outfit": {"red": {}, "blue": {}}, "hair": {"long": {}}, "time": {"dusk": {}, "noon": {}}, "mood": {"calm": {}}}
+    monkeypatch.setattr(fio, "load_flake", lambda name: fio.Flake(name=name, variants=variants))
+    monkeypatch.setattr(fio, "load_preset", lambda name: types.SimpleNamespace(
+        flake_links=[fio.FlakeLink(target="Places/beach", variant={"time": "noon"})]))
+    monkeypatch.setattr(fio, "collect_bundle", lambda flakes, presets, used: (sorted(flakes), presets, used))
     assert _mod._flake_bundle(prompt, "5") == (
-        ["Characters/alice", "Places/beach", "Poses/sitting", "Styles/ink"], ["SDXL/preset2"])
+        ["Characters/alice", "Places/beach", "Poses/sitting", "Styles/ink"], ["SDXL/preset2"],
+        {"Characters/alice": {"outfit": {"red"}, "hair": {"long"}}, "Styles/ink": {"mood": {"calm"}}, "Places/beach": {"time": {"dusk", "noon"}}})
 
 
 def test_without_workflow():

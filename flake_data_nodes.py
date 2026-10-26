@@ -544,8 +544,9 @@ def _set_generate_image(extra_pnginfo, node_id, seed, image):
 
 def _flake_bundle(prompt, node_id):
     """The portable bundle (#427) of the flakes and presets feeding prompt node
-    ``node_id``, read from a ``_used_only_metadata`` prompt."""
-    flakes, presets = [], []
+    ``node_id``, read from a ``_used_only_metadata`` prompt. Flakes keep only
+    the variant choices this run applied."""
+    flakes, presets, used = [], [], {}
     seen, todo = set(), [str(node_id)]
     while todo:
         nid = todo.pop()
@@ -556,10 +557,23 @@ def _flake_bundle(prompt, node_id):
         todo += [str(v[0]) for v in inputs.values() if isinstance(v, list)]
         cls = prompt[nid].get("class_type")
         if cls == "FlakeStack":
-            flakes += [e["name"] for e in json.loads(inputs["flakes_json"]) if not e.get("inline") and e.get("name")]
+            entries = json.loads(inputs["flakes_json"])
+            flakes += [e["name"] for e in entries if not e.get("inline") and e.get("name")]
+            for e in entries:
+                try:
+                    flake_io.merge_used_variants(used, flake_io.resolve(e).used_variants)
+                except FileNotFoundError:
+                    pass
         elif cls == "FlakeModelPreset" and isinstance(inputs.get("preset"), str):
             presets.append(inputs["preset"])
-    return flake_io.collect_bundle(flakes, presets)
+            try:
+                # Preset links resolve like full_flake_node's __preset__ flake.
+                preset_flake = flake_io.Flake(name="__preset__", flake_links=flake_io.load_preset(inputs["preset"]).flake_links)
+            except FileNotFoundError:
+                continue
+            flake_io._apply_flake_link(preset_flake, {})
+            flake_io.merge_used_variants(used, preset_flake.used_variants)
+    return flake_io.collect_bundle(flakes, presets, used)
 
 
 class FlakeGenerate:
