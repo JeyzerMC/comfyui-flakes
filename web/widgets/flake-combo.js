@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, makeFavoriteStar, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock, flakeDrag, clearFlakeDrag,
-    makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
+    makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, renderOptionToggles, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, attachHoldToSingleOut, effectiveVariant, variantDropdownOptions, variantDefaultsOf, choiceFlakeLinks,
     isLocalName, markLocal, SAVE_TO_DISK_SVG,
 } from "../utils.js";
@@ -239,6 +239,15 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             }
         }
 
+        // Flake options (#465); a choice's own options sit under its group.
+        if (flakeData?.prompt_options?.length) {
+            const sep = document.createElement("div");
+            css(sep, "border-top:1px solid #333;margin:2px 0;");
+            const optHost = document.createElement("div");
+            renderOptionToggles(optHost, flakeData.prompt_options, entry, onChanged);
+            nativeColumn.append(sep, optHost);
+        }
+
         if (hasOptionGroups) {
             const sep = document.createElement("div");
             css(sep, "border-top:1px solid #333;margin:2px 0;");
@@ -299,9 +308,12 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                 const multipleOpt = dd.element.options[dd.element.options.length - 2];
                 // No sliders for a "Multiple" selection (#413).
                 const vlHost = document.createElement("div");
+                const voHost = document.createElement("div");
                 const renderVl = () => {
                     const ch = stored() || defaultChoice;
-                    renderVariantLoraSliders(vlHost, flakeData?.variants, entry, group, entry._all_variants || Array.isArray(ch) ? null : ch, onChanged);
+                    const choice = entry._all_variants || Array.isArray(ch) ? null : ch;
+                    renderVariantLoraSliders(vlHost, flakeData?.variants, entry, group, choice, onChanged);
+                    renderOptionToggles(voHost, choice && flakeData?.variants?.[group]?.[choice]?.prompt_options, entry, onChanged);
                 };
                 variantLoraRenders.push(renderVl);
                 const store = (v) => {
@@ -331,7 +343,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     }
                     store(picked.length > 1 ? picked : picked[0] || noneValue);
                 });
-                row.append(dd.container, vlHost);
+                row.append(dd.container, vlHost, voHost);
                 groupsWrap.appendChild(row);
             }
             applyAv();
@@ -862,7 +874,7 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
-        arr[idx] = { ...arr[idx], name: result.name, loras, variant: {}, variant_loras: undefined, has_lora, display_name, flake_type, favorite, tags };
+        arr[idx] = { ...arr[idx], name: result.name, loras, variant: {}, variant_loras: undefined, option_overrides: undefined, has_lora, display_name, flake_type, favorite, tags };
         writeAllFlakes(arr);
         render();
     }

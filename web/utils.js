@@ -1092,6 +1092,35 @@ export function renderVariantLoraSliders(host, variants, owner, group, choice, o
     });
 }
 
+// Grid dropdown toggles for the options of a flake or variant choice (#465),
+// three per row. entry.option_overrides[name] holds a toggle only while it
+// differs from the option's yaml default.
+export function renderOptionToggles(host, options, entry, onChanged) {
+    host.replaceChildren();
+    css(host, "display:grid;grid-template-columns:repeat(3,1fr);gap:2px;");
+    for (const opt of Array.isArray(options) ? options : []) {
+        if (!opt?.name) continue;
+        const btn = document.createElement("button");
+        btn.textContent = opt.name;
+        btn.title = opt.positive ? `${opt.name}: ${opt.positive}` : opt.name;
+        const isOn = () => entry.option_overrides?.[opt.name] ?? !!opt.default;
+        const paint = () => css(btn, `min-width:0;padding:2px;font-size:9px;border-radius:3px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid ${isOn() ? "#4a9eff;background:#1f3a5c;color:#fff" : "#333;background:#1a1a1a;color:#777"};`);
+        btn.addEventListener("click", () => {
+            const on = !isOn();
+            if (on === !!opt.default) {
+                delete entry.option_overrides[opt.name];
+                if (!Object.keys(entry.option_overrides).length) delete entry.option_overrides;
+            } else {
+                (entry.option_overrides ||= {})[opt.name] = on;
+            }
+            paint();
+            onChanged();
+        });
+        paint();
+        host.appendChild(btn);
+    }
+}
+
 // ---------- Shared grid item helpers ----------
 
 export const TYPE_COLORS = {

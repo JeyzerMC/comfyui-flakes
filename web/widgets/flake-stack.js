@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, makeFavoriteStar, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock, flakeDrag, clearFlakeDrag,
-    makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, variantInitials, renderFlakeLabel, splitNameAndTags,
+    makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, renderOptionToggles, variantInitials, renderFlakeLabel, splitNameAndTags,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, effectiveVariant, variantDropdownOptions, variantDefaultsOf, choiceFlakeLinks, makeImageSection,
     isLocalName, markLocal, SAVE_TO_DISK_SVG,
 } from "../utils.js";
@@ -265,6 +265,15 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
             }
         }
 
+        // Flake options (#465); a choice's own options sit under its group.
+        if (flakeData?.prompt_options?.length) {
+            const sep = document.createElement("div");
+            css(sep, "border-top:1px solid #333;margin:2px 0;");
+            const optHost = document.createElement("div");
+            renderOptionToggles(optHost, flakeData.prompt_options, entry, onChanged);
+            nativeColumn.append(sep, optHost);
+        }
+
         // 3. Variant groups
         if (hasOptionGroups) {
             const sep = document.createElement("div");
@@ -313,9 +322,12 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                 const current = (entry.variant || {})[group] || "";
                 const dd = makePanelDropdown(variantDropdownOptions(hasOptions[group], defaultChoice), current === defaultChoice ? "" : current);
                 const vlHost = document.createElement("div");
+                const voHost = document.createElement("div");
                 const renderVl = () => {
                     const ch = (entry.variant || {})[group] || defaultChoice;
-                    renderVariantLoraSliders(vlHost, flakeData?.variants, entry, group, entry._all_variants ? null : ch, onChanged);
+                    const choice = entry._all_variants ? null : ch;
+                    renderVariantLoraSliders(vlHost, flakeData?.variants, entry, group, choice, onChanged);
+                    renderOptionToggles(voHost, choice && flakeData?.variants?.[group]?.[choice]?.prompt_options, entry, onChanged);
                 };
                 variantLoraRenders.push(renderVl);
                 dd.element.addEventListener("change", () => {
@@ -330,7 +342,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     onChanged();
                     if (onVariantChange) onVariantChange();
                 });
-                row.append(dd.container, vlHost);
+                row.append(dd.container, vlHost, voHost);
                 groupsWrap.appendChild(row);
             }
             applyAv();
