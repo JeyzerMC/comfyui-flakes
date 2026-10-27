@@ -652,9 +652,32 @@ export function renderOptionList(box, options) {
                 renderOptions();
             });
             header.append(nameInput, onWrap, removeBtn);
+            const promptRow = document.createElement("div");
+            css(promptRow, "display:flex;gap:6px;align-items:center;");
             const posInput = makeComfyInput(opt.positive || "", "Positive prompt");
             posInput.addEventListener("input", () => { opt.positive = posInput.value; });
-            card.append(header, posInput);
+            promptRow.appendChild(posInput);
+            // Optional negative (#467), added like a flake prompt's.
+            if (opt.negative != null) {
+                const negInput = makeComfyInput(opt.negative, "Negative prompt");
+                negInput.addEventListener("input", () => { opt.negative = negInput.value; });
+                const negRemove = makeSmallButton("✕");
+                negRemove.title = "Remove negative prompt";
+                negRemove.addEventListener("click", () => {
+                    delete opt.negative;
+                    renderOptions();
+                });
+                promptRow.append(negInput, negRemove);
+            } else {
+                const negBtn = makeSmallButton("+ Negative");
+                negBtn.style.whiteSpace = "nowrap";
+                negBtn.addEventListener("click", () => {
+                    opt.negative = "";
+                    renderOptions();
+                });
+                promptRow.appendChild(negBtn);
+            }
+            card.append(header, promptRow);
             box.appendChild(card);
         });
         const addBtn = makeSmallButton("+ option");
@@ -671,6 +694,7 @@ export function serializeOptions(options) {
     return options.filter(o => o?.name?.trim()).map(o => ({
         name: o.name.trim(),
         positive: (o.positive || "").trim(),
+        ...(o.negative?.trim() ? { negative: o.negative.trim() } : {}),
         ...(o.default ? { default: true } : {}),
     }));
 }

@@ -265,6 +265,7 @@ class PromptEntry:
 class PromptOption:
     """A named optional prompt fragment on a flake or variant choice (#462)."""
     positive: str = ""
+    negative: str = ""
     on: bool = False
 
 
@@ -1152,7 +1153,8 @@ def _parse_link_list(raw: dict[str, Any]) -> list["FlakeLink"]:
 def _parse_prompt_options(raw: dict[str, Any]) -> dict[str, PromptOption]:
     """`prompt_options:` of a flake body or variant choice (#462)."""
     return {
-        str(o["name"]).strip(): PromptOption(str(o.get("positive") or "").strip(), bool(o.get("default")))
+        str(o["name"]).strip(): PromptOption(
+            str(o.get("positive") or "").strip(), str(o.get("negative") or "").strip(), bool(o.get("default")))
         for o in raw.get("prompt_options") or [] if isinstance(o, dict) and str(o.get("name") or "").strip()
     }
 

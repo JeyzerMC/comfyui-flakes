@@ -149,4 +149,18 @@ def test_upstream_parts_are_not_mutated():
     _with_flakes({"ahri": AHRI, "pose": {"toggler": "-face"}})
     pos, _, parts = ffn._join_prompts("", "", [fio.resolve({"name": "ahri"})], None)
     ffn._join_prompts(pos, "", [fio.resolve({"name": "pose"})], parts)
-    assert parts[1][1]["face"] == ["golden eyes", True]
+    assert parts[1][2]["face"] == ["golden eyes", "", True]
+
+
+def test_option_negatives_toggle_with_their_positive():
+    _with_flakes({
+        "ahri": {"prompt": {"positive": "ahri", "negative": "bad hands"},
+                 "prompt_options": [{"name": "tails", "positive": "nine tails", "negative": "one tail", "default": True}]},
+        "close": {"toggler": "-tails"},
+    })
+    ahri = fio.resolve({"name": "ahri"})
+    pos, neg, parts = ffn._join_prompts("base", "blurry", [ahri], None)
+    assert (pos, neg) == ("base BREAK ahri, nine tails", "blurry, bad hands, one tail")
+    assert ffn._join_prompts(pos, neg, [fio.resolve({"name": "close"})], parts)[:2] == ("base BREAK ahri", "blurry, bad hands")
+    # A node in between rewrote only the negative: the options are frozen into the texts.
+    assert ffn._join_prompts(pos, "other", [fio.resolve({"name": "close"})], parts)[:2] == (pos, "other")

@@ -468,30 +468,34 @@ def _resolve_flakes(flakes_json: str) -> list[flake_io.Flake]:
     return [flake_io.resolve(e) for e in normalized if not e.get("bypassed")]
 
 
-def _render_parts(parts: list) -> str:
-    texts = (", ".join(t for t in [text, *(p for p, on in options.values() if on)] if t) for text, options in parts)
-    return " BREAK ".join(t for t in texts if t)
+def _render_parts(parts: list) -> tuple[str, str]:
+    """(positive, negative) of the prompt parts: each part's text with its
+    active options; positives joined with " BREAK ", negatives with ", "."""
+    pos = (", ".join(t for t in [p, *(o[0] for o in options.values() if o[2])] if t) for p, _, options in parts)
+    neg = (t for _, n, options in parts for t in [n, *(o[1] for o in options.values() if o[2])] if t)
+    return " BREAK ".join(t for t in pos if t), ", ".join(neg)
 
 
 def _join_prompts(pos_text: str, neg_text: str, flakes: list[flake_io.Flake], parts: list | None) -> tuple[str, str, list]:
     """Incoming prompt text followed by each flake's: positives joined with
-    " BREAK ", negatives with ", ". A flake's active options join its positive.
+    " BREAK ", negatives with ", ". A flake's active options join its prompts.
 
-    ``parts`` (``[[text, {name: [positive, on]}], ...]``, from the chain state)
-    keeps upstream options apart so each flake's toggler can switch them
-    before its own are added (#462). They are reused only while they still
-    render the incoming text; returns the new parts for the chain state."""
-    if not parts or _render_parts(parts) != pos_text.strip():
-        parts = [[pos_text.strip(), {}]]
-    parts = [[text, {n: list(o) for n, o in options.items()}] for text, options in parts]
+    ``parts`` (``[[positive, negative, {name: [positive, negative, on]}], ...]``,
+    from the chain state) keep upstream options apart so each flake's toggler
+    can switch them before its own are added (#462, #467). They are reused
+    only while they still render the incoming texts; returns the new parts
+    for the chain state."""
+    if not parts or _render_parts(parts) != (pos_text.strip(), neg_text.strip()):
+        parts = [[pos_text.strip(), neg_text.strip(), {}]]
+    parts = [[p, n, {k: list(o) for k, o in options.items()}] for p, n, options in parts]
     for f in flakes:
         for name, on in f.toggler:
-            for _, options in parts:
+            for *_, options in parts:
                 if name in options:
-                    options[name][1] = on
-        parts.append([f.positive.strip(), {n: [o.positive, o.on] for n, o in f.options.items()}])
-    neg_parts = [t.strip() for t in [neg_text, *(f.negative for f in flakes)] if t and t.strip()]
-    return _render_parts(parts), ", ".join(neg_parts), parts
+                    options[name][2] = on
+        parts.append([f.positive.strip(), f.negative.strip(),
+                      {k: [o.positive, o.negative, o.on] for k, o in f.options.items()}])
+    return *_render_parts(parts), parts
 
 
 class FlakeStack:

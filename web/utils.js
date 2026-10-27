@@ -1102,7 +1102,7 @@ export function renderOptionToggles(host, options, entry, onChanged) {
         if (!opt?.name) continue;
         const btn = document.createElement("button");
         btn.textContent = opt.name;
-        btn.title = opt.positive ? `${opt.name}: ${opt.positive}` : opt.name;
+        btn.title = [opt.name, opt.positive, opt.negative && `negative: ${opt.negative}`].filter(Boolean).join("\n");
         const isOn = () => entry.option_overrides?.[opt.name] ?? !!opt.default;
         const paint = () => css(btn, `min-width:0;padding:2px;font-size:9px;border-radius:3px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid ${isOn() ? "#4a9eff;background:#1f3a5c;color:#fff" : "#333;background:#1a1a1a;color:#777"};`);
         btn.addEventListener("click", () => {
