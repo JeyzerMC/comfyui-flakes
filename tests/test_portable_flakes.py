@@ -689,6 +689,18 @@ def test_bundle_keeps_choices_of_every_use():
     assert "sora/shared.png" not in bundle["flakes"]["chars/sora"]["files"]
 
 
+
+def test_bundle_drops_options_of_unused_choices():
+    ahri = {"prompt_options": [{"name": "face", "positive": "eyes"}],
+            "variants": {"skin": {"classic": {"prompt_options": [{"name": "tails", "positive": "tails"}]},
+                                  "arcade": {"prompt_options": [{"name": "visor", "positive": "visor"}]}}}}
+    with _machine() as root:
+        _write(os.path.join(root, "chars", "ahri.yaml"), yaml.safe_dump(ahri).encode())
+        used = fio.resolve({"name": "chars/ahri", "variant": {"skin": "classic"}}).used_variants
+        bundled = yaml.safe_load(fio.collect_bundle(["chars/ahri"], [], used)["flakes"]["chars/ahri"]["yaml"])
+    assert bundled["prompt_options"] == ahri["prompt_options"]
+    assert bundled["variants"] == {"skin": {"classic": ahri["variants"]["skin"]["classic"]}}
+
 def test_bundle_without_used_keeps_every_choice():
     with _machine() as root:
         _write(os.path.join(root, "chars", "sora.yaml"), BUNDLE_SORA.encode())

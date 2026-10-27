@@ -271,6 +271,18 @@ def test_entry_keeps_overrides_of_used_choices_only(monkeypatch):
                                        "variant_loras": {"outfit": {"red": [0.5]}, "hat": {"cap": [0.2]}}}
 
 
+
+def test_entry_keeps_toggles_of_its_options_only(monkeypatch):
+    fio = _mod.flake_io
+    variants = {"skin": {"classic": {"prompt_options": [{"name": "tails"}]}, "arcade": {"prompt_options": [{"name": "visor"}]}}}
+    monkeypatch.setattr(fio, "load_flake", lambda name: fio.Flake(
+        name=name, variants=variants, options={"face": fio.PromptOption("eyes")}))
+    entry = {"name": "Characters/ahri", "variant": {"skin": "classic"},
+             "option_overrides": {"face": False, "tails": True, "visor": True}}
+    assert _mod._used_entry(entry)["option_overrides"] == {"face": False, "tails": True}
+    entry["option_overrides"] = {"visor": True}
+    assert "option_overrides" not in _mod._used_entry(entry)
+
 def test_without_workflow():
     prompt, extra = _fixture()
     meta_prompt, meta_extra = _mod._used_only_metadata(prompt, None)

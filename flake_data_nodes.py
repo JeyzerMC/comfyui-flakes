@@ -417,16 +417,22 @@ _STACK_DEFAULT_ENTRY = {"inline": True, "content": {"prompt": {"positive": ""}},
 def _used_entry(entry):
     """A stack entry as it ran: All Variants / Multiple collapsed to the variant
     queue.js queued, combo-only fields dropped, per-choice overrides kept for
-    the used choices only."""
+    the used choices only, option toggles for the options it has only."""
     entry = {k: v for k, v in entry.items() if k not in ("_uid", "_all_variants")}
     if "variant" in entry:
         entry["variant"] = {g: c[0] if isinstance(c, list) else c for g, c in entry["variant"].items()}
     keys = [k for k in ("variant_loras", "variant_link_overrides") if isinstance(entry.get(k), dict)]
-    if keys and not entry.get("inline"):
+    toggles = entry.get("option_overrides")
+    if (keys or isinstance(toggles, dict)) and not entry.get("inline"):
         try:
-            used = flake_io.resolve(entry).used_variants.get(entry["name"], {})
+            flake = flake_io.resolve(entry)
         except FileNotFoundError:
             return entry
+        if isinstance(toggles, dict):
+            entry["option_overrides"] = {n: on for n, on in toggles.items() if n in flake.options}
+            if not entry["option_overrides"]:
+                del entry["option_overrides"]
+        used = flake.used_variants.get(entry["name"], {})
         for k in keys:
             kept = {g: {c: v for c, v in choices.items() if c in used.get(g, ())}
                     for g, choices in entry[k].items() if isinstance(choices, dict)}
