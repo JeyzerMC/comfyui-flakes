@@ -960,7 +960,7 @@ def delete_flake(name: str) -> None:
 
 
 _IMPORT_KEYS = ("name", "prompt", "prompts", "output_stem", "flake_type", "serie")
-_IMPORT_CHOICE_KEYS = ("positive", "negative", "output_stem", "image", "default")
+_IMPORT_CHOICE_KEYS = ("positive", "negative", "prompts", "output_stem", "image", "default")
 
 
 def import_anim_flake(source: str, family: str) -> str:
@@ -1264,12 +1264,20 @@ def resolve(entry: dict[str, Any]) -> Flake:
         variant = flake.variants.get(group, {}).get(choice)
         if not variant:
             continue
-        extra_pos = str(variant.get("positive", "") or "")
-        extra_neg = str(variant.get("negative", "") or "")
-        if extra_pos:
-            flake.positive = f"{flake.positive}, {extra_pos}" if flake.positive else extra_pos
-        if extra_neg:
-            flake.negative = f"{flake.negative}, {extra_neg}" if flake.negative else extra_neg
+        # One prompt is kept as flat positive / negative keys, several (or a
+        # scheduled one) as a `prompts:` list like the flake's own (#468).
+        if isinstance(variant.get("prompts"), list):
+            choice_prompts = _parse_prompt_list(variant)
+        else:
+            choice_prompts = [PromptEntry(str(variant.get("positive", "") or ""), str(variant.get("negative", "") or ""))]
+        for p in choice_prompts:
+            if p.schedule:
+                flake.scheduled_prompts.append(p)
+                continue
+            if p.positive:
+                flake.positive = f"{flake.positive}, {p.positive}" if flake.positive else p.positive
+            if p.negative:
+                flake.negative = f"{flake.negative}, {p.negative}" if flake.negative else p.negative
         variant_stem = variant.get("output_stem")
         if variant_stem:
             flake.output_stem = _combine_variant_stem(flake.output_stem, variant_stem)

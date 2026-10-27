@@ -236,6 +236,11 @@ function flakePrompts(d) {
     return Array.isArray(d.prompts) ? d.prompts : (d.prompt ? [d.prompt] : []);
 }
 
+// A variant choice's prompts: a `prompts:` list or its flat pair (#468).
+function choicePrompts(v) {
+    return Array.isArray(v?.prompts) ? v.prompts : [v || {}];
+}
+
 // Placeholder for a combination with no output yet (#375): one card per selected
 // cover, at the cover's own aspect ratio, scattered over a jittered grid that
 // fills both axes of the canvas, with a rotation (±15°) and offset seeded by
@@ -336,8 +341,10 @@ async function flakeEntryRows(entry) {
         }
         for (const [g, c] of Object.entries(variant)) {
             const v = d.variants?.[g]?.[c];
-            if (v?.positive) promptRows.push([`${vLabel} · ${g} · Positive`, v.positive]);
-            if (v?.negative) promptRows.push([`${vLabel} · ${g} · Negative`, v.negative]);
+            for (const p of choicePrompts(v)) {
+                if (p.positive) promptRows.push([`${vLabel} · ${g} · Positive`, p.positive]);
+                if (p.negative) promptRows.push([`${vLabel} · ${g} · Negative`, p.negative]);
+            }
             // Choice LoRAs with the grid item's strength overrides (#413).
             if (Array.isArray(v?.loras)) {
                 v.loras.forEach((lr, idx) => {
@@ -390,8 +397,10 @@ async function flakeEntryRows(entry) {
             }
             for (const [g, c] of Object.entries(linkVariant)) {
                 const v = linked.variants?.[g]?.[c];
-                if (v?.positive) promptRows.push([`${groupLabel} · ${g} · Positive`, v.positive]);
-                if (v?.negative) promptRows.push([`${groupLabel} · ${g} · Negative`, v.negative]);
+                for (const p of choicePrompts(v)) {
+                    if (p.positive) promptRows.push([`${groupLabel} · ${g} · Positive`, p.positive]);
+                    if (p.negative) promptRows.push([`${groupLabel} · ${g} · Negative`, p.negative]);
+                }
                 // Linked choice LoRAs: grid override > link yaml > choice yaml (#414).
                 if (Array.isArray(v?.loras)) {
                     v.loras.forEach((lr, idx) => {

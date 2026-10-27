@@ -224,3 +224,25 @@ if __name__ == "__main__":
                 print(f"ERROR {name}: {type(exc).__name__}: {exc}")
     print(f"\n{('ALL PASSED' if not failures else str(failures) + ' FAILED')}")
     sys.exit(1 if failures else 0)
+
+
+def test_choice_flat_prompt_and_prompt_list():
+    # One prompt stays flat; several (or a scheduled one) live in `prompts:` (#468).
+    _with_flakes({
+        "ahri": {
+            "prompt": {"positive": "ahri", "negative": "bad"},
+            "variants": {"skin": {
+                "classic": {"positive": "classic", "negative": ""},
+                "arcade": {"positive": "ignored", "prompts": [
+                    {"positive": "arcade", "negative": "plain"},
+                    {"positive": "visor"},
+                    {"positive": "glow", "schedule": [{"start": 0.5, "strength": 1.0}]},
+                ]},
+            }},
+        },
+    })
+    classic = fio.resolve({"name": "ahri", "variant": {"skin": "classic"}})
+    assert (classic.positive, classic.negative, classic.scheduled_prompts) == ("ahri, classic", "bad", [])
+    arcade = fio.resolve({"name": "ahri", "variant": {"skin": "arcade"}})
+    assert (arcade.positive, arcade.negative) == ("ahri, arcade, visor", "bad, plain")
+    assert [p.positive for p in arcade.scheduled_prompts] == ["glow"]

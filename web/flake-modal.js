@@ -3,8 +3,8 @@ import {
     css, makeButton, makeSmallButton, makeComfyLabel, makeComfyInput,
     makeComfyDropdown, makePanelDropdown, makeSearchableDropdown,
     makeComfyNumberInput, makeComfyValueSlider, makeSmallValueSlider,
-    makeTextarea, makeNumberInput, attachAutoGrow,
-    familyFolder, familyFromFolder, makeHoverRemoveWrapper, CN_MODEL_MAP, ANIM_DIR,
+    makeNumberInput,
+    familyFolder, familyFromFolder, CN_MODEL_MAP, ANIM_DIR,
 } from "./utils.js";
 import {
     getCoverUrl, getVariantImageUrl, flakeAssetUrl, pickedImageUrl, fetchCnTypes, fetchInputs,
@@ -17,8 +17,38 @@ import { pickImage, makeImageDropTarget } from "./pickers.js";
 import {
     openFieldMenu, makeScheduleHandle, makeSchedulePanel, pickFlakeTarget,
     renderLoraList, serializeLoras, normalizeLinks, renderLinkList, renderOneLinkOverrides, serializeLinks,
-    renderOptionList, serializeOptions, makeTogglerInput,
+    renderOptionList, serializeOptions, makeTogglerInput, renderPromptList, serializePrompts,
 } from "./list-editors.js";
+
+// Editor list of a variant choice's prompts (#468), kept on the choice as
+// `_prompts` while editing. The yaml holds one unscheduled prompt as flat
+// `positive` / `negative` keys and several as a `prompts:` list.
+function choicePrompts(co) {
+    if (!co._prompts) {
+        const src = Array.isArray(co.prompts) ? co.prompts : [{ positive: co.positive, negative: co.negative }];
+        co._prompts = src
+            .filter(p => p && (p.positive != null || p.negative != null))
+            .map(p => ({ ...JSON.parse(JSON.stringify(p)), positive: p.positive ?? null, negative: p.negative ?? null }));
+    }
+    return co._prompts;
+}
+
+function storeChoicePrompts(co) {
+    const prompts = serializePrompts(choicePrompts(co)).filter(p => Object.keys(p).length);
+    delete co._prompts;
+    if (prompts.length === 1 && !prompts[0].schedule) {
+        for (const key of ["positive", "negative"]) {
+            if (key in prompts[0]) co[key] = prompts[0][key];
+            else delete co[key];
+        }
+        delete co.prompts;
+        return;
+    }
+    delete co.positive;
+    delete co.negative;
+    if (prompts.length) co.prompts = prompts;
+    else delete co.prompts;
+}
 
 // Infer a ControlNet type + sibling cover name from a CN image filename (#306, #318).
 // Old naming: "char_depthanythingv2_001.png" -> sibling "char_cover_001.png".
@@ -856,101 +886,11 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     const promptBox = document.createElement("div");
                     css(promptBox, "display:flex;flex-direction:column;gap:6px;");
                     fieldWrap.appendChild(promptBox);
-
-                    const taCss = "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;outline:none;";
-
                     // Removing the last prompt removes the whole field.
-                    function removePrompt(i) {
-                        fieldState.prompts.splice(i, 1);
-                        if (fieldState.prompts.length) { renderPrompts(); return; }
+                    renderPromptList(promptBox, fieldState.prompts, () => {
                         activeFields.splice(activeFields.indexOf("prompt"), 1);
                         renderFields();
-                    }
-
-                    function renderPrompts() {
-                        promptBox.replaceChildren();
-                        if (!fieldState.prompts.length) fieldState.prompts.push({});
-                        fieldState.prompts.forEach((prompt, i) => {
-                            const card = document.createElement("div");
-                            css(card, "background:#252525;padding:8px;border-radius:6px;border:1px solid #333;display:flex;flex-direction:column;gap:6px;");
-                            const header = document.createElement("div");
-                            css(header, "display:flex;gap:6px;align-items:center;");
-                            header.appendChild(makeScheduleHandle(prompt, renderPrompts));
-                            const title = document.createElement("span");
-                            title.textContent = `Prompt ${i + 1}`;
-                            css(title, "flex:1;font-size:12px;font-weight:500;color:#aaa;");
-                            header.appendChild(title);
-                            if (fieldState.prompts.length > 1) {
-                                const removeBtn = makeSmallButton("✕");
-                                removeBtn.title = "Remove prompt";
-                                removeBtn.addEventListener("click", () => removePrompt(i));
-                                header.appendChild(removeBtn);
-                            }
-                            card.appendChild(header);
-
-                            const row = document.createElement("div");
-                            css(row, "display:flex;gap:8px;align-items:stretch;");
-                            card.appendChild(row);
-                            const posCol = document.createElement("div");
-                            css(posCol, "display:flex;flex-direction:column;gap:4px;min-width:0;");
-                            row.appendChild(posCol);
-                            const negCol = document.createElement("div");
-                            css(negCol, "display:flex;flex-direction:column;gap:4px;min-width:0;");
-                            row.appendChild(negCol);
-
-                            const hasNeg = prompt.negative != null;
-                            // Positive spans the width when alone; equal split with a
-                            // negative present. The "+ Negative" placeholder stays
-                            // compact so it never steals the positive's space (#264).
-                            posCol.style.flex = hasNeg ? "1 1 0" : "1 1 auto";
-                            negCol.style.flex = hasNeg ? "1 1 0" : "0 0 auto";
-
-                            // A positive prompt is always present by default (#332) — no
-                            // "+ Positive" button. Seed an empty string when missing.
-                            if (prompt.positive == null) prompt.positive = "";
-                            const posTA = makeTextarea(prompt.positive, "positive prompt", 3);
-                            css(posTA, taCss);
-                            posTA.addEventListener("change", () => { prompt.positive = posTA.value; });
-                            posTA.addEventListener("input", () => { prompt.positive = posTA.value; });
-                            attachAutoGrow(posTA);
-                            posCol.appendChild(makeHoverRemoveWrapper(posTA, () => {
-                                if (prompt.negative == null) removePrompt(i);
-                                else { prompt.positive = null; renderPrompts(); }
-                            }, "Remove positive prompt"));
-
-                            if (hasNeg) {
-                                const negTA = makeTextarea(prompt.negative, "negative prompt", 2);
-                                css(negTA, taCss);
-                                negTA.addEventListener("change", () => { prompt.negative = negTA.value; });
-                                negTA.addEventListener("input", () => { prompt.negative = negTA.value; });
-                                attachAutoGrow(negTA);
-                                negCol.appendChild(makeHoverRemoveWrapper(negTA, () => {
-                                    if (prompt.positive == null) removePrompt(i);
-                                    else { prompt.negative = null; renderPrompts(); }
-                                }, "Remove negative prompt"));
-                            } else {
-                                const negBtn = document.createElement("button");
-                                negBtn.textContent = "+ Negative";
-                                css(negBtn, "align-self:flex-start;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;user-select:none;box-sizing:border-box;white-space:nowrap;padding:6px 10px;");
-                                negBtn.addEventListener("mouseenter", () => { negBtn.style.background = "#333"; });
-                                negBtn.addEventListener("mouseleave", () => { negBtn.style.background = "#2a2a2a"; });
-                                negBtn.addEventListener("click", () => {
-                                    prompt.negative = "";
-                                    renderPrompts();
-                                });
-                                negCol.appendChild(negBtn);
-                            }
-                            if (prompt.schedule) card.appendChild(makeSchedulePanel(prompt));
-                            promptBox.appendChild(card);
-                        });
-                        const addBtn = makeSmallButton("+ Add prompt");
-                        addBtn.addEventListener("click", () => {
-                            fieldState.prompts.push({});
-                            renderPrompts();
-                        });
-                        promptBox.appendChild(addBtn);
-                    }
-                    renderPrompts();
+                    });
                 }
 
                 if (fieldType === "resolution") {
@@ -1222,6 +1162,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 dragHandle.addEventListener("click", (e) => {
                                     e.stopPropagation();
                                     openFieldMenu(dragHandle, [
+                                        { label: "Prompt", onClick: () => addChoiceField("prompt") },
                                         { label: "LoRA", onClick: () => addChoiceField("lora") },
                                         ...(animFamily ? [] : [{ label: "ControlNet", onClick: () => addChoiceField("controlnets") }]),
                                         { label: "Flake Link", onClick: () => addChoiceField("flake_link") },
@@ -1325,20 +1266,12 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 css(bodyRow, "display:flow-root;");
 
                                 const promptsWrap = document.createElement("div");
-                                css(promptsWrap, "display:flex;gap:8px;align-items:flex-start;margin-top:6px;");
+                                css(promptsWrap, "display:flex;flex-direction:column;gap:6px;margin-top:6px;");
 
                                 // Host for the Variant LoRAs section, kept in flow beside the
                                 // floated image (populated by renderChoiceExtras). A plain block
                                 // (not a BFC) so its rows wrap to full width past the image.
                                 const loraHost = document.createElement("div");
-
-                                const choicePosCol = document.createElement("div");
-                                css(choicePosCol, "display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0;");
-                                promptsWrap.appendChild(choicePosCol);
-
-                                const choiceNegCol = document.createElement("div");
-                                css(choiceNegCol, "display:flex;flex-direction:column;gap:4px;min-width:0;min-height:0;");
-                                promptsWrap.appendChild(choiceNegCol);
 
                                 const rightCol = document.createElement("div");
                                 css(rightCol, "float:right;margin:0 0 8px 10px;display:flex;flex-direction:column;align-items:center;gap:4px;");
@@ -1455,64 +1388,13 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 bodyRow.appendChild(loraHost);
                                 choiceCard.appendChild(bodyRow);
 
+                                // Prompts are an optional choice field (#468); removing
+                                // the last one removes the field.
                                 function renderChoicePrompts() {
-                                    choicePosCol.replaceChildren();
-                                    choiceNegCol.replaceChildren();
-
-                                    // Positive spans the width when alone; equal
-                                    // split with a compact "+ Negative" otherwise (#264).
-                                    const hasNeg = choice.negative != null;
-                                    choicePosCol.style.flex = hasNeg ? "1 1 0" : "1 1 auto";
-                                    choiceNegCol.style.flex = hasNeg ? "1 1 0" : "0 0 auto";
-
-                                    // Positive override is always present by default (#332)
-                                    // — no "+ Positive" button. Empty values are pruned on save.
-                                    fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
-                                    if (choice.positive == null) choice.positive = "";
-                                    {
-                                        const cPos = makeTextarea(choice.positive || "", "extra positive", 2);
-                                        // Content-sized beside the floated image; autogrows (#336).
-                                        css(cPos, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;min-height:64px;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
-                                        attachAutoGrow(cPos);
-                                        cPos.addEventListener("change", () => {
-                                            fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
-                                            fieldState.variants[groupName][choiceName].positive = cPos.value;
-                                        });
-                                        const posWrap = makeHoverRemoveWrapper(cPos, () => {
-                                            delete fieldState.variants[groupName][choiceName].positive;
-                                            renderChoicePrompts();
-                                        }, "Remove positive prompt");
-                                        css(posWrap, "min-height:0;");
-                                        choicePosCol.appendChild(posWrap);
-                                    }
-
-                                    if (choice.negative != null) {
-                                        const cNeg = makeTextarea(choice.negative || "", "extra negative", 2);
-                                        css(cNeg, "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;min-height:64px;box-sizing:border-box;font-family:inherit;resize:vertical;outline:none;");
-                                        attachAutoGrow(cNeg);
-                                        cNeg.addEventListener("change", () => {
-                                            fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
-                                            fieldState.variants[groupName][choiceName].negative = cNeg.value;
-                                        });
-                                        const negWrap = makeHoverRemoveWrapper(cNeg, () => {
-                                            delete fieldState.variants[groupName][choiceName].negative;
-                                            renderChoicePrompts();
-                                        }, "Remove negative prompt");
-                                        css(negWrap, "min-height:0;");
-                                        choiceNegCol.appendChild(negWrap);
-                                    } else {
-                                        const negBtn = document.createElement("button");
-                                        negBtn.textContent = "+ Negative";
-                                        css(negBtn, "align-self:flex-start;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;user-select:none;box-sizing:border-box;white-space:nowrap;padding:6px 10px;");
-                                        negBtn.addEventListener("mouseenter", () => { negBtn.style.background = "#333"; });
-                                        negBtn.addEventListener("mouseleave", () => { negBtn.style.background = "#2a2a2a"; });
-                                        negBtn.addEventListener("click", () => {
-                                            fieldState.variants[groupName][choiceName] = fieldState.variants[groupName][choiceName] || {};
-                                            fieldState.variants[groupName][choiceName].negative = fieldState.variants[groupName][choiceName].negative ?? "";
-                                            renderChoicePrompts();
-                                        });
-                                        choiceNegCol.appendChild(negBtn);
-                                    }
+                                    promptsWrap.replaceChildren();
+                                    const co = fieldState.variants[groupName][choiceName] || (fieldState.variants[groupName][choiceName] = {});
+                                    const prompts = choicePrompts(co);
+                                    if (prompts.length) renderPromptList(promptsWrap, prompts, renderChoicePrompts);
                                 }
                                 renderChoicePrompts();
 
@@ -1529,7 +1411,10 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 // hamburger handle's dropdown.
                                 async function addChoiceField(key) {
                                     const co = fieldState.variants[groupName][choiceName] || (fieldState.variants[groupName][choiceName] = {});
-                                    if (key === "lora") {
+                                    if (key === "prompt") {
+                                        choicePrompts(co).push({ positive: "" });
+                                        renderChoicePrompts();
+                                    } else if (key === "lora") {
                                         if (!Array.isArray(co.loras)) co.loras = [];
                                         co.loras.push({ name: "", url: "", path: "", strength: defaultLoraStrength(), _editing: true });
                                         renderChoiceExtras();
@@ -2034,13 +1919,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     ordered.loras = serializeLoras(fieldState.loras);
                 }
                 if (ft === "prompt" && fieldState.prompts.length > 0) {
-                    const prompts = fieldState.prompts.map(p => {
-                        const out = {};
-                        if (p.positive != null) out.positive = p.positive;
-                        if (p.negative != null) out.negative = p.negative;
-                        if (p.schedule?.length) out.schedule = p.schedule;
-                        return out;
-                    });
+                    const prompts = serializePrompts(fieldState.prompts);
                     // A single unscheduled prompt keeps the legacy `prompt:` key (#371).
                     if (prompts.length === 1 && !prompts[0].schedule) ordered.prompt = prompts[0];
                     else ordered.prompts = prompts;
@@ -2078,6 +1957,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         for (const choice of Object.values(group || {})) {
                             if (!choice) continue;
                             delete choice._uploaded;
+                            storeChoicePrompts(choice);
                             if (Array.isArray(choice.loras)) {
                                 choice.loras = serializeLoras(choice.loras.filter(l => l && (l.path || l.name)));
                                 if (choice.loras.length === 0) delete choice.loras;

@@ -1,5 +1,5 @@
 import {
-    css, makeSmallButton, makeComfyInput, makeComfyDropdown, makeSearchableDropdown,
+    css, makeSmallButton, makeComfyInput, makeComfyDropdown, makeSearchableDropdown, makeTextarea, attachAutoGrow, makeHoverRemoveWrapper,
     makeComfyNumberInput, makeComfyValueSlider, makeLabel, familyFolder, variantDefaultsOf, variantDropdownOptions,
 } from "./utils.js";
 import { fetchLoras, fetchLoraNames, fetchOptionNames, fetchFlake } from "./api.js";
@@ -725,4 +725,112 @@ export function makeTogglerInput(owner) {
     });
     wrap.append(input, list);
     return wrap;
+}
+
+// Prompt cards (#371), shared by a flake's Prompts field and its variant
+// choices (#468): positive + optional negative, each removable, with a
+// schedule handle. Removing the last prompt calls onEmpty.
+export function renderPromptList(box, prompts, onEmpty) {
+    const taCss = "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px;border-radius:4px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit;outline:none;";
+
+    function removePrompt(i) {
+        prompts.splice(i, 1);
+        if (prompts.length) renderPrompts();
+        else onEmpty();
+    }
+
+    function renderPrompts() {
+        box.replaceChildren();
+        if (!prompts.length) prompts.push({});
+        prompts.forEach((prompt, i) => {
+            const card = document.createElement("div");
+            css(card, "background:#252525;padding:8px;border-radius:6px;border:1px solid #333;display:flex;flex-direction:column;gap:6px;");
+            const header = document.createElement("div");
+            css(header, "display:flex;gap:6px;align-items:center;");
+            header.appendChild(makeScheduleHandle(prompt, renderPrompts));
+            const title = document.createElement("span");
+            title.textContent = `Prompt ${i + 1}`;
+            css(title, "flex:1;font-size:12px;font-weight:500;color:#aaa;");
+            header.appendChild(title);
+            if (prompts.length > 1) {
+                const removeBtn = makeSmallButton("✕");
+                removeBtn.title = "Remove prompt";
+                removeBtn.addEventListener("click", () => removePrompt(i));
+                header.appendChild(removeBtn);
+            }
+            card.appendChild(header);
+
+            const row = document.createElement("div");
+            css(row, "display:flex;gap:8px;align-items:stretch;");
+            card.appendChild(row);
+            const posCol = document.createElement("div");
+            css(posCol, "display:flex;flex-direction:column;gap:4px;min-width:0;");
+            row.appendChild(posCol);
+            const negCol = document.createElement("div");
+            css(negCol, "display:flex;flex-direction:column;gap:4px;min-width:0;");
+            row.appendChild(negCol);
+
+            const hasNeg = prompt.negative != null;
+            // Positive spans the width when alone; equal split with a
+            // negative present. The "+ Negative" placeholder stays
+            // compact so it never steals the positive's space (#264).
+            posCol.style.flex = hasNeg ? "1 1 0" : "1 1 auto";
+            negCol.style.flex = hasNeg ? "1 1 0" : "0 0 auto";
+
+            // A positive prompt is always present by default (#332) — no
+            // "+ Positive" button. Seed an empty string when missing.
+            if (prompt.positive == null) prompt.positive = "";
+            const posTA = makeTextarea(prompt.positive, "positive prompt", 3);
+            css(posTA, taCss);
+            posTA.addEventListener("change", () => { prompt.positive = posTA.value; });
+            posTA.addEventListener("input", () => { prompt.positive = posTA.value; });
+            attachAutoGrow(posTA);
+            posCol.appendChild(makeHoverRemoveWrapper(posTA, () => {
+                if (prompt.negative == null) removePrompt(i);
+                else { prompt.positive = null; renderPrompts(); }
+            }, "Remove positive prompt"));
+
+            if (hasNeg) {
+                const negTA = makeTextarea(prompt.negative, "negative prompt", 2);
+                css(negTA, taCss);
+                negTA.addEventListener("change", () => { prompt.negative = negTA.value; });
+                negTA.addEventListener("input", () => { prompt.negative = negTA.value; });
+                attachAutoGrow(negTA);
+                negCol.appendChild(makeHoverRemoveWrapper(negTA, () => {
+                    if (prompt.positive == null) removePrompt(i);
+                    else { prompt.negative = null; renderPrompts(); }
+                }, "Remove negative prompt"));
+            } else {
+                const negBtn = document.createElement("button");
+                negBtn.textContent = "+ Negative";
+                css(negBtn, "align-self:flex-start;cursor:pointer;border-radius:4px;font-size:13px;background:#2a2a2a;color:#999;border:1px dashed #555;transition:background 0.15s ease;user-select:none;box-sizing:border-box;white-space:nowrap;padding:6px 10px;");
+                negBtn.addEventListener("mouseenter", () => { negBtn.style.background = "#333"; });
+                negBtn.addEventListener("mouseleave", () => { negBtn.style.background = "#2a2a2a"; });
+                negBtn.addEventListener("click", () => {
+                    prompt.negative = "";
+                    renderPrompts();
+                });
+                negCol.appendChild(negBtn);
+            }
+            if (prompt.schedule) card.appendChild(makeSchedulePanel(prompt));
+            box.appendChild(card);
+        });
+        const addBtn = makeSmallButton("+ Add prompt");
+        addBtn.addEventListener("click", () => {
+            prompts.push({});
+            renderPrompts();
+        });
+        box.appendChild(addBtn);
+    }
+    renderPrompts();
+}
+
+export function serializePrompts(prompts) {
+    return prompts.map(p => {
+        const out = {};
+        if (p.positive != null) out.positive = p.positive;
+        if (p.negative != null) out.negative = p.negative;
+        if (p.schedule?.length) out.schedule = p.schedule;
+        return out;
+    });
 }
