@@ -234,6 +234,19 @@ variants:
         assert fio.list_lora_names() == ["Fennec Ears", "Maid Outfit", "Tail Swish", "Tail Swish low"]
 
 
+def test_list_option_names_spans_kinds_and_variant_choices():
+    with _roots() as (root, _):
+        _write(os.path.join(root, "img", "sdxl", "ahri", "ahri.yaml"), b"""
+prompt_options: [{name: " face ", positive: golden eyes}, {name: ""}, just a string]
+variants:
+  skin:
+    classic: {prompt_options: [{name: tails}]}
+    plain: {}
+""")
+        _write(os.path.join(root, "video", "wan22", "wave", "wave.yaml"), b"prompt_options: [{name: tails}, {name: ears}]\n")
+        assert fio.list_option_names() == ["ears", "face", "tails"]
+
+
 HERO = b"""
 name: Fennec Hero
 flake_type: character

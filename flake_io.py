@@ -569,6 +569,23 @@ def list_lora_names() -> list[str]:
     return sorted(names)
 
 
+def list_option_names() -> list[str]:
+    """Distinct option names across all flakes of both kinds, including
+    variant choices (sorted), suggested in toggler fields (#466)."""
+    names: set[str] = set()
+    for kind in ("img", "anim"):
+        for flake in list_flakes(kind=kind):
+            try:
+                raw = read_flake_raw(flake)
+            except Exception:
+                continue
+            variants = raw.get("variants")
+            for body in [raw, *(c for choices in (variants.values() if isinstance(variants, dict) else ())
+                                if isinstance(choices, dict) for c in choices.values() if isinstance(c, dict))]:
+                names.update(_parse_prompt_options(body))
+    return sorted(names)
+
+
 def list_dirs(family: str | None = None, roots: list[str] | None = None, kind: str = "img") -> list[str]:
     dirs: set[str] = set()
     for root in roots or _flakes_roots():

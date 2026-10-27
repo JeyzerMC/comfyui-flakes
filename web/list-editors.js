@@ -2,7 +2,7 @@ import {
     css, makeSmallButton, makeComfyInput, makeComfyDropdown, makeSearchableDropdown,
     makeComfyNumberInput, makeComfyValueSlider, makeLabel, familyFolder, variantDefaultsOf, variantDropdownOptions,
 } from "./utils.js";
-import { fetchLoras, fetchLoraNames, fetchFlake } from "./api.js";
+import { fetchLoras, fetchLoraNames, fetchOptionNames, fetchFlake } from "./api.js";
 import { openFileBrowser, openFileLoadPicker } from "./pickers.js";
 
 // LoRA and flake-link list editors shared by the flake and model preset editors.
@@ -676,8 +676,29 @@ export function serializeOptions(options) {
 }
 
 // Toggler input (#464): `-name` turns an upstream option off, `name` / `+name` on.
+// A datalist suggests option names used in any flake for the last token,
+// each as the whole completed value (#466).
+let togglerListId = 0;
 export function makeTogglerInput(owner) {
+    const wrap = document.createElement("div");
+    css(wrap, "flex:1;min-width:0;");
     const input = makeComfyInput(owner.toggler || "", "e.g. -tails, -face, +front");
-    input.addEventListener("input", () => { owner.toggler = input.value; });
-    return input;
+    const list = document.createElement("datalist");
+    list.id = `flake-toggler-names-${++togglerListId}`;
+    input.setAttribute("list", list.id);
+    const suggest = async () => {
+        const names = await fetchOptionNames().catch(() => []);
+        const [, head, sign, token] = input.value.match(/^((?:.*,)?\s*)([+-]?)\s*([^,]*)$/);
+        const typed = token.trim().toLowerCase();
+        list.replaceChildren(...names
+            .filter(n => n.toLowerCase().startsWith(typed) && n.toLowerCase() !== typed)
+            .map(n => Object.assign(document.createElement("option"), { value: `${head}${sign}${n}` })));
+    };
+    input.addEventListener("focus", suggest);
+    input.addEventListener("input", () => {
+        owner.toggler = input.value;
+        suggest();
+    });
+    wrap.append(input, list);
+    return wrap;
 }

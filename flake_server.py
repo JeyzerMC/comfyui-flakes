@@ -101,6 +101,16 @@ async def _list_lora_names(request: web.Request) -> web.Response:
     return web.json_response({"names": names})
 
 
+@routes.get("/flakes/option_names")
+async def _list_option_names(request: web.Request) -> web.Response:
+    try:
+        names = flake_io.list_option_names()
+    except Exception as exc:
+        logging.exception("[flakes] failed to list option names")
+        return _server_error(str(exc))
+    return web.json_response({"names": names})
+
+
 @routes.get("/flakes/samplers")
 async def _list_samplers(request: web.Request) -> web.Response:
     """Expose the installed ComfyUI's KSampler sampler/scheduler lists so the

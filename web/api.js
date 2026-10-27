@@ -3,7 +3,7 @@
 // "kind:family" -> list promise.
 const LIST_PROMISES = new Map();
 
-export function invalidateList() { LIST_PROMISES.clear(); LORA_NAMES_PROMISE = null; }
+export function invalidateList() { LIST_PROMISES.clear(); LORA_NAMES_PROMISE = null; OPTION_NAMES_PROMISE = null; }
 
 // `kind` "anim" lists the animate flakes under video/ (#431); `family` is then
 // an animate family label.
@@ -92,6 +92,13 @@ let LORA_NAMES_PROMISE = null;
 export function fetchLoraNames() {
     if (!LORA_NAMES_PROMISE) LORA_NAMES_PROMISE = fetch("/flakes/lora_names").then(r => r.json()).then(d => d.names || []);
     return LORA_NAMES_PROMISE;
+}
+
+// Option names used across all flakes, suggested in toggler fields (#466).
+let OPTION_NAMES_PROMISE = null;
+export function fetchOptionNames() {
+    if (!OPTION_NAMES_PROMISE) OPTION_NAMES_PROMISE = fetch("/flakes/option_names").then(r => r.json()).then(d => d.names || []);
+    return OPTION_NAMES_PROMISE;
 }
 
 // family label -> [{name, kind}] files a CN entry can pick as `model` (#381).
