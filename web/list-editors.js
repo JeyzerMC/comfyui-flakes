@@ -625,3 +625,59 @@ export function serializeLinks(links) {
     }
     return outLinks;
 }
+
+// Option rows (#464): the `prompt_options` of a flake or variant choice, each a
+// name, a positive prompt and whether it is on by default.
+export function renderOptionList(box, options) {
+    function renderOptions() {
+        box.replaceChildren();
+        options.forEach((opt, i) => {
+            const card = document.createElement("div");
+            css(card, "background:#252525;padding:6px;border-radius:6px;border:1px solid #333;display:flex;flex-direction:column;gap:6px;");
+            const header = document.createElement("div");
+            css(header, "display:flex;gap:8px;align-items:center;");
+            const nameInput = makeComfyInput(opt.name || "", "Name, e.g. tails");
+            nameInput.addEventListener("input", () => { opt.name = nameInput.value; });
+            const onWrap = document.createElement("label");
+            css(onWrap, "display:flex;align-items:center;gap:4px;font-size:11px;color:#aaa;white-space:nowrap;cursor:pointer;");
+            const onChk = document.createElement("input");
+            onChk.type = "checkbox";
+            onChk.checked = !!opt.default;
+            css(onChk, "width:14px;height:14px;cursor:pointer;margin:0;");
+            onChk.addEventListener("change", () => { opt.default = onChk.checked; });
+            onWrap.append(onChk, "On by default");
+            const removeBtn = makeSmallButton("✕");
+            removeBtn.addEventListener("click", () => {
+                options.splice(i, 1);
+                renderOptions();
+            });
+            header.append(nameInput, onWrap, removeBtn);
+            const posInput = makeComfyInput(opt.positive || "", "Positive prompt");
+            posInput.addEventListener("input", () => { opt.positive = posInput.value; });
+            card.append(header, posInput);
+            box.appendChild(card);
+        });
+        const addBtn = makeSmallButton("+ option");
+        addBtn.addEventListener("click", () => {
+            options.push({ name: "", positive: "" });
+            renderOptions();
+        });
+        box.appendChild(addBtn);
+    }
+    renderOptions();
+}
+
+export function serializeOptions(options) {
+    return options.filter(o => o?.name?.trim()).map(o => ({
+        name: o.name.trim(),
+        positive: (o.positive || "").trim(),
+        ...(o.default ? { default: true } : {}),
+    }));
+}
+
+// Toggler input (#464): `-name` turns an upstream option off, `name` / `+name` on.
+export function makeTogglerInput(owner) {
+    const input = makeComfyInput(owner.toggler || "", "e.g. -tails, -face, +front");
+    input.addEventListener("input", () => { owner.toggler = input.value; });
+    return input;
+}

@@ -17,6 +17,7 @@ import { pickImage, makeImageDropTarget } from "./pickers.js";
 import {
     openFieldMenu, makeScheduleHandle, makeSchedulePanel, pickFlakeTarget,
     renderLoraList, serializeLoras, normalizeLinks, renderLinkList, renderOneLinkOverrides, serializeLinks,
+    renderOptionList, serializeOptions, makeTogglerInput,
 } from "./list-editors.js";
 
 // Infer a ControlNet type + sibling cover name from a CN image filename (#306, #318).
@@ -653,6 +654,8 @@ export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Bas
             output_stem: data.output_stem ?? null,
             serie: data.serie ?? null,
             flake_links: normalizeLinks(data),
+            prompt_options: JSON.parse(JSON.stringify(data.prompt_options || [])),
+            toggler: data.toggler ?? "",
         };
         if (!Array.isArray(fieldState.controlnets._)) {
             const arr = Array.isArray(fieldState.controlnets) ? [...fieldState.controlnets] : [];
@@ -661,7 +664,7 @@ export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Bas
 
         // Derive field order from YAML key order (Python preserves insertion order)
         const activeFields = [];
-        const knownFieldKeys = { loras: "lora", path: "lora", prompt: "prompt", prompts: "prompt", resolution: "resolution", controlnets: "controlnets", variants: "variants", options: "variants", flake_links: "flake_link", flake_link: "flake_link" };
+        const knownFieldKeys = { loras: "lora", path: "lora", prompt: "prompt", prompts: "prompt", resolution: "resolution", controlnets: "controlnets", variants: "variants", options: "variants", flake_links: "flake_link", flake_link: "flake_link", prompt_options: "prompt_options", toggler: "toggler" };
         for (const key of Object.keys(data)) {
             const ft = knownFieldKeys[key];
             if (ft && !activeFields.includes(ft)) activeFields.push(ft);
@@ -673,6 +676,8 @@ export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Bas
 if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0) activeFields.push("controlnets");
             if (!activeFields.includes("variants") && Object.keys(fieldState.variants).length > 0) activeFields.push("variants");
         if (!activeFields.includes("flake_link") && fieldState.flake_links && fieldState.flake_links.length) activeFields.push("flake_link");
+        if (!activeFields.includes("prompt_options") && fieldState.prompt_options.length) activeFields.push("prompt_options");
+        if (!activeFields.includes("toggler") && fieldState.toggler) activeFields.push("toggler");
 
         const optionalBox = document.createElement("div");
         css(optionalBox, "display:flex;flex-direction:column;gap:8px;");
@@ -778,6 +783,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                         for (const k of Object.keys(fieldState.variants)) delete fieldState.variants[k];
                     }
                     if (fieldType === "flake_link") fieldState.flake_links = [];
+                    if (fieldType === "prompt_options") fieldState.prompt_options = [];
+                    if (fieldType === "toggler") fieldState.toggler = "";
                     renderFields();
                 });
                 header.appendChild(delFieldBtn);
@@ -1218,6 +1225,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         { label: "LoRA", onClick: () => addChoiceField("lora") },
                                         ...(animFamily ? [] : [{ label: "ControlNet", onClick: () => addChoiceField("controlnets") }]),
                                         { label: "Flake Link", onClick: () => addChoiceField("flake_link") },
+                                        { label: "Options", onClick: () => addChoiceField("prompt_options") },
+                                        { label: "Toggler", onClick: () => addChoiceField("toggler") },
                                     ]);
                                 });
                                 cRow.appendChild(dragHandle);
@@ -1534,6 +1543,13 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         if (!Array.isArray(co.flake_links)) co.flake_links = [];
                                         co.flake_links.push({ target: t, variant: {}, lora_strengths: [] });
                                         renderChoiceExtras();
+                                    } else if (key === "prompt_options") {
+                                        if (!Array.isArray(co.prompt_options)) co.prompt_options = [];
+                                        co.prompt_options.push({ name: "", positive: "" });
+                                        renderChoiceExtras();
+                                    } else if (key === "toggler") {
+                                        co.toggler ??= "";
+                                        renderChoiceExtras();
                                     }
                                 }
 
@@ -1686,6 +1702,23 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         if (link.schedule) card.appendChild(makeSchedulePanel(link));
                                         extrasHost.appendChild(card);
                                     });
+                                    // ---- Options / Toggler (#464) ----
+                                    if (Array.isArray(co.prompt_options)) {
+                                        sectionLabel("Variant Options");
+                                        const optBox = document.createElement("div");
+                                        css(optBox, "display:flex;flex-direction:column;gap:6px;");
+                                        extrasHost.appendChild(optBox);
+                                        renderOptionList(optBox, co.prompt_options);
+                                    }
+                                    if (typeof co.toggler === "string") {
+                                        sectionLabel("Variant Toggler");
+                                        const row = document.createElement("div");
+                                        css(row, "display:flex;gap:6px;align-items:center;");
+                                        const rm = makeSmallButton("✕");
+                                        rm.addEventListener("click", () => { delete co.toggler; renderChoiceExtras(); });
+                                        row.append(makeTogglerInput(co), rm);
+                                        extrasHost.appendChild(row);
+                                    }
                                 }
                                 renderChoiceExtras();
 
@@ -1852,6 +1885,16 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                     renderLinkList(linkBox, fieldState.flake_links, () => pickFlakeTarget(currentFamily, name, kind));
                 }
 
+                // Options (#464): optional prompts toggled per grid item, or by
+                // the toggler of a flake further down the chain.
+                if (fieldType === "prompt_options") {
+                    const optBox = document.createElement("div");
+                    css(optBox, "display:flex;flex-direction:column;gap:6px;");
+                    fieldWrap.appendChild(optBox);
+                    renderOptionList(optBox, fieldState.prompt_options);
+                }
+                if (fieldType === "toggler") fieldWrap.appendChild(makeTogglerInput(fieldState));
+
                 optionalBox.appendChild(fieldWrap);
             }
         }
@@ -1879,6 +1922,8 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
             { key: "lora", label: "LoRA" },
             ...(animFamily ? [] : [{ key: "controlnets", label: "ControlNets" }]),
             { key: "flake_link", label: "Flake link" },
+            { key: "prompt_options", label: "Options" },
+            { key: "toggler", label: "Toggler" },
         ];
         for (const ft of fieldTypes) {
             const item = document.createElement("button");
@@ -1897,6 +1942,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                 if (ft.key === "controlnets") fieldState.controlnets._ = [await newCn()];
                 if (ft.key === "variants") fieldState.variants = { Default: { Default: {} } };
                 if (ft.key === "flake_link") fieldState.flake_links = [];
+                if (ft.key === "prompt_options") fieldState.prompt_options = [{ name: "", positive: "" }];
                 renderFields();
                 scrollToFieldKey(ft.key);
                 // Preserve the old quick-add conveniences now that the standalone
@@ -2044,10 +2090,23 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 choice.flake_links = serializeLinks(choice.flake_links);
                                 if (choice.flake_links.length === 0) delete choice.flake_links;
                             }
+                            if (Array.isArray(choice.prompt_options)) {
+                                choice.prompt_options = serializeOptions(choice.prompt_options);
+                                if (choice.prompt_options.length === 0) delete choice.prompt_options;
+                            }
+                            if (typeof choice.toggler === "string") {
+                                choice.toggler = choice.toggler.trim();
+                                if (!choice.toggler) delete choice.toggler;
+                            }
                         }
                     }
                     ordered.variants = fieldState.variants;
                 }
+                if (ft === "prompt_options") {
+                    const opts = serializeOptions(fieldState.prompt_options);
+                    if (opts.length) ordered.prompt_options = opts;
+                }
+                if (ft === "toggler" && fieldState.toggler.trim()) ordered.toggler = fieldState.toggler.trim();
                 if (ft === "flake_link" && Array.isArray(fieldState.flake_links) && fieldState.flake_links.length > 0) {
                     const outLinks = serializeLinks(fieldState.flake_links);
                     if (outLinks.length > 0) ordered.flake_links = outLinks;
