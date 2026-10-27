@@ -636,7 +636,7 @@ export function renderOptionList(box, options) {
             css(card, "background:#252525;padding:6px;border-radius:6px;border:1px solid #333;display:flex;flex-direction:column;gap:6px;");
             const header = document.createElement("div");
             css(header, "display:flex;gap:8px;align-items:center;");
-            const nameInput = makeComfyInput(opt.name || "", "Name, e.g. tails");
+            const nameInput = makeComfyInput(opt.name || "", "Name, e.g. decorations");
             nameInput.addEventListener("input", () => { opt.name = nameInput.value; });
             const onWrap = document.createElement("label");
             css(onWrap, "display:flex;align-items:center;gap:4px;font-size:11px;color:#aaa;white-space:nowrap;cursor:pointer;");
