@@ -22,19 +22,21 @@ import {
 
 // Editor list of a variant choice's prompts (#468), kept on the choice as
 // `_prompts` while editing. The yaml holds one unscheduled prompt as flat
-// `positive` / `negative` keys and several as a `prompts:` list.
+// `positive` / `negative` keys and several as a `prompts:` list. An empty
+// negative counts as none, so it stays behind "+ Negative" (#469).
 function choicePrompts(co) {
     if (!co._prompts) {
         const src = Array.isArray(co.prompts) ? co.prompts : [{ positive: co.positive, negative: co.negative }];
         co._prompts = src
             .filter(p => p && (p.positive != null || p.negative != null))
-            .map(p => ({ ...JSON.parse(JSON.stringify(p)), positive: p.positive ?? null, negative: p.negative ?? null }));
+            .map(p => ({ ...JSON.parse(JSON.stringify(p)), positive: p.positive ?? null, negative: p.negative || null }));
     }
     return co._prompts;
 }
 
 function storeChoicePrompts(co) {
-    const prompts = serializePrompts(choicePrompts(co)).filter(p => Object.keys(p).length);
+    const prompts = serializePrompts(choicePrompts(co).map(p => ({ ...p, negative: p.negative || null })))
+        .filter(p => Object.keys(p).length);
     delete co._prompts;
     if (prompts.length === 1 && !prompts[0].schedule) {
         for (const key of ["positive", "negative"]) {
@@ -1662,7 +1664,6 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     const siblings = Object.values(group).map(c => c || {});
                                     const choiceData = { positive: "" };
                                     if (selectedType === "Character" && !siblings.length) choiceData.default = true;
-                                    if (siblings.some(c => "negative" in c)) choiceData.negative = "";
                                     const cnSrc = siblings.find(c => c.controlnets?.length)?.controlnets[0];
                                     if (cnSrc) {
                                         const { image, ...cnSettings } = cnSrc;
