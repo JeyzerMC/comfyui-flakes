@@ -262,6 +262,13 @@ class PromptEntry:
 
 
 @dataclass
+class PromptOption:
+    """A named optional prompt fragment on a flake or variant choice (#462)."""
+    positive: str = ""
+    on: bool = False
+
+
+@dataclass
 class FlakeLink:
     """Reference to another flake with optional default overrides (#232).
 
@@ -304,6 +311,10 @@ class Flake:
     # Set by resolve(): {flake name: {group: {choices}}} it applied, linked
     # flakes included, so saved images can drop the unused choices.
     used_variants: dict[str, dict[str, set[str]]] = field(default_factory=dict)
+    # Options by name, kept out of `positive` so a downstream toggler can
+    # still switch them; toggler tokens as (name, on) (#462).
+    options: dict[str, PromptOption] = field(default_factory=dict)
+    toggler: list[tuple[str, bool]] = field(default_factory=list)
 
 # ---------------------------------------------------------------------------
 # Directory helpers
@@ -1121,6 +1132,20 @@ def _parse_link_list(raw: dict[str, Any]) -> list["FlakeLink"]:
     return out
 
 
+def _parse_prompt_options(raw: dict[str, Any]) -> dict[str, PromptOption]:
+    """`prompt_options:` of a flake body or variant choice (#462)."""
+    return {
+        str(o["name"]).strip(): PromptOption(str(o.get("positive") or "").strip(), bool(o.get("default")))
+        for o in raw.get("prompt_options") or [] if isinstance(o, dict) and str(o.get("name") or "").strip()
+    }
+
+
+def _parse_toggler(raw: dict[str, Any]) -> list[tuple[str, bool]]:
+    """`toggler: "-tails, face, +front"` as [(name, on)]: `-` turns off, `+` or no prefix on."""
+    tokens = [t.strip() for t in str(raw.get("toggler") or "").split(",")]
+    return [(t[1:].strip(), t[0] == "+") if t[0] in "+-" else (t, True) for t in tokens if t.strip("+- ")]
+
+
 def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
     prompts = _parse_prompt_list(raw)
     unscheduled = [p for p in prompts if not p.schedule]
@@ -1155,6 +1180,8 @@ def _flake_from_raw(name: str, raw: dict[str, Any]) -> Flake:
         output_stem=raw.get("output_stem") or None,
         flake_links=links,
         flake_link=(links[0] if links else None),
+        options=_parse_prompt_options(raw),
+        toggler=_parse_toggler(raw),
     )
 
 
@@ -1242,6 +1269,8 @@ def resolve(entry: dict[str, Any]) -> Flake:
                     lr.strength = float(s)
         flake.loras.extend(choice_loras)
         flake.controlnets.extend(_parse_cn_list(variant.get("controlnets"), flake.name))
+        flake.options.update(_parse_prompt_options(variant))
+        flake.toggler.extend(_parse_toggler(variant))
         group_links = variant_link_overrides.get(group)
         link_ovrs = group_links.get(choice) if isinstance(group_links, dict) else None
         for li, link in enumerate(_parse_link_list(variant)):
@@ -1258,6 +1287,12 @@ def resolve(entry: dict[str, Any]) -> Flake:
     # contributions (loras + prompts + variant prompts) after the host's.
     # Cycle protection: pass a visited set so a chain can't loop forever.
     _apply_flake_link(flake, entry, _visited=None)
+
+    # Grid item option toggles (#462), linked flakes' options included.
+    option_overrides = entry.get("option_overrides")
+    for name, on in (option_overrides.items() if isinstance(option_overrides, dict) else ()):
+        if name in flake.options:
+            flake.options[name].on = bool(on)
 
     return flake
 
@@ -1343,6 +1378,9 @@ def _apply_single_link(host: "Flake", link: "FlakeLink", grid_override: dict[str
         return
 
     merge_used_variants(host.used_variants, linked.used_variants)
+    for name, option in linked.options.items():
+        host.options.setdefault(name, option)
+    host.toggler.extend(linked.toggler)
 
     # Append linked flake's loras to host's list, under the link's schedule.
     for lr in linked.loras:

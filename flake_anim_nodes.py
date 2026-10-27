@@ -201,8 +201,9 @@ class FlakeAnimStack:
         # LoRA schedules are cond hooks and nothing is encoded here, so
         # animate flake LoRAs apply at their plain strength.
         models, lora_entries = _apply_anim_loras(flake_anim_data["models"], [lr for f in flakes for lr in f.loras])
-        pos_text, neg_text = _join_prompts(flake_anim_data["pos_text"], flake_anim_data["neg_text"], flakes)
         filename_state = flake_anim_data["filename_state"]
+        pos_text, neg_text, prompt_parts = _join_prompts(
+            flake_anim_data["pos_text"], flake_anim_data["neg_text"], flakes, filename_state.get("prompt_parts"))
         return ({
             **flake_anim_data,
             "models": models,
@@ -213,6 +214,7 @@ class FlakeAnimStack:
                 **filename_state,
                 "stems": filename_state["stems"] + [f.output_stem for f in flakes if f.output_stem],
                 "loras": filename_state["loras"] + lora_entries,
+                "prompt_parts": prompt_parts,
             },
         },)
 

@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Preset Combo nodes (#430), and Flake Generate Animation, which samples the
   chain, optionally upscales and frame-interpolates, and saves an MP4 (with
   audio for MiniMax H3) shown in the node and the Generation Data overlay (#434).
+- Flake options: named optional prompts (`prompt_options`) on a flake or
+  variant choice, on or off by default, and a `toggler` on downstream flakes
+  and choices (`-tails, face, +front`) that switches the options of every
+  flake before it in the generation (#462).
 
 ## [0.2.0] - 2026-10-19
 

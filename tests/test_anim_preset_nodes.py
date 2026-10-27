@@ -221,3 +221,16 @@ def test_stack_loads_the_job_image_of_active_items():
         listed = _stack(data, [{"name": "video/mh3/a", "images": ["x.png"]}])
     assert picked["image"] == "loaded:C:/shots/fennec.png"
     assert listed["image"] == "upstream"
+
+
+def test_chained_stacks_toggle_upstream_options():
+    files = {
+        "video/wan22/fox": {"prompt": {"positive": "fox girl"},
+                            "prompt_options": [{"name": "tails", "positive": "nine tails", "default": True}]},
+        "video/wan22/close": {"prompt": {"positive": "close-up"}, "toggler": "-tails"},
+    }
+    with _flakes(files):
+        first = _stack(_anim_data({"high": ("H",)}, []), [{"name": "video/wan22/fox"}])
+        second = _stack(first, [{"name": "video/wan22/close"}])
+    assert first["pos_text"] == "a fennec girl BREAK fox girl, nine tails"
+    assert second["pos_text"] == "a fennec girl BREAK fox girl BREAK close-up"

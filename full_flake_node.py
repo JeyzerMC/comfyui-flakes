@@ -289,8 +289,7 @@ def _load_preset_bundle(preset_name: str, model_family: str | None = None):
 
     # --- Encode prompts -----------------------------------------------------
     encoder = CLIPTextEncode()
-    pos_text = preset_flake.positive.strip()
-    neg_text = preset_flake.negative.strip()
+    pos_text, neg_text, prompt_parts = _join_prompts("", "", [preset_flake], None)
     positive = encoder.encode(clip, pos_text)[0] if pos_text else encoder.encode(clip, "")[0]
     negative = encoder.encode(clip, neg_text)[0] if neg_text else encoder.encode(clip, "")[0]
     pos_ranged, neg_ranged = encode_scheduled_prompts(clip, [preset_flake])
@@ -324,6 +323,7 @@ def _load_preset_bundle(preset_name: str, model_family: str | None = None):
         "text_encoder": preset_data.text_encoder or "baked-in",
         "loras": lora_entries,
         "model_family": model_family,
+        "prompt_parts": prompt_parts,
     }
     generation_data = (positive, negative, latent, width, height, pos_text, neg_text, filename_state)
     sampling_preset = (preset_data.steps, preset_data.cfg, preset_data.sampler, preset_data.scheduler, 1.0)
@@ -468,12 +468,30 @@ def _resolve_flakes(flakes_json: str) -> list[flake_io.Flake]:
     return [flake_io.resolve(e) for e in normalized if not e.get("bypassed")]
 
 
-def _join_prompts(pos_text: str, neg_text: str, flakes: list[flake_io.Flake]) -> tuple[str, str]:
+def _render_parts(parts: list) -> str:
+    texts = (", ".join(t for t in [text, *(p for p, on in options.values() if on)] if t) for text, options in parts)
+    return " BREAK ".join(t for t in texts if t)
+
+
+def _join_prompts(pos_text: str, neg_text: str, flakes: list[flake_io.Flake], parts: list | None) -> tuple[str, str, list]:
     """Incoming prompt text followed by each flake's: positives joined with
-    " BREAK ", negatives with ", "."""
-    pos_parts = [t.strip() for t in [pos_text, *(f.positive for f in flakes)] if t and t.strip()]
+    " BREAK ", negatives with ", ". A flake's active options join its positive.
+
+    ``parts`` (``[[text, {name: [positive, on]}], ...]``, from the chain state)
+    keeps upstream options apart so each flake's toggler can switch them
+    before its own are added (#462). They are reused only while they still
+    render the incoming text; returns the new parts for the chain state."""
+    if not parts or _render_parts(parts) != pos_text.strip():
+        parts = [[pos_text.strip(), {}]]
+    parts = [[text, {n: list(o) for n, o in options.items()}] for text, options in parts]
+    for f in flakes:
+        for name, on in f.toggler:
+            for _, options in parts:
+                if name in options:
+                    options[name][1] = on
+        parts.append([f.positive.strip(), {n: [o.positive, o.on] for n, o in f.options.items()}])
     neg_parts = [t.strip() for t in [neg_text, *(f.negative for f in flakes)] if t and t.strip()]
-    return " BREAK ".join(pos_parts), ", ".join(neg_parts)
+    return _render_parts(parts), ", ".join(neg_parts), parts
 
 
 class FlakeStack:
@@ -532,7 +550,8 @@ class FlakeStack:
         # --- Apply LoRAs --------------------------------------------------------
         model, clip, lora_entries, hook_groups = apply_loras(model, clip, flakes)
 
-        new_pos_text, new_neg_text = _join_prompts(pos_text, neg_text, flakes)
+        new_pos_text, new_neg_text, filename_state["prompt_parts"] = _join_prompts(
+            pos_text, neg_text, flakes, filename_state.get("prompt_parts"))
 
         # --- Re-encode prompts --------------------------------------------------
         # Re-encoding produces fresh conditioning that drops the ControlNet
