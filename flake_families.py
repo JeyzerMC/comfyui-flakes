@@ -8,13 +8,14 @@ sampled.
 Before this module the same eight facts were copy-pasted across
 ``flake_io.py``, ``full_flake_node.py``, ``web/utils.js``, ``web/flake-modal.js``
 and ``web/preset-modal.js``. Adding one family meant eight edits and the copies
-drifted. Everything is now derived from :data:`FAMILIES`; the old module-level
-dicts still exist with their original names and shapes, they are just built
-rather than typed out.
+drifted. Everything is now derived from :data:`FAMILIES`, and a
+``model_family`` value that names no registered family is a new family with
+the default fields (:func:`get`, #470).
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 # The ControlNet hint types this pack knows how to infer a model name for. The
@@ -40,10 +41,11 @@ CN_TYPES: tuple[str, ...] = (
 class FamilySpec:
     """One model family.
 
-    ``label`` is what the user picks in the ``model_family`` dropdown; ``folder``
-    is the on-disk segment used under ``models/flakes/img/``,
+    ``label`` is what the ``model_family`` field shows; ``folder`` is the
+    on-disk segment used under ``models/flakes/img/``,
     ``models/flakes/model_presets/img/`` and ``output/img/``. Changing either of
-    those for an existing family moves the user's files, so don't.
+    those for a registered family breaks the user's workflows or moves their
+    files, so don't. Unregistered families get the defaults below (#470).
     """
 
     label: str
@@ -71,8 +73,8 @@ class FamilySpec:
     # derivatives need this, so illustrious/pony can consume plain sdxl flakes.
     extra_compat: tuple[str, ...] = ()
 
-    # "Common" is a real family folder for shared flakes but must never appear in
-    # the model_family dropdown.
+    # "Common" is a real family folder for shared flakes but is never suggested
+    # in the model_family field.
     selectable: bool = True
 
     # --- Generation metadata (#356) ----------------------------------------
@@ -165,8 +167,8 @@ FAMILIES: tuple[FamilySpec, ...] = (
 
 
 def _check_unique() -> None:
-    """Folders back a reverse map (``_FAMILY_FROM_FOLDER``), so a duplicate would
-    silently shadow a family."""
+    """Labels and folders back the lookups in :func:`get` and
+    :func:`from_folder`, so a duplicate would silently shadow a family."""
     labels = [f.label for f in FAMILIES]
     folders = [f.folder for f in FAMILIES]
     for name, values in (("label", labels), ("folder", folders)):
@@ -178,32 +180,37 @@ def _check_unique() -> None:
 _check_unique()
 
 
-BY_LABEL: dict[str, FamilySpec] = {f.label: f for f in FAMILIES}
 BY_FOLDER: dict[str, FamilySpec] = {f.folder: f for f in FAMILIES}
+_BY_NAME: dict[str, FamilySpec] = {k: f for f in FAMILIES for k in (f.label.lower(), f.folder)}
 
 
-def get(label: str | None) -> FamilySpec | None:
-    return BY_LABEL.get(label) if label else None
+def folder_slug(value: str) -> str:
+    """Folder of an unregistered family: ``Moss/Base`` -> ``moss_base``.
+    Mirrored by ``familyFolder`` in web/utils.js."""
+    return re.sub(r"[^a-z0-9_]+", "_", value.strip().lower()).strip("_")
 
 
-def from_folder(folder: str | None) -> FamilySpec | None:
-    return BY_FOLDER.get(folder) if folder else None
+def from_folder(folder: str | None, label: str | None = None) -> FamilySpec | None:
+    """The family whose files live in ``img/<folder>/``; an unregistered folder
+    is a family with the default fields, labelled *label* or the folder."""
+    if not folder:
+        return None
+    return BY_FOLDER.get(folder) or FamilySpec(label or folder, folder, cn_suffix=folder, cn_subfolder=folder)
 
 
-# --- Derived maps -----------------------------------------------------------
-# These keep the exact names, shapes and contents they had when they were
-# hand-written, so every existing call site is untouched. tests/test_families.py
-# pins them against the pre-refactor literals.
-
-FAMILY_MAP: dict[str, str] = {f.label: f.folder for f in FAMILIES}
-
-FAMILY_COMPAT: dict[str, set[str]] = {f.label: f.compat for f in FAMILIES if f.selectable}
-
-CN_MODEL_MAP: dict[str, dict[str, str]] = {f.folder: f.cn_models for f in FAMILIES}
-
-CN_SUBFOLDER: dict[str, str] = {f.folder: f.cn_subfolder for f in FAMILIES}
-
-MODEL_FAMILIES: list[str] = [f.label for f in FAMILIES if f.selectable]
+def get(value: str | None) -> FamilySpec | None:
+    """The family a ``model_family`` value names (#470): the registered family
+    whose label or folder equals it in any case (``anima`` -> ``Anima/Base``),
+    else a new family in folder :func:`folder_slug`. None for an empty value."""
+    if not value or not value.strip():
+        return None
+    spec = _BY_NAME.get(value.strip().lower())
+    if spec:
+        return spec
+    folder = folder_slug(value)
+    if not folder:
+        raise ValueError(f"model family {value!r} has no usable folder name")
+    return from_folder(folder, value.strip())
 
 
 # --- Animate (image-to-video) families --------------------------------------

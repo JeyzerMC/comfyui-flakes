@@ -301,12 +301,12 @@ def test_load_preset_reads_loras_and_links():
 # --- CLIPType resolution (#358) --------------------------------------------
 
 def test_clip_type_from_preset_wins():
-    fam = flake_families.BY_LABEL["Anima/Base"]           # declares STABLE_DIFFUSION
+    fam = flake_families.get("Anima/Base")           # declares STABLE_DIFFUSION
     assert full_flake_node._resolve_clip_type("lumina2", fam) == "LUMINA2"
 
 
 def test_clip_type_falls_back_to_family():
-    fam = flake_families.BY_LABEL["Krea2/Turbo"]
+    fam = flake_families.get("Krea2/Turbo")
     assert full_flake_node._resolve_clip_type(None, fam) == "KREA2"
 
 

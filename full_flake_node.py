@@ -375,9 +375,8 @@ def _apply_preset_overrides(overrides_json, model_bundle, generation_data, sampl
     return model_bundle, generation_data, sampling_preset
 
 
-# Dropdown options for the model_family widget. Derived from the family
-# registry (#355); "Common" is a real folder but is deliberately not selectable.
-_MODEL_FAMILIES = flake_families.MODEL_FAMILIES
+# Free text (#470): a registered label or folder in any case, else a new family.
+_FAMILY_TOOLTIP = "Model family, e.g. SDXL/Illustrious or anima. An unknown name is a new family with default settings."
 
 
 class FlakeModelPreset:
@@ -391,7 +390,7 @@ class FlakeModelPreset:
             preset_names = ["No model preset is selected"]
         return {
             "required": {
-                "model_family": (_MODEL_FAMILIES, {"default": "SDXL/Base"}),
+                "model_family": ("STRING", {"default": "SDXL/Base", "tooltip": _FAMILY_TOOLTIP}),
                 "preset": (["Select a preset..."] + preset_names,),
             },
             "optional": {
@@ -503,7 +502,7 @@ class FlakeStack:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model_family": (_MODEL_FAMILIES, {"default": "SDXL/Base"}),
+                "model_family": ("STRING", {"default": "SDXL/Base", "tooltip": _FAMILY_TOOLTIP}),
                 "flake_data": ("FLAKE_DATA",),
                 "flakes_json": ("STRING", {
                     "multiline": True,
@@ -604,7 +603,7 @@ class FlakeStack:
             if hit:
                 break
 
-        family_folder = flake_io._FAMILY_MAP.get(model_family, "sdxl")
+        family_folder = flake_io._family_folder(model_family) or "sdxl"
         # Anima and Z-Image ControlNets are model patches that hook the MODEL
         # instead of the conditioning (#365); the patched model flows out in
         # the bundle, so downstream Flake nodes chain on top of it.

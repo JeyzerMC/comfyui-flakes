@@ -326,36 +326,43 @@ async def _list_checkpoints(_request: web.Request) -> web.Response:
     return web.json_response({"checkpoints": _shorten_filenames(ckpts)})
 
 
+def _family_json(f: flake_families.FamilySpec) -> dict:
+    return {
+        "label": f.label,
+        "folder": f.folder,
+        "selectable": f.selectable,
+        "clip_type": f.clip_type,
+        "steps": f.steps,
+        "cfg": f.cfg,
+        "sampler": f.sampler,
+        "scheduler": f.scheduler,
+        "width": f.width,
+        "height": f.height,
+        "supports_clip_skip": f.supports_clip_skip,
+        "default_shift": f.default_shift,
+        "cn_models": f.cn_models,
+        "cn_kind": f.cn_kind,
+    }
+
+
 @routes.get("/flakes/families")
 async def _list_families(_request: web.Request) -> web.Response:
     """Serve the model-family registry so the web layer stops duplicating it
     (#355, #360). The JS keeps its own literals as a bootstrap fallback, so a
     failure here degrades to the previous behaviour rather than breaking the
-    editor."""
+    editor. ``generic`` holds the fields of an unregistered family, whose
+    ControlNets follow ``controlnet_<type>_<folder>`` for ``cn_types``, and
+    ``folders`` the family folders on disk (#470)."""
     try:
-        families = [
-            {
-                "label": f.label,
-                "folder": f.folder,
-                "selectable": f.selectable,
-                "clip_type": f.clip_type,
-                "steps": f.steps,
-                "cfg": f.cfg,
-                "sampler": f.sampler,
-                "scheduler": f.scheduler,
-                "width": f.width,
-                "height": f.height,
-                "supports_clip_skip": f.supports_clip_skip,
-                "default_shift": f.default_shift,
-                "cn_models": f.cn_models,
-                "cn_kind": f.cn_kind,
-            }
-            for f in flake_families.FAMILIES
-        ]
+        families = [_family_json(f) for f in flake_families.FAMILIES]
+        generic = {k: v for k, v in _family_json(flake_families.from_folder("_")).items()
+                   if k not in ("label", "folder", "cn_models")}
+        folders = flake_io.list_family_folders()
     except Exception as exc:
         logging.exception("[flakes] failed to list families")
         return _server_error(str(exc))
-    return web.json_response({"families": families})
+    return web.json_response({"families": families, "generic": generic,
+                              "cn_types": list(flake_families.CN_TYPES), "folders": folders})
 
 
 @routes.get("/flakes/anim/families")

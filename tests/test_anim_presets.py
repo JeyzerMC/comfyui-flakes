@@ -67,7 +67,7 @@ def _raises_value_error(fn):
 def test_anim_families_stay_out_of_image_families():
     anim = {f.label for f in families.ANIM_FAMILIES}
     assert anim == {"Wan 2.2", "MiniMax H3"}
-    assert not anim & set(families.MODEL_FAMILIES)
+    assert not anim & {f.label for f in families.FAMILIES}
     assert not {f.folder for f in families.ANIM_FAMILIES} & set(families.BY_FOLDER)
 
 
@@ -318,3 +318,21 @@ def test_import_anim_flake_collision_naming():
         assert fio.import_anim_flake("img/sdxl/hero", "MiniMax H3") == "video/mh3/hero"
         assert fio.read_flake_raw("video/wan22/hero (2)") == {"name": "Pony Hero"}
         assert _raises_value_error(lambda: fio.import_anim_flake("img/sdxl/hero", "SDXL/Base"))
+
+
+def test_new_image_family_saves_lists_and_infers_controlnets():
+    # A family nothing special-cases gets its own img/<folder>/ (#470).
+    with _roots() as (root, presets):
+        hero = fio.save_flake("hero", {}, family="SDXL/Illustrious")
+        moss = fio.save_flake("chars/fern", {"controlnets": [{"type": "depth"}]}, family="Moss")
+        shared = fio.save_flake("style", {}, family="Common")
+        preset = fio.save_preset("base", {}, family="moss")
+        assert (hero, moss, shared) == ("img/illustrious/hero", "img/moss/chars/fern", "img/common/style")
+        assert preset == "img/moss/base"
+        assert fio.list_flakes(family="moss") == [shared, moss]
+        assert fio.list_flakes(family="Moss") == [shared, moss]
+        assert fio.list_flakes(family="anima") == [shared]
+        assert hero in fio.list_flakes(family="SDXL/Illustrious") and moss not in fio.list_flakes(family="SDXL/Illustrious")
+        assert fio.list_presets(family="Moss") == [preset]
+        assert fio.load_flake(moss).controlnets[0].model_name == "controlnet_depth_moss"
+        assert fio.list_family_folders() == ["common", "illustrious", "moss"]

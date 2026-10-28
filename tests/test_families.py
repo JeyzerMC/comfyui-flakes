@@ -24,6 +24,14 @@ def _load_module():
 
 F = _load_module()
 
+# The lookups the old module-level maps served, now answered by get() /
+# from_folder() (#470); pinned against the pre-#355 literals below.
+FAMILY_MAP = {f.label: F.get(f.label).folder for f in F.FAMILIES}
+FAMILY_COMPAT = {f.label: F.get(f.label).compat for f in F.FAMILIES if f.selectable}
+CN_MODEL_MAP = {f.folder: F.from_folder(f.folder).cn_models for f in F.FAMILIES}
+CN_SUBFOLDER = {f.folder: F.from_folder(f.folder).cn_subfolder for f in F.FAMILIES}
+MODEL_FAMILIES = [f.label for f in F.FAMILIES if f.selectable]
+
 
 # --- Refactor-equivalence pins ---------------------------------------------
 # Literally what flake_io.py and full_flake_node.py contained before #355,
@@ -91,15 +99,15 @@ def _without_added(d, keys):
 
 
 def test_family_map_matches_pre_refactor():
-    assert _without_added(F.FAMILY_MAP, _ADDED_LABELS) == _PRE_REFACTOR_FAMILY_MAP
+    assert _without_added(FAMILY_MAP, _ADDED_LABELS) == _PRE_REFACTOR_FAMILY_MAP
 
 
 def test_family_compat_matches_pre_refactor():
-    assert _without_added(F.FAMILY_COMPAT, _ADDED_LABELS) == _PRE_REFACTOR_FAMILY_COMPAT
+    assert _without_added(FAMILY_COMPAT, _ADDED_LABELS) == _PRE_REFACTOR_FAMILY_COMPAT
 
 
 def test_cn_subfolder_matches_pre_refactor():
-    assert _without_added(F.CN_SUBFOLDER, _ADDED_FOLDERS) == _PRE_REFACTOR_CN_SUBFOLDER
+    assert _without_added(CN_SUBFOLDER, _ADDED_FOLDERS) == _PRE_REFACTOR_CN_SUBFOLDER
 
 
 def test_cn_model_map_matches_pre_refactor():
@@ -110,11 +118,11 @@ def test_cn_model_map_matches_pre_refactor():
         for folder, suffix in _PRE_REFACTOR_CN_SUFFIX.items()
         if folder not in _PATCH_CN_FOLDERS
     }
-    assert _without_added(F.CN_MODEL_MAP, _ADDED_FOLDERS | _PATCH_CN_FOLDERS) == expected
+    assert _without_added(CN_MODEL_MAP, _ADDED_FOLDERS | _PATCH_CN_FOLDERS) == expected
 
 
 def test_model_families_matches_pre_refactor():
-    assert [f for f in F.MODEL_FAMILIES if f not in _ADDED_LABELS] == _PRE_REFACTOR_MODEL_FAMILIES
+    assert [f for f in MODEL_FAMILIES if f not in _ADDED_LABELS] == _PRE_REFACTOR_MODEL_FAMILIES
 
 
 # --- Registry invariants ----------------------------------------------------
@@ -135,13 +143,13 @@ def test_label_folder_round_trip():
 
 def test_every_family_has_cn_coverage():
     for spec in F.FAMILIES:
-        types = F.CN_MODEL_MAP[spec.folder].keys()
+        types = CN_MODEL_MAP[spec.folder].keys()
         if spec.cn_names:
             assert types == {t for t, _ in spec.cn_names}
             assert types <= set(F.CN_TYPES)
         else:
             assert types == set(F.CN_TYPES)
-        assert F.CN_SUBFOLDER[spec.folder]
+        assert CN_SUBFOLDER[spec.folder]
 
 
 def test_cn_kind_and_category():
@@ -151,13 +159,13 @@ def test_cn_kind_and_category():
         else:
             assert spec.cn_kind == "controlnet"
             assert spec.cn_category == "controlnet"
-    assert F.BY_LABEL["Anima/Base"].cn_kind == "anima_lllite"
-    assert F.BY_LABEL["ZImage/Base"].cn_kind == "zimage_fun"
-    assert F.BY_LABEL["ZImage/Turbo"].cn_kind == "zimage_fun"
+    assert F.get("Anima/Base").cn_kind == "anima_lllite"
+    assert F.get("ZImage/Base").cn_kind == "zimage_fun"
+    assert F.get("ZImage/Turbo").cn_kind == "zimage_fun"
 
 
 def test_anima_cn_names_follow_kohya_lllite():
-    assert F.CN_MODEL_MAP["anima"] == {
+    assert CN_MODEL_MAP["anima"] == {
         "openpose": "anima-lllite-pose",
         "depth": "anima-lllite-depth",
         "lineart": "anima-lllite-lineart",
@@ -167,34 +175,69 @@ def test_anima_cn_names_follow_kohya_lllite():
 
 def test_zimage_types_share_the_union_file():
     for folder in ("zib", "zit"):
-        assert set(F.CN_MODEL_MAP[folder].values()) == {"Z-Image-Turbo-Fun-Controlnet-Union"}
+        assert set(CN_MODEL_MAP[folder].values()) == {"Z-Image-Turbo-Fun-Controlnet-Union"}
 
 
 def test_common_is_not_selectable():
     # "Common" is a real folder for shared flakes but must never be offered as a
     # model_family choice.
-    assert "Common" in F.FAMILY_MAP
-    assert "Common" not in F.MODEL_FAMILIES
-    assert "Common" not in F.FAMILY_COMPAT
+    assert "Common" in FAMILY_MAP
+    assert "Common" not in MODEL_FAMILIES
+    assert "Common" not in FAMILY_COMPAT
 
 
 def test_compat_always_includes_common_and_own_folder():
-    for label, compat in F.FAMILY_COMPAT.items():
+    for label, compat in FAMILY_COMPAT.items():
         assert "common" in compat
-        assert F.FAMILY_MAP[label] in compat
+        assert FAMILY_MAP[label] in compat
 
 
 def test_get_and_from_folder_handle_none():
     assert F.get(None) is None
+    assert F.get("  ") is None
     assert F.from_folder(None) is None
-    assert F.get("Nope/Nope") is None
+
+
+def test_get_matches_labels_and_folders_in_any_case():
+    # The draft's `anima` instead of picking `Anima/Base` (#470).
+    for spec in F.FAMILIES:
+        for value in (spec.label, spec.label.lower(), spec.label.upper(), spec.folder, f" {spec.folder.upper()} "):
+            assert F.get(value) is spec
+    assert F.get("anima") is F.get("Anima/Base")
+    assert F.get("illustrious").label == "SDXL/Illustrious"
+
+
+def test_unregistered_values_are_new_families_with_defaults():
+    moss = F.get(" Moss ")
+    assert (moss.label, moss.folder, moss.cn_subfolder, moss.cn_kind) == ("Moss", "moss", "moss", "controlnet")
+    assert moss.cn_models["depth"] == "controlnet_depth_moss"
+    assert moss.compat == {"common", "moss"}
+    assert moss.selectable
+    defaults = F.FamilySpec("x", "x", cn_suffix="x", cn_subfolder="x")
+    assert (moss.clip_type, moss.steps, moss.cfg, moss.width, moss.supports_clip_skip, moss.default_shift) == (
+        defaults.clip_type, defaults.steps, defaults.cfg, defaults.width, defaults.supports_clip_skip, None)
+    assert F.get("moss").folder == "moss"
+    assert F.get("Moss/Base").folder == "moss_base"
+    # No partial aliases: a label segment is not a family.
+    assert F.get("zimage").folder == "zimage"
+    # A value whose slug is a registered folder is that family.
+    assert F.get("Flux Klein") is F.get("Flux/Klein")
+    assert F.from_folder("moss").label == "moss"
+
+
+def test_value_without_folder_name_is_rejected():
+    try:
+        F.get("???")
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError")
 
 
 # --- Generation metadata (#356) --------------------------------------------
 
 def test_sdxl_generation_defaults_unchanged():
     for label in ("SDXL/Base", "SDXL/Illustrious", "SDXL/Pony", "Flux/Klein", "Common"):
-        spec = F.BY_LABEL[label]
+        spec = F.get(label)
         assert spec.clip_type == "STABLE_DIFFUSION"
         assert (spec.steps, spec.cfg) == (31, 4.7)
         assert (spec.sampler, spec.scheduler) == ("dpmpp_2m", "karras")
@@ -213,7 +256,7 @@ def test_new_families_match_shipped_templates():
         "Anima/Base": ("QWEN_IMAGE", 30, 4.0, "euler_ancestral", "normal", 3.0),
     }
     for label, want in expected.items():
-        spec = F.BY_LABEL[label]
+        spec = F.get(label)
         got = (spec.clip_type, spec.steps, spec.cfg, spec.sampler,
                spec.scheduler, spec.default_shift)
         assert got == want, f"{label}: {got} != {want}"
@@ -223,11 +266,11 @@ def test_new_families_match_shipped_templates():
 
 
 def test_krea2_is_registered_and_selectable():
-    spec = F.BY_LABEL["Krea2/Turbo"]
+    spec = F.get("Krea2/Turbo")
     assert spec.folder == "krea2"
     assert spec.cn_subfolder == "krea2"
-    assert F.CN_MODEL_MAP["krea2"]["depth"] == "controlnet_depth_krea2"
-    assert "Krea2/Turbo" in F.MODEL_FAMILIES
+    assert CN_MODEL_MAP["krea2"]["depth"] == "controlnet_depth_krea2"
+    assert "Krea2/Turbo" in MODEL_FAMILIES
 
 
 def test_duplicate_folder_is_rejected():

@@ -41,31 +41,13 @@ def _resolve_model_name(category: str, stem_or_name: str) -> str:
 # Parentheses allow the "<name> (imported)" names of installed bundles (#427).
 _NAME_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_\-() ]+$")
 
-# Family routing tables. All derived from the flake_families registry (#355) —
-# add a family there, not here.
-_FAMILY_MAP = flake_families.FAMILY_MAP
-
-_FAMILY_COMPAT = flake_families.FAMILY_COMPAT
-
-_FAMILY_FROM_FOLDER = {v: k for k, v in _FAMILY_MAP.items()}
-
 # Controlnet model names follow the `controlnet_<type>_<family>` convention;
 # they resolve only if the user has matching files (LoRA support is family-
 # agnostic and works regardless). Adjust flake_families.CN_TYPES if your models
 # are named otherwise.
-_CN_MODEL_MAP = flake_families.CN_MODEL_MAP
-
-
 def infer_cn_model(cn_type: str, family_folder: str) -> str:
-    family_models = _CN_MODEL_MAP.get(family_folder, {})
-    return family_models.get(cn_type, "")
-
-
-# Family folder (sdxl / illustrious / pony / common / zib / zit) → the
-# subfolder under models/controlnet/ where that family's controlnets live.
-# All SDXL-based families share the `sdxl/` folder; ZImage families share
-# `zimage/`.
-_CN_SUBFOLDER = flake_families.CN_SUBFOLDER
+    spec = flake_families.from_folder(family_folder)
+    return spec.cn_models.get(cn_type, "") if spec else ""
 
 
 def _cn_norm(value: str) -> str:
@@ -94,7 +76,10 @@ def resolve_cn_model_name(model_name: str, family_folder: str | None, category: 
         return model_name
 
     available = folder_paths.get_filename_list(category)
-    subfolder = _CN_SUBFOLDER.get(family_folder or "")
+    # The family's subfolder under models/controlnet/ (or model_patches/):
+    # SDXL families share `sdxl/`, Z-Image families `zimage/`.
+    spec = flake_families.from_folder(family_folder)
+    subfolder = spec.cn_subfolder if spec else None
 
     if subfolder:
         target_stem = os.path.basename(os.path.splitext(model_name)[0])
@@ -369,63 +354,39 @@ def _ensure_inside(path: str, root: str) -> None:
 
 
 def _family_folder(family: str | None) -> str | None:
-    return _FAMILY_MAP.get(family) if family else None
+    spec = flake_families.get(family)
+    return spec.folder if spec else None
 
 
 def _family_folder_from_name(name: str) -> str:
+    """Family folder of a flake at ``img/<folder>/...``, registered or not (#470)."""
     parts = name.replace("\\", "/").split("/")
-    if parts[0] == "img" and len(parts) >= 2 and parts[1] in _FAMILY_FROM_FOLDER:
+    if parts[0] == "img" and len(parts) >= 3:
         return parts[1]
     return "sdxl"
 
 
-def infer_preset_family(path: str) -> str | None:
-    parts = path.replace("\\", "/").split("/")
-    if parts[0] == "img" and len(parts) >= 2 and parts[1] in _FAMILY_FROM_FOLDER:
-        return _FAMILY_FROM_FOLDER[parts[1]]
-    if len(parts) >= 2 and parts[0] in _FAMILY_FROM_FOLDER:
-        return _FAMILY_FROM_FOLDER[parts[0]]
-    return None
-
-
-def strip_preset_prefix(path: str) -> str:
-    parts = path.replace("\\", "/").split("/")
-    if parts[0] == "img" and len(parts) >= 3 and parts[1] in _FAMILY_FROM_FOLDER:
-        return "/".join(parts[2:])
-    if len(parts) >= 2 and parts[0] in _FAMILY_FROM_FOLDER:
-        return "/".join(parts[1:])
-    return path
-
-
 def _is_flake_compatible(path: str, family: str | None) -> bool:
-    if not family:
-        return True
-    compat = _FAMILY_COMPAT.get(family)
-    if not compat:
+    spec = flake_families.get(family)
+    if not spec:
         return True
     parts = path.replace("\\", "/").split("/")
     if parts[0] != "img":
         # Legacy paths (no img/ prefix) are compatible with all SDXL families
-        return family.startswith("SDXL")
-    if len(parts) >= 2 and parts[1] in compat:
-        return True
-    return False
+        return spec.label.startswith("SDXL")
+    return len(parts) >= 2 and parts[1] in spec.compat
 
 
 def _is_preset_compatible(path: str, family: str | None) -> bool:
-    if not family:
-        return True
-    compat = _FAMILY_COMPAT.get(family)
-    if not compat:
+    spec = flake_families.get(family)
+    if not spec:
         return True
     parts = path.replace("\\", "/").split("/")
     if not parts or parts[0] == "":
         return True
     if parts[0] == "img" and len(parts) >= 2:
-        return parts[1] in compat
-    if parts[0] in compat:
-        return True
-    return False
+        return parts[1] in spec.compat
+    return parts[0] in spec.compat
 
 # ---------------------------------------------------------------------------
 # Flake file resolution
@@ -585,6 +546,17 @@ def list_option_names() -> list[str]:
                                 if isinstance(choices, dict) for c in choices.values() if isinstance(c, dict))]:
                 names.update(_parse_prompt_options(body))
     return sorted(names)
+
+
+def list_family_folders() -> list[str]:
+    """Family folders under ``img/`` of the flakes and presets roots,
+    registered or not, suggested in the model_family field (#470)."""
+    folders: set[str] = set()
+    for root in [*_flakes_roots(), *_presets_roots()]:
+        base = os.path.join(root, "img")
+        if os.path.isdir(base):
+            folders.update(d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d)))
+    return sorted(folders)
 
 
 def list_dirs(family: str | None = None, roots: list[str] | None = None, kind: str = "img") -> list[str]:
