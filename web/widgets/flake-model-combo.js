@@ -1,7 +1,7 @@
 import {
     css, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeBypassStrike,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, attachHoldToSingleOut, makeAddBlock,
-    makeModelOverridePanel, serializeModelOverrides, isLocalName, markLocal, SAVE_TO_DISK_SVG,
+    makeModelOverridePanel, serializeModelOverrides, isLocalName, markLocal, SAVE_TO_DISK_SVG, attachFamilyInput,
 } from "../utils.js";
 import { saveLocalToDisk } from "../bundle.js";
 import { openPresetPicker } from "../pickers.js";
@@ -163,6 +163,8 @@ export function setupFlakeModelComboWidget(node, { kind = "img" } = {}) {
         return familyWidget?.value || "SDXL/Base";
     }
 
+    const syncFamily = kind === "img" && familyWidget ? attachFamilyInput(node, familyWidget) : null;
+
     if (!node.properties) node.properties = {};
     if (!node.properties._combo_presets) node.properties._combo_presets = [];
     if (node.properties._combo_active_index == null) node.properties._combo_active_index = 0;
@@ -255,6 +257,7 @@ export function setupFlakeModelComboWidget(node, { kind = "img" } = {}) {
     let dragSrcIdx = null;
 
     function render() {
+        syncFamily?.();
         const presets = readPresets();
         const activeIdx = node.properties._combo_active_index || 0;
         const uids = uidsArr();

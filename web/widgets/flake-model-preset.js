@@ -1,4 +1,4 @@
-import { css, makeModelOverridePanel, serializeModelOverrides, isLocalName, markLocal, SAVE_TO_DISK_SVG } from "../utils.js";
+import { css, makeModelOverridePanel, serializeModelOverrides, isLocalName, markLocal, SAVE_TO_DISK_SVG, attachFamilyInput } from "../utils.js";
 import { saveLocalToDisk } from "../bundle.js";
 import { fetchPreset } from "../api.js";
 import { openPresetEditModal, refreshPresetOptions } from "../preset-modal.js";
@@ -47,6 +47,8 @@ export function setupFlakeModelPresetWidget(node, { kind = "img" } = {}) {
     // Run after DOM attachment and again after a short delay
     setTimeout(hideNativePresetWidget, 0);
     setTimeout(hideNativePresetWidget, 100);
+
+    const syncFamily = kind === "img" && familyWidget ? attachFamilyInput(node, familyWidget) : null;
 
     function getFamily() {
         return familyWidget?.value || "SDXL/Base";
@@ -313,6 +315,7 @@ export function setupFlakeModelPresetWidget(node, { kind = "img" } = {}) {
     container.appendChild(selectedWrap);
 
     async function render() {
+        syncFamily?.();
         const val = presetWidget.value || "";
         const isPlaceholder = !val || val === "Select a preset..." || val === "No model preset is selected";
         if (isPlaceholder) {

@@ -91,6 +91,53 @@ export function familySpec(family) {
     return { ...GENERIC_FAMILY, label: familyLabel(family), folder, cn_models };
 }
 
+// model_family suggestions: the selectable registered labels, then family
+// folders on disk that no registered family owns (e.g. a created `moss`).
+function familySuggestions() {
+    const registered = new Set(Object.values(FAMILY_FOLDERS));
+    return [
+        ...Object.keys(FAMILY_FOLDERS).filter(label => FAMILY_SPECS[label]?.selectable !== false),
+        ...FAMILY_DISK_FOLDERS.filter(folder => !registered.has(folder)),
+    ];
+}
+
+// Free-text model_family field with suggestions (#472), drawn in place of the
+// node's native widget. The widget keeps the value and its callback still
+// fires, so preset lists and downstream stacks refresh as before. A value
+// naming a registered family is stored as its label (`anima` -> `Anima/Base`).
+// Returns a function that re-reads the widget value (after a workflow load).
+export function attachFamilyInput(node, widget) {
+    widget.computeSize = () => [0, -4];
+    widget.type = "hidden";
+    widget.hidden = true;
+    if (widget.element) { widget.element.remove(); widget.element = null; }
+    if (widget.inputEl) { widget.inputEl.remove(); widget.inputEl = null; }
+
+    const dd = makeSearchableDropdown([], widget.value || "", "Model family, e.g. anima");
+    ensureFamilies().then(() => {
+        for (const value of familySuggestions()) dd.datalist.appendChild(Object.assign(document.createElement("option"), { value }));
+    });
+    dd.element.addEventListener("change", () => {
+        const value = familyLabel(dd.element.value);
+        if (!familyFolder(value) || value === widget.value) {
+            dd.element.value = widget.value || "";
+            return;
+        }
+        widget.value = dd.element.value = value;
+        widget.callback?.(value);
+        node.setDirtyCanvas?.(true, true);
+    });
+
+    const ui = node.addDOMWidget("model_family_ui", "div", dd.container, { serialize: false });
+    ui.computeSize = () => [node.size[0], 36];
+    // Where the native widget was drawn.
+    node.widgets.splice(node.widgets.indexOf(ui), 1);
+    node.widgets.splice(node.widgets.indexOf(widget) + 1, 0, ui);
+    return () => {
+        if (document.activeElement !== dd.element) dd.element.value = widget.value || "";
+    };
+}
+
 // ControlNet type -> model name the family infers.
 export function familyCnModels(family) {
     return CN_MODEL_MAP[familyFolder(family)] || familySpec(family)?.cn_models || null;
