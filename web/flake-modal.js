@@ -4,7 +4,7 @@ import {
     makeComfyDropdown, makePanelDropdown, makeSearchableDropdown,
     makeComfyNumberInput, makeComfyValueSlider, makeSmallValueSlider,
     makeNumberInput,
-    familyFolder, familyFromFolder, CN_MODEL_MAP, ANIM_DIR,
+    familyFolder, familyFromFolder, familyCnModels, ANIM_DIR,
 } from "./utils.js";
 import {
     getCoverUrl, getVariantImageUrl, flakeAssetUrl, pickedImageUrl, fetchCnTypes, fetchInputs,
@@ -261,11 +261,10 @@ export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Bas
         function stripOutputPrefix(val) {
             if (!val) return val;
             if (animFamily) return val.split("/").slice(2).join("/");
-            const prefixes = ["img/sdxl/", "img/illustrious/", "img/pony/", "img/zib/", "img/zit/", "img/anima/", "img/flux_klein/", "img/common/", "img/"];
-            for (const p of prefixes) {
-                if (val.toLowerCase().startsWith(p)) return val.slice(p.length);
-            }
-            return val;
+            // Any img/<folder>/ is a family folder, registered or not (#470).
+            const parts = val.split("/");
+            if (parts[0].toLowerCase() !== "img") return val;
+            return parts.slice(parts.length > 2 ? 2 : 1).join("/");
         }
 
         function updateResolvedPath() {
@@ -487,8 +486,9 @@ export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Bas
             // registry (#355/#360) rather than a local copy of the family list.
             if (!path) return family;
             const parts = path.replace(/\\/g, "/").toLowerCase().split("/");
-            if (parts[0] !== "img" || parts.length < 2) return family;
-            return familyFromFolder(parts[1]) || family;
+            if (parts[0] !== "img" || parts.length < 3) return family;
+            // An unregistered folder keeps the node's family when it names it (#470).
+            return familyFromFolder(parts[1]) || (familyFolder(family) === parts[1] ? family : parts[1]);
         }
 
         if (mode === "edit" && name && !animFamily) {
@@ -500,7 +500,7 @@ export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Bas
         // listed so an existing entry's type remains visible.
         async function familyCnTypes(keep = "") {
             const types = await fetchCnTypes();
-            const mapped = CN_MODEL_MAP[familyFolder(currentFamily)];
+            const mapped = familyCnModels(currentFamily);
             const out = mapped ? types.filter(t => t in mapped) : types;
             if (keep && !out.includes(keep)) out.push(keep);
             return out;
@@ -1023,7 +1023,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                             css(typeRow, "display:flex;gap:8px;align-items:center;");
                             const modelLabel = document.createElement("span");
                             const inferred = cn.model || cn.model_name
-                                || (cn.type ? CN_MODEL_MAP[familyFolder(currentFamily)]?.[cn.type] || "" : "");
+                                || (cn.type ? familyCnModels(currentFamily)?.[cn.type] || "" : "");
                             modelLabel.textContent = inferred ? `model: ${inferred}` : "model: \u2014";
                             css(modelLabel, "font-size:11px;color:#888;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
                             typeRow.appendChild(modelLabel);
@@ -1527,7 +1527,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         const r1 = document.createElement("div");
                                         css(r1, "display:flex;gap:8px;align-items:center;");
                                         const modelLbl = document.createElement("span");
-                                        const inferredModel = cn.model || cn.model_name || (cn.type ? CN_MODEL_MAP[familyFolder(currentFamily)]?.[cn.type] || "" : "");
+                                        const inferredModel = cn.model || cn.model_name || (cn.type ? familyCnModels(currentFamily)?.[cn.type] || "" : "");
                                         modelLbl.textContent = inferredModel ? `model: ${inferredModel}` : "model: —";
                                         css(modelLbl, "font-size:11px;color:#888;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;");
                                         r1.appendChild(modelLbl);

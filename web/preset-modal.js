@@ -84,7 +84,8 @@ export async function openPresetEditModal({ mode, name, data, family = "SDXL/Bas
 
         function stripPresetPrefix(p) {
             const parts = p.replace(/\\/g, "/").split("/");
-            if (parts.length >= 3 && ((parts[0] === "img" && FAMILY_FROM_FOLDER[parts[1]]) || parts[0] === ANIM_DIR)) return parts.slice(2).join("/");
+            // Any img/<folder>/ is a family folder, registered or not (#470).
+            if (parts.length >= 3 && (parts[0] === "img" || parts[0] === ANIM_DIR)) return parts.slice(2).join("/");
             if (parts.length >= 2 && FAMILY_FROM_FOLDER[parts[0]]) return parts.slice(1).join("/");
             return p;
         }

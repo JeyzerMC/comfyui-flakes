@@ -25,6 +25,13 @@ export const FAMILY_FOLDERS = {
 // supports_clip_skip, default_shift). Empty until ensureFamilies() resolves.
 export const FAMILY_SPECS = {};
 
+// Fields of an unregistered family, the ControlNet types its
+// `controlnet_<type>_<folder>` names cover, and the family folders on disk
+// (#470). Filled by ensureFamilies().
+let GENERIC_FAMILY = null;
+let CN_TYPES = [];
+export const FAMILY_DISK_FOLDERS = [];
+
 let _familiesPromise = null;
 
 export function ensureFamilies() {
@@ -41,6 +48,9 @@ export function ensureFamilies() {
                     FAMILY_SPECS[f.label] = f;
                     if (f.cn_models) CN_MODEL_MAP[f.folder] = f.cn_models;
                 }
+                GENERIC_FAMILY = d.generic || null;
+                CN_TYPES = d.cn_types || [];
+                FAMILY_DISK_FOLDERS.splice(0, Infinity, ...(d.folders || []));
                 return FAMILY_SPECS;
             })
             .catch(() => FAMILY_SPECS);
@@ -48,12 +58,42 @@ export function ensureFamilies() {
     return _familiesPromise;
 }
 
+// The model_family field is free text (#470), resolved like
+// flake_families.get: a registered family by label or folder in any case,
+// else a new family whose folder is the slugged value.
+function registeredLabel(family) {
+    const key = String(family || "").trim().toLowerCase();
+    if (!key) return null;
+    return Object.keys(FAMILY_FOLDERS).find(label => label.toLowerCase() === key || FAMILY_FOLDERS[label] === key) || null;
+}
+
+// Mirrors flake_families.folder_slug: `Moss/Base` -> `moss_base`.
+function folderSlug(family) {
+    return String(family || "").trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+// The value a model_family widget stores: the registered label, or the trimmed text.
+export function familyLabel(family) {
+    return registeredLabel(family) || String(family || "").trim();
+}
+
 export function familyFolder(family) {
-    return FAMILY_FOLDERS[family] || null;
+    const label = registeredLabel(family);
+    return label ? FAMILY_FOLDERS[label] : folderSlug(family) || null;
 }
 
 export function familySpec(family) {
-    return FAMILY_SPECS[family] || null;
+    const label = registeredLabel(family);
+    if (label) return FAMILY_SPECS[label] || null;
+    const folder = folderSlug(family);
+    if (!folder || !GENERIC_FAMILY) return null;
+    const cn_models = Object.fromEntries(CN_TYPES.map(t => [t, `controlnet_${t}_${folder}`]));
+    return { ...GENERIC_FAMILY, label: familyLabel(family), folder, cn_models };
+}
+
+// ControlNet type -> model name the family infers.
+export function familyCnModels(family) {
+    return CN_MODEL_MAP[familyFolder(family)] || familySpec(family)?.cn_models || null;
 }
 
 // label -> family folder, reversed. Used to recognise an `img/<folder>/` prefix.
