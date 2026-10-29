@@ -631,13 +631,70 @@ export function serializeLinks(links) {
 export function renderOptionList(box, options) {
     const taCss = "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;outline:none;";
 
+    const clearIndicators = () => {
+        for (const ind of box.querySelectorAll(".option-drop-indicator")) ind.remove();
+    };
+
     function renderOptions() {
         box.replaceChildren();
+        let dragIdx = null;
         options.forEach((opt, i) => {
             const card = document.createElement("div");
             css(card, "background:#252525;padding:6px;border-radius:6px;border:1px solid #333;display:flex;flex-direction:column;gap:6px;");
             const header = document.createElement("div");
             css(header, "display:flex;gap:8px;align-items:center;");
+            // Drag to reorder (#477); only our own drags stop propagating so
+            // the parent choice cards keep their reorder.
+            const dragHandle = document.createElement("span");
+            dragHandle.textContent = "☰";
+            css(dragHandle, "cursor:grab;color:#666;font-size:12px;padding:0 4px;user-select:none;");
+            dragHandle.title = "Drag to reorder";
+            dragHandle.draggable = true;
+            dragHandle.addEventListener("dragstart", (e) => {
+                e.stopPropagation();
+                dragIdx = i;
+                card.style.opacity = "0.4";
+                e.dataTransfer.effectAllowed = "move";
+            });
+            dragHandle.addEventListener("dragend", (e) => {
+                e.stopPropagation();
+                dragIdx = null;
+                card.style.opacity = "";
+                clearIndicators();
+            });
+            card.addEventListener("dragover", (e) => {
+                if (dragIdx === null) return;
+                e.stopPropagation();
+                if (dragIdx === i) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                clearIndicators();
+                const indicator = document.createElement("div");
+                indicator.className = "option-drop-indicator";
+                css(indicator, "height:2px;background:#2a6acf;border-radius:1px;margin:2px 0;");
+                const rect = card.getBoundingClientRect();
+                const above = (e.clientY - rect.top) < rect.height / 2;
+                box.insertBefore(indicator, above ? card : card.nextSibling);
+            });
+            card.addEventListener("dragleave", (e) => {
+                const rect = card.getBoundingClientRect();
+                if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) clearIndicators();
+            });
+            card.addEventListener("drop", (e) => {
+                if (dragIdx === null) return;
+                e.stopPropagation();
+                e.preventDefault();
+                clearIndicators();
+                const src = dragIdx;
+                dragIdx = null;
+                if (src === i) return;
+                const rect = card.getBoundingClientRect();
+                let dst = (e.clientY - rect.top) < rect.height / 2 ? i : i + 1;
+                if (src < dst) dst--;
+                if (dst === src) return;
+                options.splice(dst, 0, ...options.splice(src, 1));
+                renderOptions();
+            });
             const nameInput = makeComfyInput(opt.name || "", "Name, e.g. decorations");
             nameInput.addEventListener("input", () => { opt.name = nameInput.value; });
             const onWrap = document.createElement("label");
@@ -653,7 +710,7 @@ export function renderOptionList(box, options) {
                 options.splice(i, 1);
                 renderOptions();
             });
-            header.append(nameInput, onWrap, removeBtn);
+            header.append(dragHandle, nameInput, onWrap, removeBtn);
             const promptRow = document.createElement("div");
             css(promptRow, "display:flex;gap:6px;align-items:flex-start;");
             // Prompts wrap and grow like the flake prompt fields (#475).
