@@ -439,7 +439,7 @@ def list_flakes(family: str | None = None, roots: list[str] | None = None, kind:
 
 def list_flake_info(family: str | None = None, kind: str = "img") -> dict[str, Any]:
     """The Load picker's listing, parsing each flake yaml once (#454): names,
-    folders, display names, tag-name LoRAs to show on the item like the grid
+    folders, display names, the tag-name LoRA to show on the item like the grid
     (#297; only flakes with one appear), favorites (#402) and folder covers."""
     names = list_flakes(family=family, kind=kind)
     dirs = list_dirs(family=family, kind=kind)
@@ -454,13 +454,19 @@ def list_flake_info(family: str | None = None, kind: str = "img") -> dict[str, A
             continue
         if raw.get("name"):
             display_names[name] = raw["name"]
-        loras = raw.get("loras")
-        if isinstance(loras, list) and (tags := [
+        # Only the first tag-name LoRA tags the flake: its own LoRAs, then
+        # those of its default variant choices (#476).
+        loras = list(raw.get("loras") or [])
+        for choices in (raw.get("variants") or {}).values():
+            first = next(iter((choices or {}).values()), None)
+            if isinstance(first, dict) and first.get("default"):
+                loras += first.get("loras") or []
+        if tag := next((
             str(lora.get("name")).strip()
             for lora in loras
             if isinstance(lora, dict) and lora.get("tag_name") and str(lora.get("name") or "").strip()
-        ]):
-            tag_names[name] = tags
+        ), None):
+            tag_names[name] = [tag]
         if raw.get("favorite"):
             favorites.append(name)
     folder_covers = list_folder_covers(names, dirs, favorites, lambda n: cover_file(n, raws.get(n, {})) is not None)

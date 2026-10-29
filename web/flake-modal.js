@@ -1457,7 +1457,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         const loraList = document.createElement("div");
                                         css(loraList, "display:flex;flex-direction:column;gap:6px;margin-top:3px;");
                                         loraHost.appendChild(loraList);
-                                        renderLoraList(loraList, co.loras, { family: currentFamily, loraDir: flakeDir, showAdd: false, lowFile });
+                                        renderLoraList(loraList, co.loras, { family: currentFamily, tagName: true, loraDir: flakeDir, showAdd: false, lowFile });
                                     }
                                     // ---- ControlNets ----
                                     const cnets = Array.isArray(co.controlnets) ? co.controlnets : [];

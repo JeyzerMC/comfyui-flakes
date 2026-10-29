@@ -325,6 +325,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     }
                     multipleOpt.textContent = currentOpt.textContent = multipleLabel(v);
                     dd.element.value = ddValue(v);
+                    entry.tags = loraTagNames(flakeData, entry.variant);
                     renderVl();
                     rebuildLinkedPanel();
                     onChanged();
@@ -802,7 +803,7 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
             arr[idx].favorite = !!result.data?.favorite;
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
             arr[idx].display_name = result.data?.name || null;
-            arr[idx].tags = loraTagNames(result.data?.loras);
+            arr[idx].tags = loraTagNames(result.data, arr[idx].variant);
             const newLoras = Array.isArray(result.data?.loras)
                 ? result.data.loras.map(l => l?.strength ?? 1.0)
                 : (result.data?.path ? [result.data.strength ?? 1.0] : []);
@@ -870,7 +871,7 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
             display_name = d.name || null;
             flake_type = d.flake_type || null;
             favorite = !!d.favorite;
-            tags = loraTagNames(d.loras);
+            tags = loraTagNames(d);
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}
@@ -914,7 +915,7 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
                 flake_type = flake_type || d.flake_type || null;
             } catch {}
         }
-        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite: !!result.data?.favorite, tags: loraTagNames(result.data?.loras) });
+        arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite: !!result.data?.favorite, tags: loraTagNames(result.data) });
         writeAllFlakes(arr);
         render();
     }
@@ -960,7 +961,7 @@ export function setupFlakeComboWidget(node, { kind = "img" } = {}) {
             display_name = d.name || null;
             flake_type = d.flake_type || null;
             favorite = !!d.favorite;
-            tags = loraTagNames(d.loras);
+            tags = loraTagNames(d);
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
             else if (d.path) loras = [d.strength ?? 1.0];
         } catch {}

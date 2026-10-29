@@ -1301,11 +1301,15 @@ export function variantSuffix(entry) {
     return choices.length ? ` (${choices.join(", ")})` : "";
 }
 
-// Tag names contributed by a flake's tag-name LoRAs (#274/#297): the LoRA names
-// the user opted to surface on the flake item. Returns [] when none.
-export function loraTagNames(loras) {
-    if (!Array.isArray(loras)) return [];
-    return loras.filter(l => l && l.tag_name && (l.name || "").trim()).map(l => l.name.trim());
+// Tag names contributed by a flake's tag-name LoRAs (#274/#297): the LoRA name
+// the user opted to surface on the flake item. Only the first one tags it, from
+// the flake's LoRAs then those of its selected variant choices (#476). Returns
+// [] when none.
+export function loraTagNames(data, variant) {
+    const selected = effectiveVariant(variant, variantDefaultsOf(data?.variants));
+    const loras = [data?.loras, ...Object.entries(data?.variants || {}).map(([g, choices]) => choices?.[selected[g]]?.loras)].flat();
+    const lora = loras.find(l => l && l.tag_name && (l.name || "").trim());
+    return lora ? [lora.name.trim()] : [];
 }
 
 // Split a (possibly legacy) display name into its base name and tag names. New

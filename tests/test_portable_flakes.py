@@ -176,16 +176,18 @@ def test_list_dirs_skips_owned_folders():
 
 def test_list_flake_info():
     with _flakes_root() as root:
-        _write(os.path.join(root, "chars", "fennec.yaml"), b"name: Fennec\nfavorite: true\nloras:\n  - {name: ' swish ', tag_name: true}\n  - {name: plain}\n")
+        _write(os.path.join(root, "chars", "fennec.yaml"), b"name: Fennec\nfavorite: true\nloras:\n  - {name: ' swish ', tag_name: true}\n  - {name: plain}\n  - {name: second, tag_name: true}\nvariants:\n  ears: {big: {default: true, loras: [{name: ears, tag_name: true}]}}\n")
+        # Without a flake tag, the first default choice's tag-name LoRA wins (#476).
+        _write(os.path.join(root, "chars", "tails.yaml"), b"variants:\n  tail: {fluffy: {loras: [{name: fluffy, tag_name: true}]}}\n  outfit: {coat: {default: true, loras: [{name: coat, tag_name: true}]}}\n  hat: {cap: {default: true, loras: [{name: cap, tag_name: true}]}}\n")
         _write(os.path.join(root, "chars", "musashi", "musashi.png"), PNG)
         _write(os.path.join(root, "heroes", "solo.yml"), b"favorite: false\ncover_image: ./solo/hero.png\n")
         _write(os.path.join(root, "heroes", "solo", "hero.png"), PNG)
         _write(os.path.join(root, "broken.yaml"), b"name: [unclosed\n")
         assert fio.list_flake_info() == {
-            "flakes": ["broken", "chars/fennec", "chars/musashi", "heroes/solo"],
+            "flakes": ["broken", "chars/fennec", "chars/musashi", "chars/tails", "heroes/solo"],
             "directories": ["chars", "heroes"],
             "display_names": {"chars/fennec": "Fennec"},
-            "tag_names": {"chars/fennec": ["swish"]},
+            "tag_names": {"chars/fennec": ["swish"], "chars/tails": ["coat"]},
             "favorites": ["chars/fennec"],
             "folder_covers": {"chars": "chars/musashi", "heroes": "heroes/solo"},
         }

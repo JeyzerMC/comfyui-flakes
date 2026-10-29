@@ -1,7 +1,7 @@
 import {
     css, ensureDefault, makeSmallButton, makeAccentButton, svgIcon, makeGridItemOverlay, makeHoverButton, makeTypeRibbon, makeBypassStrike, makeFavoriteStar, TYPE_COLORS,
     _showDropIndicator, _hideDropIndicator, _hideAllDropIndicators, makeAddBlock, flakeDrag, clearFlakeDrag,
-    makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, renderOptionToggles, variantInitials, renderFlakeLabel, splitNameAndTags,
+    makePanelDropdown, makeSmallValueSlider, renderVariantLoraSliders, renderOptionToggles, variantInitials, renderFlakeLabel, splitNameAndTags, loraTagNames,
     _registerOpenPanel, _unregisterOpenPanel, setWidgetHidden, effectiveVariant, variantDropdownOptions, variantDefaultsOf, choiceFlakeLinks, makeImageSection,
     isLocalName, markLocal, SAVE_TO_DISK_SVG,
 } from "../utils.js";
@@ -11,14 +11,11 @@ import { openEditModal } from "../flake-modal.js";
 import { openFileLoadPicker, makeItemImagesButton, makeItemImagesDropTarget } from "../pickers.js";
 import { stackImageJobs } from "../queue.js";
 
-// Append the names of any tag-name LoRAs (#274) to a flake's grid display name,
-// e.g. "Askeladd" + a tagged "Some Author Name" -> "Askeladd — Some Author Name".
-function appendLoraTags(baseName, loras) {
-    if (!baseName || !Array.isArray(loras)) return baseName;
-    const tags = loras
-        .filter(l => l && l.tag_name && (l.name || "").trim())
-        .map(l => l.name.trim());
-    return tags.length ? `${baseName} — ${tags.join(", ")}` : baseName;
+// Append the name of the first tag-name LoRA (#274, #476) to a flake's grid display
+// name, e.g. "Askeladd" + a tagged "Some Author Name" -> "Askeladd — Some Author Name".
+function appendLoraTags(baseName, data, variant) {
+    const tags = loraTagNames(data, variant);
+    return baseName && tags.length ? `${baseName} — ${tags[0]}` : baseName;
 }
 
 // Grid item [width, height] per kind; animate items are larger to show their
@@ -121,7 +118,6 @@ function makeBlock({ entry, idx, kind, onEdit, onRemove, onReplace, onToggleBypa
     }
 
     // Name — stacked label: name line, dimmer tag line (#297), variant suffix.
-    const fullName = isDefault ? "Default" : (entry.display_name || entry.name || "(missing)");
     const nameEl = document.createElement("div");
     css(nameEl, "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;text-align:center;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,0.8);padding:0 4px;overflow:hidden;z-index:1;word-break:break-word;hyphens:auto;");
     function refreshName() {
@@ -129,7 +125,7 @@ function makeBlock({ entry, idx, kind, onEdit, onRemove, onReplace, onToggleBypa
             renderFlakeLabel(nameEl, { name: "Default" });
             return;
         }
-        const { name, tags } = splitNameAndTags(fullName, entry.tags);
+        const { name, tags } = splitNameAndTags(entry.display_name || entry.name || "(missing)", entry.tags);
         const base = name.includes("/") ? name.split("/").pop() : name;
         renderFlakeLabel(nameEl, { name: base, tags, variantText: variantInitials(entry, cachedVariantDefaults(entry.name)) });
     }
@@ -337,6 +333,7 @@ function makeInstanceControls(block, entry, idx, onChanged, triangleBtn, onVaria
                     } else {
                         if (entry.variant) delete entry.variant[group];
                     }
+                    if (flakeData?.name) entry.display_name = appendLoraTags(flakeData.name, flakeData, entry.variant);
                     renderVl();
                     rebuildLinkedPanel();
                     onChanged();
@@ -812,7 +809,7 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
             arr[idx]._edited_at = Date.now();
             arr[idx].flake_type = result.data?.flake_type || null;
             arr[idx].favorite = !!result.data?.favorite;
-            if (result.data?.name) arr[idx].display_name = appendLoraTags(result.data.name, result.data.loras);
+            if (result.data?.name) arr[idx].display_name = appendLoraTags(result.data.name, result.data, arr[idx].variant);
             arr[idx].has_lora = !!(result.data && (result.data.path || (result.data.loras && result.data.loras.length > 0)));
             // Clear per-instance overrides so the grid item reflects the new
             // defaults instead of masking them with stale values.
@@ -870,7 +867,7 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
         try {
             const d = await fetchFlake(result.name);
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
-            display_name = appendLoraTags(d.name || null, d.loras);
+            display_name = appendLoraTags(d.name || null, d);
             flake_type = d.flake_type || null;
             favorite = !!d.favorite;
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
@@ -917,7 +914,7 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
                 flake_type = flake_type || d.flake_type || null;
             } catch {}
         }
-        display_name = appendLoraTags(display_name, result.data?.loras);
+        display_name = appendLoraTags(display_name, result.data);
         arr.push({ name: result.name, loras, variant: {}, has_lora, display_name, flake_type, favorite: !!result.data?.favorite });
         writeEntries(arr);
         render();
@@ -960,7 +957,7 @@ export function setupFlakeWidget(node, { kind = "img" } = {}) {
         try {
             const d = await fetchFlake(name);
             has_lora = !!(d && (d.path || (d.loras && d.loras.length > 0)));
-            display_name = appendLoraTags(d.name || null, d.loras);
+            display_name = appendLoraTags(d.name || null, d);
             flake_type = d.flake_type || null;
             favorite = !!d.favorite;
             if (d.loras) loras = d.loras.map(l => l.strength ?? 1.0);
