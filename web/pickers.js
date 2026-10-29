@@ -318,7 +318,14 @@ export function openVariantMultiPicker({ flakeName, group, choices, selected = [
             for (const c of pool.slice(0, slider.getValue())) checked.add(c);
             refreshTiles();
         });
-        topRow.append(slider, randomBtn);
+        // Clears every checked choice (#474).
+        const clearBtn = makeButton("Unselect all");
+        clearBtn.style.height = "32px";
+        clearBtn.addEventListener("click", () => {
+            checked.clear();
+            refreshTiles();
+        });
+        topRow.append(slider, randomBtn, clearBtn);
         content.appendChild(topRow);
 
         const grid = document.createElement("div");
