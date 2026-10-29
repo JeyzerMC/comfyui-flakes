@@ -629,6 +629,8 @@ export function serializeLinks(links) {
 // Option rows (#464): the `prompt_options` of a flake or variant choice, each a
 // name, a positive prompt and whether it is on by default.
 export function renderOptionList(box, options) {
+    const taCss = "background:#1a1a1a;color:#ddd;border:1px solid #333;padding:6px 8px;border-radius:6px;font-size:13px;width:100%;box-sizing:border-box;font-family:inherit;outline:none;";
+
     function renderOptions() {
         box.replaceChildren();
         options.forEach((opt, i) => {
@@ -653,14 +655,19 @@ export function renderOptionList(box, options) {
             });
             header.append(nameInput, onWrap, removeBtn);
             const promptRow = document.createElement("div");
-            css(promptRow, "display:flex;gap:6px;align-items:center;");
-            const posInput = makeComfyInput(opt.positive || "", "Positive prompt");
+            css(promptRow, "display:flex;gap:6px;align-items:flex-start;");
+            // Prompts wrap and grow like the flake prompt fields (#475).
+            const posInput = makeTextarea(opt.positive || "", "Positive prompt", 1);
+            css(posInput, taCss);
             posInput.addEventListener("input", () => { opt.positive = posInput.value; });
+            attachAutoGrow(posInput);
             promptRow.appendChild(posInput);
             // Optional negative (#467), added like a flake prompt's.
             if (opt.negative != null) {
-                const negInput = makeComfyInput(opt.negative, "Negative prompt");
+                const negInput = makeTextarea(opt.negative, "Negative prompt", 1);
+                css(negInput, taCss);
                 negInput.addEventListener("input", () => { opt.negative = negInput.value; });
+                attachAutoGrow(negInput);
                 const negRemove = makeSmallButton("✕");
                 negRemove.title = "Remove negative prompt";
                 negRemove.addEventListener("click", () => {
