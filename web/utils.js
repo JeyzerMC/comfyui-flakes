@@ -382,6 +382,46 @@ export function makeHoverRemoveWrapper(child, onRemove, title = "Remove") {
     return wrap;
 }
 
+// Hover scope button at the top left of an image box (#478): opens `img`
+// full size (without its `thumb` param) over the modal. Click or Esc closes
+// the preview only; the box's own click (the picker) is not triggered.
+export function addImageZoom(box, img) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.title = "Preview image";
+    btn.appendChild(svgIcon('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>', 12));
+    css(btn, "position:absolute;top:6px;left:6px;z-index:2;width:22px;height:22px;padding:0;border-radius:4px;background:rgba(20,20,20,0.85);color:#ddd;border:1px solid #555;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.12s ease;");
+    const hasImage = () => img.style.display !== "none" && !!img.getAttribute("src");
+    box.addEventListener("mouseenter", () => { if (hasImage()) btn.style.opacity = "1"; });
+    box.addEventListener("mouseleave", () => { btn.style.opacity = "0"; });
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!hasImage()) return;
+        const overlay = document.createElement("div");
+        css(overlay, "position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out;");
+        const full = document.createElement("img");
+        full.src = img.src.replace(/&thumb=\d+/, "");
+        css(full, "max-width:94vw;max-height:94vh;object-fit:contain;border-radius:4px;box-shadow:0 8px 40px rgba(0,0,0,0.6);");
+        overlay.appendChild(full);
+        const close = () => {
+            overlay.remove();
+            window.removeEventListener("keydown", onKey, true);
+        };
+        // Capture phase: Esc closes the preview before the flake modal sees it.
+        const onKey = (ev) => {
+            if (ev.key !== "Escape") return;
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+            close();
+        };
+        overlay.addEventListener("click", (ev) => { ev.stopPropagation(); close(); });
+        window.addEventListener("keydown", onKey, true);
+        document.body.appendChild(overlay);
+    });
+    box.appendChild(btn);
+}
+
 // ---------- Zoom scaling for native <select> in DOM widgets ----------
 
 

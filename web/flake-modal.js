@@ -3,7 +3,7 @@ import {
     css, makeButton, makeSmallButton, makeComfyLabel, makeComfyInput,
     makeComfyDropdown, makePanelDropdown, makeSearchableDropdown,
     makeComfyNumberInput, makeComfyValueSlider, makeSmallValueSlider,
-    makeNumberInput,
+    makeNumberInput, addImageZoom,
     familyFolder, familyFromFolder, familyCnModels, ANIM_DIR,
 } from "./utils.js";
 import {
@@ -562,6 +562,7 @@ export async function openEditModal({ mode, name, data, dirs, family = "SDXL/Bas
             coverRemoveBtn.title = "Remove cover image";
             css(coverRemoveBtn, "position:absolute;top:6px;right:6px;z-index:2;width:22px;height:22px;padding:0;border-radius:4px;background:rgba(20,20,20,0.85);color:#ddd;border:1px solid #555;cursor:pointer;font-size:13px;line-height:1;display:none;align-items:center;justify-content:center;opacity:0;transition:opacity 0.12s ease;");
             coverBox.appendChild(coverRemoveBtn);
+            addImageZoom(coverBox, coverImg);
             coverBox.addEventListener("mouseenter", () => {
                 if (coverImg.style.display === "block") coverRemoveBtn.style.opacity = "1";
             });
@@ -946,7 +947,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
 
                             const imgBox = document.createElement("div");
                             imgBox.dataset.cnMainImg = "1";
-                            css(imgBox, "width:80px;height:80px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
+                            css(imgBox, "position:relative;width:80px;height:80px;border-radius:4px;background:#1a1a1a;border:1px solid #333;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;");
                             const imgPreview = document.createElement("img");
                             css(imgPreview, "width:100%;height:100%;object-fit:cover;display:none;");
                             imgBox.appendChild(imgPreview);
@@ -1008,6 +1009,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                 if (fileName) applyCnImage(fileName);
                             });
                             makeImageDropTarget(imgBox, (paths) => applyCnImage(paths[0]));
+                            addImageZoom(imgBox, imgPreview);
 
                             imageCol.appendChild(imgBox);
                             imageCol.appendChild(dimLabel);
@@ -1379,6 +1381,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                     if (fileName) applyChoiceImage(fileName);
                                 });
                                 makeImageDropTarget(imgBox, (paths) => applyChoiceImage(paths[0]));
+                                addImageZoom(imgBox, imgPreview);
                                 rightCol.appendChild(imgBox);
                                 refreshChoiceImage();
 
@@ -1468,7 +1471,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         const card = document.createElement("div");
                                         css(card, "display:flex;gap:8px;align-items:flex-start;background:#252525;padding:6px;border-radius:6px;border:1px solid #333;");
                                         const imgBox = document.createElement("div");
-                                        css(imgBox, "flex:0 0 72px;width:72px;height:72px;border:1px solid #333;border-radius:6px;background:#1a1a1a;cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;");
+                                        css(imgBox, "position:relative;flex:0 0 72px;width:72px;height:72px;border:1px solid #333;border-radius:6px;background:#1a1a1a;cursor:pointer;overflow:hidden;display:flex;align-items:center;justify-content:center;");
                                         const imgPrev = document.createElement("img");
                                         css(imgPrev, "width:100%;height:100%;object-fit:cover;display:none;");
                                         const imgPlaceholder = document.createElement("span");
@@ -1518,6 +1521,7 @@ if (!activeFields.includes("controlnets") && fieldState.controlnets._.length > 0
                                         makeImageDropTarget(imgBox, (paths) => applyCnImage(paths[0]));
                                         const imageCol = document.createElement("div");
                                         css(imageCol, "flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;");
+                                        addImageZoom(imgBox, imgPrev);
                                         imageCol.appendChild(imgBox);
                                         imageCol.appendChild(dimCap);
                                         card.appendChild(imageCol);
